@@ -23,18 +23,21 @@ SOFTWARE.*/
 package java.net;
 
 public class DatagramPacket {
+	// guardar los bytes de un datagramas
     private byte[] buf;
+	// tamaño del datagrama
     private int length;
-
+	
+	// constructor
     public DatagramPacket(byte[] buf, int length) {
         this.buf = buf;
         this.length = length;
     }
-
+	
+	// getters y setters
     public byte[] getData() {
         return buf;
     }
-
     public int getLength() {
         return length;
     }
