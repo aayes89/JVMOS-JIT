@@ -78,18 +78,69 @@ public final class Math {
         return i < 0 ? -i : i;
     }
 	
-    public static long abs(long l) { return (l >= 0) ? l : -l; }
+    public static long abs(long l) {
+        //  Long.MIN_VALUE no puede representarse como long positivo.
+        if (l == Long.MIN_VALUE) {
+            return Long.MIN_VALUE;
+        }
+        return l < 0L ? -l : l;
+    }
 
-    public static double max(double d1, double d2) { return (d1 >= d2) ? d1 : d2; }
-    public static float max(float f1, float f2) { return (f1 >= f2) ? f1 : f2; }
-    public static int max(int i1, int i2) { return (i1 >= i2) ? i1 : i2; }
-    public static long max(long l1, long l2) { return (l1 >= l2) ? l1 : l2; }
+    public static double max(double d1, double d2) { 
+		if (d1 != d1) return d1;
+        if (d2 != d2) return d2;
+		return (d1 >= d2) ? d1 : d2; 
+	}
+	
+    // Funciones MAX
+	// double
+    public static double max(double d1, double d2) {
+        if (d1 != d1) return d1;
+        if (d2 != d2) return d2;
+        return d1 >= d2 ? d1 : d2;
+    }
 
-    public static double min(double d1, double d2) { return (d1 <= d2) ? d1 : d2; }
-    public static float min(float f1, float f2) { return (f1 <= f2) ? f1 : f2; }
-    public static int min(int i1, int i2) { return (i1 <= i2) ? i1 : i2; }
-    public static long min(long l1, long l2) { return (l1 <= l2) ? l1 : l2; }
+	// float
+    public static float max(float f1, float f2) {
+        if (f1 != f1) return f1;
+        if (f2 != f2) return f2;
+        return f1 >= f2 ? f1 : f2;
+    }
 
+	// int
+    public static int max(int i1, int i2) {
+        return i1 >= i2 ? i1 : i2;
+    }
+
+	// long
+    public static long max(long l1, long l2) {
+        return l1 >= l2 ? l1 : l2;
+    }
+
+    // Funciones MIN
+	// double
+    public static double min(double d1, double d2) {
+        if (d1 != d1) return d1;
+        if (d2 != d2) return d2;
+        return d1 <= d2 ? d1 : d2;
+    }
+
+	// float
+    public static float min(float f1, float f2) {
+        if (f1 != f1) return f1;
+        if (f2 != f2) return f2;
+        return f1 <= f2 ? f1 : f2;
+    }
+	
+	// int
+    public static int min(int i1, int i2) {
+        return i1 <= i2 ? i1 : i2;
+    }
+	
+	// long
+    public static long min(long l1, long l2) {
+        return l1 <= l2 ? l1 : l2;
+    }
 
     // Funciones Trigonométricas
     public static int sinInt(int degrees) {
