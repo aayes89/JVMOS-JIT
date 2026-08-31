@@ -22,15 +22,14 @@ SOFTWARE.*/
 
 package java.lang;
 
-package java.lang;
-
 public final class String {
+	// variable local
     private final byte[] value;
-    
+    // Constructor
     public String(byte[] bytes) {
         this.value = bytes;
     }   
-    
+    // comparar case-sensitive
     public boolean equals(Object anObject) {
         if (this == anObject) return true;
         if (anObject instanceof String) {
@@ -44,19 +43,21 @@ public final class String {
         return false;
     }
     
+	// obtener el texto de un número
     public static String valueOf(int i) {
         return new StringBuilder().append(i).toString();
     }
 	
-	// Para usar con StringBuilder y PrintStream cuando los implemente
+	// útil para StringBuilder y PrintStream
     public byte[] getBytes() {
         return value;
     }
 	
+	// longitud del texto
 	public int length() {
         return value != null ? value.length : 0;
     }    
-    
+    // útil para calcular hashes
     public int hashCode() {
         int h = 0;
         for (int i = 0; i < length(); i++) {
