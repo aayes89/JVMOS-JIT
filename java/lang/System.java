@@ -26,14 +26,15 @@ import java.io.PrintStream;
 import kernel.Native;
 
 public final class System {
-    
+	// Declaración de PrintStream garantiza (System.out.)
     public static PrintStream out;
 
+	// obtener tiempo en ms
     public static long currentTimeMillis() {
         // Syscall 18 = SYS_GET_TICKS
         return Native.sys(18, 0, 0, 0, 0); 
     }
-
+	// equivalente de exit() en Java (probado en qemu)
     public static void exit(int status) {
         // Syscall 17 = SYS_EXIT
         Native.sys(17, status, 0, 0, 0);
@@ -60,5 +61,24 @@ public final class System {
                 d[destPos + i] = s[srcPos + i];
             }
         }
+    }
+	
+	// sobrecargas de método getProperty
+	public static String getProperty(String key) {
+        return getProperty(key, null);
+    }
+	// equivalente en Java, por ahora todo hardcodeado
+    public static String getProperty(String key, String def) {
+        if (key == null) return def;
+        
+        // Propiedades de JVMOS
+        if (key.equals("os.name")) return "JVMOS";
+        if (key.equals("os.arch")) return "x86";
+        if (key.equals("os.version")) return "2.5";
+        if (key.equals("java.version")) return "1.8-Baremetal";
+        if (key.equals("file.separator")) return "/";
+        if (key.equals("line.separator")) return "\n";
+        
+        return def;
     }
 }
