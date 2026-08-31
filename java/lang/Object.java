@@ -23,12 +23,14 @@ SOFTWARE.*/
 package java.lang;
 
 public class Object {
+	// constructor básico
     public Object() {}
+	// comparar objeto
     public boolean equals(Object obj) {
         return this == obj; // Comparación de punteros nativa
     }
-    // TODO
-    public int hashCode() {
+	// por hacer, uso 0 de momento, luego implemento un hash único
+	public int hashCode() {
         return 0;
     }
 }
