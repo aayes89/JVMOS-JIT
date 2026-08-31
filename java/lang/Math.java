@@ -142,21 +142,27 @@ public final class Math {
         return l1 <= l2 ? l1 : l2;
     }
 
-    // Funciones Trigonométricas
+    // Funciones Trigonométricas con enteros
+
+    // Resultado escalado por 256. sinInt(90) = aproximadamente 256
     public static int sinInt(int degrees) {
         degrees = degrees % 360;
-        if (degrees < 0) degrees += 360;
-        boolean isNegative = false;
+        if (degrees < 0) {
+            degrees += 360;
+        }
+        boolean negative = false;
         if (degrees >= 180) {
-            isNegative = true;
+            negative = true;
             degrees -= 180;
         }
-        int num = 4 * degrees * (180 - degrees);
-        int den = 40500 - degrees * (180 - degrees);
-        int result = (num * 256) / den; 
-        return isNegative ? -result : result;
+        int x = degrees * (180 - degrees);
+        int num = 4 * x;
+        int den = 40500 - x;
+        int result = (num * 256) / den;
+        return negative ? -result : result;
     }
-
+	
+	// cosInt
     public static int cosInt(int degrees) {
         return sinInt(degrees + 90);
     }
