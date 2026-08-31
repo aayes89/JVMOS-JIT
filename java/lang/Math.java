@@ -24,24 +24,60 @@ package java.lang;
 
 import java.util.Random;
 
-public final class Math {
-	// constante euler
-    public static final double E = 2.718281828459045;
-	// constante PI
-    public static final double PI = 3.141592653589793;
+public final class Math { 
 
-	// clase privada para manejo interno
+    // Constante de Euler
+    public static final double E = 2.71828182845904523536028747135266249775724709369995;
+    // Constante PI
+    public static final double PI = 3.14159265358979323846264338327950288419716939937510;
+
+	// Más constantes
+    private static final double HALF_PI = PI * 0.5d;
+    private static final double QUARTER_PI = PI * 0.25d;
+    private static final double TWO_PI = PI * 2.0d;
+
+    private static final double LN2 = 0.693147180559945309417232121458176568;
+    private static final double LN10 = 2.302585092994045684017991454684364208;
+    private static final double INV_LN10 = 0.434294481903251827651128918916605082;
+    private static final double SQRT2 = 1.414213562373095048801688724209698079;
+    private static final double EPSILON = 1.0E-15d;
+
+
+    // Clase interna para Random
     private static class NoImagePreloadHolder {
         private static final Random INSTANCE = new Random();
     }
+	
+	// Constructor 
+    private Math() {
+    }
 
-    // constructor
-	private Math() {}
+	// Funciones básicas matemáticas
+	// double absoluto
+    public static double abs(double d) {
+        if (d == 0.0d) {
+            return 0.0d;
+        }
+        return d < 0.0d ? -d : d;
+    }
 
-    // Funciones Matemáticas
-    public static double abs(double d) { return (d <= 0.0D) ? 0.0D - d : d; }
-    public static float abs(float f) { return (f <= 0.0F) ? 0.0F - f : f; }
-    public static int abs(int i) { return (i >= 0) ? i : -i; }
+	// float absoluto
+	public static float abs(float f) {
+        if (f == 0.0f) {
+            return 0.0f;
+        }
+        return f < 0.0f ? -f : f;
+    }
+
+	// valor absoluto entero
+    public static int abs(int i) {
+        // Integer.MIN_VALUE no puede representarse como entero positivo.
+        if (i == Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        }
+        return i < 0 ? -i : i;
+    }
+	
     public static long abs(long l) { return (l >= 0) ? l : -l; }
 
     public static double max(double d1, double d2) { return (d1 >= d2) ? d1 : d2; }
