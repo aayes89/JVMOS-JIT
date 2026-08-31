@@ -23,7 +23,7 @@ SOFTWARE.*/
 package java.util.regex;
 
 import java.io.IOException;
-import java.io.ObjectInputStream;
+//import java.io.ObjectInputStream;
 import java.io.Serializable;
 
 public final class Pattern implements Serializable {
@@ -172,10 +172,11 @@ public final class Pattern implements Serializable {
         }
     }
 
-    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+	// NO usar aún hasta tener ObjectInputStream implementado
+    /*private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
         s.defaultReadObject();
         compile();
-    }
+    }*/
 
 	// NATIVOS - TODO
     private static void closeImpl(long addr);
