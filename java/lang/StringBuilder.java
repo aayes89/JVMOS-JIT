@@ -26,6 +26,7 @@ public class StringBuilder {
     private byte[] value;
     private int count;
 
+	// constructores
     public StringBuilder() {
         value = new byte[16];
         count = 0;
@@ -36,6 +37,7 @@ public class StringBuilder {
         append(str);
     }
 
+	// ampliar la capacidad (clásico en arreglos de IP-1)
     private void expandCapacity(int minimumCapacity) {
         int newCapacity = value.length * 2 + 2;
         if (newCapacity < minimumCapacity) {
@@ -46,6 +48,7 @@ public class StringBuilder {
         value = newValue;
     }
 
+	// añadir cadena al final
     public StringBuilder append(String str) {
         if (str == null) str = "null";
         int len = str.length();
@@ -58,6 +61,7 @@ public class StringBuilder {
         return this;
     }
 
+	// añadir entero al final
     public StringBuilder append(int i) {
         if (i == 0) return append("0");
         boolean negative = i < 0;
@@ -87,6 +91,7 @@ public class StringBuilder {
         return this;
     }
 
+	// obtener el texto
     public String toString() {
         byte[] result = new byte[count];
         System.arraycopy(value, 0, result, 0, count);
