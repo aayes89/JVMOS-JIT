@@ -27,11 +27,8 @@ public class Object {
     public boolean equals(Object obj) {
         return this == obj; // Comparación de punteros nativa
     }
+    // TODO
     public int hashCode() {
-        int h = 0;
-        for (int i = 0; i < length(); i++) {
-            h = 31 * h + value[i];
-        }
-        return h;
+        return 0;
     }
 }
