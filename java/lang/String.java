@@ -283,6 +283,16 @@ public final class String implements CharSequence {
     public byte[] getBytes() {
         return value;
     }
+
+    public static String valueOf(long l) { return Long.toString(l); }
+    public static String valueOf(float f) { return Float.toString(f); }
+    public static String valueOf(double d) { return Double.toString(d); }
+    public static String valueOf(boolean b) { return b ? "true" : "false"; }
+    public static String valueOf(char c) { 
+        byte[] charByte = new byte[1];
+        charByte[0] = (byte) c;
+        return new String(charByte); 
+    }
     
     @Override
     public int hashCode() {
