@@ -24,6 +24,7 @@ package java.lang;
 
 public final class StringToReal {
 
+	// clase interna
     private static final class StringExponentPair {
         String s;
         long e;
@@ -32,7 +33,8 @@ public final class StringToReal {
         // Banderas para casos de error espeaciales
         boolean infinity;
         boolean zero;
-
+		
+		// identificar el tipo de valor
         public float specialValue() {
             if (infinity) {
                 return negative ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
@@ -43,16 +45,20 @@ public final class StringToReal {
    
     private static double parseDblImpl(String s, int e){
 		// TODO
+        return 0.0;
 	}
 
     private static float parseFltImpl(String s, int e){
 		// TODO
+        return 0.0f;
 	}
 
+	// lanzamiento de excepción
     private static NumberFormatException invalidReal(String s, boolean isDouble) {
         throw new NumberFormatException("Invalid " + (isDouble ? "double" : "float") + ": \"" + s + "\"");
     }
     
+	// método interno para parseo del texto
     private static StringExponentPair initialParse(String s, int length, boolean isDouble) {
         StringExponentPair result = new StringExponentPair();
         if (length == 0) {
@@ -226,6 +232,7 @@ public final class StringToReal {
         throw invalidReal(name, isDouble);
     }
 
+	// obtener el double de un texto
     public static double parseDouble(String s) {
         s = s.trim();
         int length = s.length();
@@ -256,6 +263,7 @@ public final class StringToReal {
         return info.negative ? -result : result;
     }
     
+	// obtener el float de un texto
     public static float parseFloat(String s) {
         s = s.trim();
         int length = s.length();
