@@ -59,7 +59,6 @@ public final class Integer extends Number implements Comparable<Integer> {
     }
 
 	// obtener el byte de un entero
-    @Override
     public byte byteValue() {
         return (byte) value;
     }
@@ -121,19 +120,17 @@ public final class Integer extends Number implements Comparable<Integer> {
     }
 
     // obtener el double de una cadena de texto
-	@Override
+	
     public double doubleValue() {
         return value;
     }
     
 	// comparar dos objetos como tipos de enteros
-    @Override
     public boolean equals(Object o) {
         return (o instanceof Integer) && (((Integer) o).value == value);
     }
 
 	// obtener el float de una cadena de texto
-    @Override
     public float floatValue() {
         return value;
     }
@@ -200,19 +197,17 @@ public final class Integer extends Number implements Comparable<Integer> {
     }
 
 	// TODO - devuelve el hash del value
-    @Override
+    
     public int hashCode() {
         return value;
     }
     
 	// obtener el valor de value
-    @Override
     public int intValue() {
         return value;
     }
 
 	// obtener long del valor entero
-    @Override
     public long longValue() {
         return value;
     }
@@ -283,7 +278,6 @@ public final class Integer extends Number implements Comparable<Integer> {
     }
 
 	// obtener short del valor entero
-    @Override
     public short shortValue() {
         return (short) value;
     }
@@ -302,7 +296,6 @@ public final class Integer extends Number implements Comparable<Integer> {
     }
 
 	// obtener el String del valor entero
-    @Override
     public String toString() {
         return Integer.toString(value);
     }
