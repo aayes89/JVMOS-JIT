@@ -23,17 +23,19 @@ SOFTWARE.*/
 package java.lang;
 
 public class NumberFormatException extends IllegalArgumentException {
-    // tomado de las implementaciones originales
-    static final long serialVersionUID = -2848938806368998894L;    
-    // Constructores
+    
+    static final long serialVersionUID = -2848938806368998894L;
+
+    
     public NumberFormatException () {
         super();
-    }   
+    }
+
+   
     public NumberFormatException (String s) {
         super (s);
     }
 
-    // Manejo de las excepciones
     public static NumberFormatException forInputString(String s, int radix) {
         return new NumberFormatException("For input string: \"" + s + "\"" + (radix == 10 ? "" : " under radix " + radix));
     }
