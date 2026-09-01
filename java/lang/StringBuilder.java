@@ -22,13 +22,17 @@ SOFTWARE.*/
 
 package java.lang;
 
-public class StringBuilder {
+public class StringBuilder implements CharSequence {
+    
     private byte[] value;
     private int count;
 
-	// constructores
     public StringBuilder() {
         value = new byte[16];
+        count = 0;
+    }
+    public StringBuilder(int size) {
+        value = new byte[size];
         count = 0;
     }
 
@@ -37,7 +41,6 @@ public class StringBuilder {
         append(str);
     }
 
-	// ampliar la capacidad (clásico en arreglos de IP-1)
     private void expandCapacity(int minimumCapacity) {
         int newCapacity = value.length * 2 + 2;
         if (newCapacity < minimumCapacity) {
@@ -48,7 +51,44 @@ public class StringBuilder {
         value = newValue;
     }
 
-	// añadir cadena al final
+    @Override
+    public int length() {
+        return count;
+    }
+
+    @Override
+    public char charAt(int index) {
+        if (index >= 0 && index < count) {
+            return (char) (value[index] & 0xFF);
+        }
+        System.out.println("StringBuilderIndexOutOfBounds");
+        return 0;
+    }
+
+    @Override
+    public CharSequence subSequence(int start, int end) {
+        if (start < 0 || end > count || start > end) {
+            System.out.println("StringBuilderIndexOutOfBounds");
+            return new String(new byte[0]);
+        }
+        byte[] subBytes = new byte[end - start];
+        System.arraycopy(this.value, start, subBytes, 0, end - start);
+        return new String(subBytes);
+    }
+
+    // Permite concatenar cualquier interfaz CharSequence
+    public StringBuilder append(CharSequence s) {
+        if (s == null) {
+            return append("null");
+        }
+        return append(s.toString());
+    }
+
+    // Permite concatenar cualquier Objeto en general
+    public StringBuilder append(Object obj) {
+        return append(String.valueOf(obj));
+    }
+
     public StringBuilder append(String str) {
         if (str == null) str = "null";
         int len = str.length();
@@ -61,7 +101,14 @@ public class StringBuilder {
         return this;
     }
 
-	// añadir entero al final
+    public StringBuilder append(char c) {
+        if (count + 1 > value.length) {
+            expandCapacity(count + 1);
+        }
+        value[count++] = (byte) c;
+        return this;
+    }
+
     public StringBuilder append(int i) {
         if (i == 0) return append("0");
         boolean negative = i < 0;
@@ -91,7 +138,12 @@ public class StringBuilder {
         return this;
     }
 
-	// obtener el texto
+    public StringBuilder append(long l) { return append(String.valueOf(l)); }
+    public StringBuilder append(float f) { return append(String.valueOf(f)); }
+    public StringBuilder append(double d) { return append(String.valueOf(d)); }
+    public StringBuilder append(boolean b) { return append(String.valueOf(b)); }
+
+    @Override
     public String toString() {
         byte[] result = new byte[count];
         System.arraycopy(value, 0, result, 0, count);
