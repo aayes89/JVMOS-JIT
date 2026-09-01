@@ -24,6 +24,7 @@ package java.lang;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.Splitter;
 
 
 final class HexStringParser {
@@ -72,6 +73,8 @@ final class HexStringParser {
     private long mantissa;
 
     private String abandonedNumber="";
+
+    private Splitter splitter;
 
 	// Constructor
     public HexStringParser(int exponentWidth, int mantissaWidth) {
@@ -142,7 +145,8 @@ final class HexStringParser {
 
     // Parsear la mantisa 
     private void parseMantissa(String significantStr) {
-        String[] strings = significantStr.split("\\.");
+        Splitter splitter = new Splitter();
+        String[] strings = splitter.split(PATTERN, "\\.", significantStr, significantStr.length());
         String strIntegerPart = strings[0];
         String strDecimalPart = strings.length > 1 ? strings[1] : "";
 
