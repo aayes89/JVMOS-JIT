@@ -55,14 +55,16 @@ public final class Byte extends Number implements Comparable<Byte> {
         return lhs > rhs ? 1 : (lhs < rhs ? -1 : 0);
     }
    
-    public static Byte decode(String string) throws NumberFormatException {
+    public static Byte decode(String string) throws NumberFormatException{
         int intValue = Integer.decode(string);
         byte result = (byte) intValue;
         if (result == intValue) {
             return valueOf(result);
         }
         //throw 
+
         new NumberFormatException("Value out of range for byte: \"" + string + "\"");
+        return result;
     }
 
     public double doubleValue() {
@@ -93,7 +95,7 @@ public final class Byte extends Number implements Comparable<Byte> {
         return parseByte(string, 10);
     }
    
-    public static byte parseByte(String string, int radix) throws NumberFormatException {
+    public static byte parseByte(String string, int radix) {
         int intValue = Integer.parseInt(string, radix);
         byte result = (byte) intValue;
         if (result == intValue) {
@@ -101,6 +103,7 @@ public final class Byte extends Number implements Comparable<Byte> {
         }
         //throw 
         new NumberFormatException("Value out of range for byte: \"" + string + "\"");
+        return result;        
     }
 
     public short shortValue() {
