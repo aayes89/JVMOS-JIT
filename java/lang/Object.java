@@ -23,14 +23,48 @@ SOFTWARE.*/
 package java.lang;
 
 public class Object {
-	// constructor básico
+    
+    // Constructor básico
     public Object() {}
-	// comparar objeto
+
+    // Comparación de punteros nativa (funciona perfectamente)
     public boolean equals(Object obj) {
-        return this == obj; // Comparación de punteros nativa
+        return this == obj; 
     }
-	// por hacer, uso 0 de momento, luego implemento un hash único
-	public int hashCode() {
-        return 0;
+
+    // Debe devolver la dirección de memoria física del objeto en el Heap.
+    // TODO: Implementar System.identityHashCode en el JIT
+    public int hashCode() {
+        return 0; 
     }
+
+    // Forma estándar y segura de la JVM sin causar recursión infinita
+    public String toString() {
+        // En Java estándar esto es: getClass().getName() + "@" + Integer.toHexString(hashCode());
+        // simplificado por ahora
+        return "Object@" + Integer.toHexString(hashCode());
+    }
+
+    // Retorna los metadatos de la clase.
+    public final Class<?> getClass() {
+        // TODO - Hasta que el JIT soporte RTTI (Run-Time Type Information)
+        return null; 
+    }
+
+    protected Object clone() {
+        // TODO - evitar lanzar CloneNotSupportedException
+        return null; 
+    }
+
+    protected void finalize() {
+        // TODO- Usado por el Garbage Collector (cuando esté) antes de liberar memoria.
+    }
+
+
+    // MÉTODOS DE SINCRONIZACIÓN - TODO
+    public final void notify() {}
+    public final void notifyAll() {}
+    public final void wait() {}
+    public final void wait(long timeout) {}
+    public final void wait(long timeout, int nanos) {}
 }
