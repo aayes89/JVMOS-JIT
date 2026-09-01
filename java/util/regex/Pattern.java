@@ -107,11 +107,13 @@ public final class Pattern implements Serializable {
 
     private Pattern(String pattern, int flags) throws PatternSyntaxException {
         if ((flags & CANON_EQ) != 0) {
-            throw new UnsupportedOperationException("CANON_EQ flag not supported");
+            //throw new UnsupportedOperationException("CANON_EQ flag not supported");
+            System.out.println("CANON_EQ flag not supported");
         }
         int supportedFlags = CASE_INSENSITIVE | COMMENTS | DOTALL | LITERAL | MULTILINE | UNICODE_CASE | UNIX_LINES;
         if ((flags & ~supportedFlags) != 0) {
-            throw new IllegalArgumentException("Unsupported flags: " + (flags & ~supportedFlags));
+            //throw new IllegalArgumentException("Unsupported flags: " + (flags & ~supportedFlags));
+            System.out.println("Unsupported flags: " + (flags & ~supportedFlags));
         }
         this.pattern = pattern;
         this.flags = flags;
@@ -120,7 +122,8 @@ public final class Pattern implements Serializable {
 
     private void compile() throws PatternSyntaxException {
         if (pattern == null) {
-            throw new NullPointerException("pattern == null");
+            //throw new NullPointerException("pattern == null");
+            System.out.println("pattern == null");
         }
 
         String icuPattern = pattern;
@@ -162,14 +165,14 @@ public final class Pattern implements Serializable {
         }
         return sb.append(string.substring(apos)).append("\\E").toString();
     }
-
-    @Override 
-	protected void finalize() throws Throwable {
-        try {
+ 
+	protected void finalize() { //throws Throwable {
+        // TODO - No hacer nada por ahora (no liberar memoria ni cerrar sistema)
+        /*try {
             closeImpl(address);
         } finally {
             super.finalize();
-        }
+        }*/
     }
 
 	// NO usar aún hasta tener ObjectInputStream implementado
@@ -179,6 +182,6 @@ public final class Pattern implements Serializable {
     }*/
 
 	// NATIVOS - TODO
-    private static void closeImpl(long addr);
-    private static long compileImpl(String regex, int flags);
+    private static void closeImpl(long addr){}
+    private static long compileImpl(String regex, int flags){return 0;} 
 }
