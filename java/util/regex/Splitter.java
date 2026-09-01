@@ -30,7 +30,7 @@ public class Splitter {
     private static final String METACHARACTERS = "\\?*+[](){}^$.|";
 	
 	// constructor
-    private Splitter() {
+    public Splitter() {
     }
 
     // Equivalente a un split pero más rápido
@@ -71,7 +71,7 @@ public class Splitter {
             // eliminamos todas las coincidencias vacías finales.
             if (separatorCount == lastPartEnd) {
                 // sólo separadores en la entrada
-                return EmptyArray.STRING;
+                return new String[0]; // EmptyArray.STRING;
             }
             // Encuentrar el inicio de los separadores finales.
             do {
@@ -94,6 +94,7 @@ public class Splitter {
         result[separatorCount] = input.substring(begin, lastPartEnd);
         return result;
     }
+
 
     public static String[] split(Pattern pattern, String re, String input, int limit) {
         String[] fastResult = fastSplit(re, input, limit);
