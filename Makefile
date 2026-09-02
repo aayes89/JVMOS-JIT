@@ -1,8 +1,18 @@
-# =========================================================================
 # COMPILADORES Y BANDERAS
-# =========================================================================
-CC      = gcc-12
-LD      = ld
+
+ifeq ($(shell uname -s),Darwin)
+    # En macOS obligamos a usar el cross-compiler de Homebrew
+    CC = i686-elf-gcc
+    LD = i686-elf-ld
+else ifeq ($(shell uname -s),Linux)
+    # En Linux o WSL podemos intentar usar los nativos con multilib
+    CC = gcc
+    LD = ld
+else # windows
+	CC = gcc-12
+	LD = ld
+endif
+
 AS      = nasm
 JAVAC   = javac
 
@@ -26,18 +36,27 @@ BOOT_OBJ  := boot/multiboot.o
 REST_OBJS := $(filter-out $(BOOT_OBJ), $(ASM_OBJS) $(C_OBJS))
 ALL_OBJS  := $(BOOT_OBJ) $(REST_OBJS)
 
-# LISTA ESTRICTA DE CLASES JAVA A COMPILAR
-JAVA_SOURCES := kernel/Boot.java kernel/Native.java kernel/vfs/Node.java \
-                java/lang/Object.java java/lang/String.java java/lang/StringBuilder.java \
-                java/lang/System.java java/lang/Thread.java java/lang/Runtime.java \
-                java/awt/Color.java java/awt/Graphics2D.java java/awt/Toolkit.java \
-                java/io/PrintStream.java java/io/RandomAccessFile.java \
-                java/net/DatagramPacket.java java/net/RawSocket.java \
-                java/util/Calendar.java
+# Macro recursiva nativa de GNU Make (independiente del OS)
+rwildcard=$(wildcard $1$2) $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2))
 
-# =========================================================================
+# Busca TODOS los archivos .java dentro de 'kernel', 'java' y 'boot'
+JAVA_SOURCES := $(call rwildcard,kernel/,*.java) \
+                $(call rwildcard,java/,*.java) \
+                $(call rwildcard,boot/,*.java)
+
+# Macro para generar módulos de GRUB automáticamente
+define ADD_MODULE
+	@echo    module /classes/$(notdir $(1:.java=.class)) $(1:.java=) >> isodir/boot/grub/grub.cfg
+
+endef
+
+# Macro para generar módulos de GRUB automáticamente
+define ADD_MODULE
+	@echo module /classes/$(notdir $(1:.java=.class)) $(1:.java=) >> isodir/boot/grub/grub.cfg
+endef                
+
 # COMANDOS SEGUROS DE COPIA DE CLASES
-# =========================================================================
+
 ifeq ($(OS),Windows_NT)
     CLEAN_CMD = if exist isodir rmdir /s /q isodir & del /s /q *.bin *.iso *.class *.o
     MKDIR     = if not exist isodir\boot\grub mkdir isodir\boot\grub & if not exist isodir\classes mkdir isodir\classes
@@ -52,9 +71,8 @@ else
     COPY_CLS  = find kernel java -name "*.class" -exec cp {} isodir/classes/ \;
 endif
 
-# =========================================================================
 # REGLAS DE COMPILACIÓN
-# =========================================================================
+
 all: $(OS_ISO)
 
 kernel/Boot.class: $(JAVA_SOURCES)
@@ -75,29 +93,21 @@ $(OS_ISO): $(KERNEL_BIN) kernel/Boot.class
 	@echo menuentry "JVM-OS Self-Hosting" { >> isodir/boot/grub/grub.cfg
 	@echo    set gfxpayload=1024x768x32 >> isodir/boot/grub/grub.cfg
 	@echo    multiboot /boot/kernel.bin >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Boot.class kernel/Boot >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Native.class kernel/Native >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Node.class kernel/vfs/Node >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Object.class java/lang/Object >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/String.class java/lang/String >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/StringBuilder.class java/lang/StringBuilder >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/System.class java/lang/System >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Thread.class java/lang/Thread >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Runtime.class java/lang/Runtime >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Color.class java/awt/Color >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Graphics2D.class java/awt/Graphics2D >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Toolkit.class java/awt/Toolkit >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/PrintStream.class java/io/PrintStream >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/RandomAccessFile.class java/io/RandomAccessFile >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/DatagramPacket.class java/net/DatagramPacket >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/RawSocket.class java/net/RawSocket >> isodir/boot/grub/grub.cfg
-	@echo    module /classes/Calendar.class java/util/Calendar >> isodir/boot/grub/grub.cfg
+	$(foreach src, $(JAVA_SOURCES), $(call ADD_MODULE, $(src)))
 	@echo    boot >> isodir/boot/grub/grub.cfg
 	@echo } >> isodir/boot/grub/grub.cfg
+ifeq ($(shell uname -s),Darwin)
+	i686-elf-grub-mkrescue -o $(OS_ISO) isodir
+else
 	grub-mkrescue -o $(OS_ISO) isodir
+endif
 
 run: $(OS_ISO)
 	qemu-system-i386 -cdrom $(OS_ISO) -drive file=disk.img,format=raw -m 128M -serial stdio -rtc base=localtime -machine pcspk-audiodev=snd0 -audiodev pa,id=snd0
+
+run-mac: $(OS_ISO)
+	qemu-system-i386 -cdrom $(OS_ISO) -boot d -m 128M -serial stdio -rtc base=localtime
+
 clean:
 	@$(CLEAN_CMD)
 
