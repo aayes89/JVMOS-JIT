@@ -138,9 +138,9 @@ public final class Math {
 
 
     // Funciones Trigonométricas con enteros
-
-    // Resultado escalado por 256. sinInt(90) = aproximadamente 256
-    public static int sinInt(int degrees) {
+    // Aproximación Matemática de Bhaskara I (Siglo VII)
+    // Permite calcular Senos precisos sin Float ni FPU. Retorna un valor escalado por 256.
+    public static int sin(int degrees) {
         degrees = degrees % 360;
         if (degrees < 0) {
             degrees += 360;
@@ -158,12 +158,11 @@ public final class Math {
     }
 	
 	// cosInt
-    public static int cosInt(int degrees) {
-        return sinInt(degrees + 90);
+    public static int cos(int degrees) {
+        return sin(degrees + 90);
     }
 
     // Reducción de ángulo (extraido de Math)
-
     private static double reduceAngle(double x) {
         if (x != x) {
             return Double.NaN;
