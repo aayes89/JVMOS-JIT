@@ -1,25 +1,3 @@
-/*MIT License
-
-Copyright (c) 2026 Allan (Slam)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.*/
-
 
 package kernel;
 
@@ -29,6 +7,8 @@ import java.awt.Toolkit;
 import java.util.Calendar;
 import java.io.PrintStream;
 import java.lang.Thread;
+import java.lang.Math;
+import java.math.BigInteger;
 
 public class Boot {
     
@@ -104,9 +84,11 @@ public class Boot {
                         cursorY = 40;
                     } else if (cmdLen == 4 && cmdBuffer[0] == 'h' && cmdBuffer[1] == 'e' && cmdBuffer[2] == 'l' && cmdBuffer[3] == 'p') {
                         g.setColor(C_GREEN);
-                        g.drawString("COMANDOS: help | startx | cube | clear | cls | ver | time | date | exit", 20, cursorY);
+                        g.drawString("COMANDOS: help | startx | cube | clear | cls | ver | time | date | test | exit", 20, cursorY);
                         cursorY += 25;
-                    } else if (cmdLen == 4 && cmdBuffer[0] == 'e' && cmdBuffer[1] == 'x' && cmdBuffer[2] == 'i' && cmdBuffer[3] == 't') {
+                    } else if(cmdLen == 4 && cmdBuffer[0] == 't' && cmdBuffer[1] == 'e' && cmdBuffer[2] == 's' && cmdBuffer[3] == 't'){
+                        runSystemDiagnostics();
+                    }else if (cmdLen == 4 && cmdBuffer[0] == 'e' && cmdBuffer[1] == 'x' && cmdBuffer[2] == 'i' && cmdBuffer[3] == 't') {
                         shutdown();
                     } else if (cmdLen > 0) {
                         g.setColor(C_RED);
@@ -191,9 +173,9 @@ public class Boot {
             }
 
             // 2. Pre-calcular trigonometría entera (Escalada a 256)
-            int sinX = sin(angleX), cosX = cos(angleX);
-            int sinY = sin(angleY), cosY = cos(angleY);
-            int sinZ = sin(angleZ), cosZ = cos(angleZ);
+            int sinX = Math.sin(angleX), cosX = Math.cos(angleX);
+            int sinY = Math.sin(angleY), cosY = Math.cos(angleY);
+            int sinZ = Math.sin(angleZ), cosZ = Math.cos(angleZ);
 
             // 3. Proyección 3D Pipeline
             for (int i = 0; i < 8; i++) {
@@ -243,26 +225,6 @@ public class Boot {
             // 7. Salir con ESC
             if (Native.sys(Native.SYS_READ_KEYBOARD, 0, 0, 0, 0) == 27) break;
         }
-    }
-
-    // Aproximación Matemática de Bhaskara I (Siglo VII)
-    // Permite calcular Senos precisos sin Float ni FPU. Retorna un valor escalado por 256.
-    public static int sin(int degrees) {
-        degrees = degrees % 360;
-        if (degrees < 0) degrees += 360;
-        boolean isNegative = false;
-        if (degrees >= 180) {
-            isNegative = true;
-            degrees -= 180;
-        }
-        int num = 4 * degrees * (180 - degrees);
-        int den = 40500 - degrees * (180 - degrees);
-        int result = (num * 256) / den; 
-        return isNegative ? -result : result;
-    }
-
-    public static int cos(int degrees) {
-        return sin(degrees + 90);
     }
 
     // =========================================================================
@@ -723,9 +685,43 @@ public class Boot {
         try { Thread.sleep(1000); } catch(Exception e) {} clearScreen();
     }
 
+    public static void runSystemDiagnostics() {
+        System.out.println("=========================================");
+        System.out.println("   Iniciando Diagnosticos del Kernel     ");
+        System.out.println("=========================================");
+
+        // 1. Prueba de Strings y StringBuilder
+        String base = "  000Baremetal  ";
+        String trim = base.trim();
+        String replaced = trim.replaceFirst("^0+", "JVM-");
+        System.out.println("[Test 1] Manipulacion de Cadenas:");
+        System.out.println("Original: '" + base + "'");
+        System.out.println("Limpia:   '" + replaced + "'");
+
+        // 2. Prueba de la FPU (Math)
+        System.out.println("\n[Test 2] Operaciones Matematicas:");
+        double angle = Math.PI / 2.0;
+        System.out.println("Seno de PI/2: " + Math.sin(angle));
+        System.out.println("Raiz de 144:  " + Math.sqrt(144.0));
+        System.out.println("Maximo (5, 9): " + Math.max(5, 9));
+
+        // 3. Prueba de BigInteger Pure Java
+        System.out.println("\n[Test 3] Precision Arbitraria (BigInteger):");
+        BigInteger a = BigInteger.valueOf(5000);
+        BigInteger b = BigInteger.valueOf(7000);
+        BigInteger sum = a.add(b);
+        BigInteger mul = a.multiply(b);
+        System.out.println("Sum (5000+7000): " + sum.toString());
+        System.out.println("Mul (5000*7000): " + mul.toString());
+
+        System.out.println("=========================================");
+        System.out.println("    Diagnosticos Completados con Exito   ");
+        System.out.println("=========================================");
+    }
+
     public static void shell() {
         g.setColor(C_GREEN);
-        g.drawString("JVMOS TERMINAL INTERACTIVA - Escriba 'startx' o 'cube'", 20, 30);
+        g.drawString("JVMOS TERMINAL INTERACTIVA - Escriba 'help' para ver comandos disponibles", 20, 30);
         g.drawString("----------------------------------------------------------", 20, 50);
     }
 
