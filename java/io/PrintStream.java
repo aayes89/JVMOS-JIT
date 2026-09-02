@@ -25,6 +25,10 @@ package java.io;
 import kernel.Native;
 
 public class PrintStream {
+    
+    // constructor
+    public PrintStream() {}
+
     public void print(String s) {
         if (s == null) s = "null";
         Native.sys(Native.SYS_SERIAL_PUTS, 0, 0, s, 0); 
@@ -32,6 +36,11 @@ public class PrintStream {
     
     public void println(String s) {
         print(s);
+        println();
+    }
+
+    // Sobrecarga exigida cuando se hace System.out.println(); vacío
+    public void println() {
         Native.sys(Native.SYS_SERIAL_PUTC, '\r', 0, 0, 0);
         Native.sys(Native.SYS_SERIAL_PUTC, '\n', 0, 0, 0);
     }
@@ -64,7 +73,31 @@ public class PrintStream {
     
     public void println(int i) {
         print(i);
-        Native.sys(Native.SYS_SERIAL_PUTC, '\r', 0, 0, 0);
-        Native.sys(Native.SYS_SERIAL_PUTC, '\n', 0, 0, 0);
+        println();
+    }
+
+    // SOBRECARGAS OBLIGATORIAS PARA EL JIT
+    // Redirijo la impresión a los métodos nativos para evitar Kernel Panics
+    
+    public void print(Object obj) { print(String.valueOf(obj)); }
+    public void println(Object obj) { println(String.valueOf(obj)); }
+
+    public void print(long l) { print(String.valueOf(l)); }
+    public void println(long l) { println(String.valueOf(l)); }
+
+    public void print(float f) { print(String.valueOf(f)); }
+    public void println(float f) { println(String.valueOf(f)); }
+
+    public void print(double d) { print(String.valueOf(d)); }
+    public void println(double d) { println(String.valueOf(d)); }
+
+    public void print(boolean b) { print(String.valueOf(b)); }
+    public void println(boolean b) { println(String.valueOf(b)); }
+
+    // Optimizado para usar el syscall SYS_SERIAL_PUTC
+    public void print(char c) { Native.sys(Native.SYS_SERIAL_PUTC, c, 0, 0, 0); }
+    public void println(char c) { 
+        print(c); 
+        println(); 
     }
 }
