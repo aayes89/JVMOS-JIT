@@ -20,92 +20,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.*/
 
-/*package kernel;
-
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.lang.Thread;
-import java.awt.Toolkit;
-import java.util.Calendar;
-
-public class Boot {
-
-    public static void main(String[] args) {
-        java.lang.System.out = new java.io.PrintStream(); // INICIALIZACIÓN VITAL
-        
-        Native.sys(Native.SYS_SET_COLOR, 0x00FF0000, 0, 0, 0); 
-        Native.sys(Native.SYS_FILL_RECT, 0, 0, 1024, 768);
-        Native.sys(Native.SYS_SET_COLOR, 0x00FFFFFF, 0, 0, 0);
-        Native.sys(Native.SYS_DRAW_STRING, 50, 50, "FASE 1: Native.sys puro OK. Esperando 2 segundos...", 0);
-
-        Thread.sleep(2000);
-
-        Graphics2D g = new Graphics2D();
-        Color background = new Color(0x000000FF);
-        Color textPaint = new Color(0x00FFFF00);
-
-        g.setColor(background);
-        g.fillRect(0, 0, 1024, 768);
-
-        g.setColor(textPaint);
-        g.drawString("FASE 1-3: JIT, Heap y Graphics2D OK.", 50, 50);
-
-        // ==========================================================
-        // FASE 4: Renderizado Dinámico Baremetal 
-        // ==========================================================
-        java.lang.System.out.println("=====================================");
-        java.lang.System.out.println("[Micro-rt] Iniciando Fase 4 en el Puerto Serie (COM1)...");
-        
-        long ticks = java.lang.System.currentTimeMillis();
-        
-        g.setColor(new Color(0x00FFFFFF)); 
-        g.drawString("FASE 4: PrintStream y System.out OK.", 50, 90);
-        g.drawString("Ticks actuales del sistema: ", 50, 120);
-        g.drawInt((int)ticks, 330, 120); 
-
-        java.lang.System.out.print("Fase 4 completada. Ticks: ");
-        java.lang.System.out.println((int)ticks);
-
-        // ==========================================================
-        // FASE 5: Prueba de Hardware (RTC CMOS y PC Speaker)
-        // ==========================================================
-        int day = Calendar.get(Calendar.DAY);
-        int month = Calendar.get(Calendar.MONTH);
-        int year = Calendar.get(Calendar.YEAR);
-        int hour = Calendar.get(Calendar.HOUR);
-        int min = Calendar.get(Calendar.MINUTE);
-        
-        g.setColor(new Color(0x0000FF00)); 
-        g.drawString("FASE 5: Calendar y Toolkit OK.", 50, 160);
-        g.drawString("Reloj RTC: ", 50, 190);
-        
-        int px = 160; 
-        px = g.drawInt(day, px, 190);
-        px = g.drawChar('/', px, 190);
-        px = g.drawInt(month, px, 190);
-        px = g.drawChar('/', px, 190);
-        px = g.drawInt(20, px, 190);
-        px = g.drawInt(year, px, 190);
-        px = g.drawChar(' ', px, 190);
-        px = g.drawInt(hour, px, 190);
-        px = g.drawChar(':', px, 190);
-        px = g.drawInt(min, px, 190);
-
-        java.lang.System.out.println("Haciendo sonar el PC Speaker...");
-        
-        Toolkit.getDefaultToolkit().beep(1500); 
-        Thread.sleep(300); 
-        Native.sys(22, 0, 0, 0, 0); 
-        
-        g.setColor(new Color(0x00FF8800)); 
-        g.drawString("Todas las pruebas superadas! Interfaz Grafica lista.", 50, 240);
-        java.lang.System.out.println("Pruebas finalizadas con exito.");
-
-        while (true) {
-            Thread.sleep(1000);
-        }
-    }
-}*/
 
 package kernel;
 
@@ -131,10 +45,10 @@ public class Boot {
 
     private static Node root, currentDir, selectedNode, clipboardNode, fileMenuTarget;
 
-    // MICRO-RT: Gráficos y Paleta Cacheada (Evita Memory Leaks)
+    // MICRO-RT: Gráficos y Paleta Cacheada
     private static Graphics2D g;
     private static Color C_BLACK, C_WHITE, C_RED, C_GREEN, C_BLUE, C_YELLOW;
-    private static Color C_GRAY, C_LIGHT_GRAY, C_DARK_GRAY, C_TRANSPARENT;
+    private static Color C_GRAY, C_LIGHT_GRAY, C_DARK_GRAY, C_TRANSPARENT, C_CYAN;
     private static Color C_WIN_BG, C_WIN_TITLE, C_SEL, C_FOLDER, C_FILE;
 
     // ESTADO GLOBAL DEL ESCRITORIO
@@ -146,14 +60,12 @@ public class Boot {
     private static int[] newNameBuf = new int[16];
 
     public static void main(String[] args) {
-        // 1. INICIALIZACIÓN BAREMETAL DEL MICRO-RT
         java.lang.System.out = new PrintStream();
         java.lang.System.out.println("[Boot] Inicializando subsistemas Micro-rt...");
         
         g = new Graphics2D();
         initColors();
 
-        // 2. ARRANQUE DEL SISTEMA
         initKeyboard();
         dramaticBIOS();
         shell();
@@ -173,6 +85,11 @@ public class Boot {
                         java.lang.System.out.println("[GUI] Arrancando entorno de escritorio...");
                         runStartX();
                         cursorY = 40;
+                    } else if (cmdLen == 4 && cmdBuffer[0] == 'c' && cmdBuffer[1] == 'u' && cmdBuffer[2] == 'b' && cmdBuffer[3] == 'e') {
+                        java.lang.System.out.println("[3D Engine] Arrancando renderizador JIT-Baremetal...");
+                        runCube3D();
+                        clearScreen();
+                        cursorY = 40;
                     } else if (cmdLen == 3 && cmdBuffer[0] == 'v' && cmdBuffer[1] == 'e' && cmdBuffer[2] == 'r') {
                         g.setColor(C_GREEN);
                         g.drawString("JVMOS Kernel v2.5 (Baremetal Java x86)", 20, cursorY); cursorY += 25;
@@ -187,7 +104,7 @@ public class Boot {
                         cursorY = 40;
                     } else if (cmdLen == 4 && cmdBuffer[0] == 'h' && cmdBuffer[1] == 'e' && cmdBuffer[2] == 'l' && cmdBuffer[3] == 'p') {
                         g.setColor(C_GREEN);
-                        g.drawString("COMANDOS: help | startx | clear | cls | ver | time | date | exit", 20, cursorY);
+                        g.drawString("COMANDOS: help | startx | cube | clear | cls | ver | time | date | exit", 20, cursorY);
                         cursorY += 25;
                     } else if (cmdLen == 4 && cmdBuffer[0] == 'e' && cmdBuffer[1] == 'x' && cmdBuffer[2] == 'i' && cmdBuffer[3] == 't') {
                         shutdown();
@@ -228,6 +145,7 @@ public class Boot {
         C_BLACK = new Color(0x00000000); C_WHITE = new Color(0x00FFFFFF);
         C_RED = new Color(0x00FF0000); C_GREEN = new Color(0x0000FF00);
         C_BLUE = new Color(0x000000FF); C_YELLOW = new Color(0x00FFFF00);
+        C_CYAN = new Color(0x0000FFFF);
         C_GRAY = new Color(0x00808080); C_LIGHT_GRAY = new Color(0x00C0C0C0);
         C_DARK_GRAY = new Color(0x00404040); C_TRANSPARENT = new Color(0x00000055);
         C_WIN_BG = new Color(0x00E0E0E0); C_WIN_TITLE = new Color(0x00000080);
@@ -235,7 +153,120 @@ public class Boot {
     }
 
     // =========================================================================
-    // MOTOR GRÁFICO ORIENTADO A OBJETOS (JExplorer)
+    // MOTOR 3D BAREMETAL (Cubo Giratorio - Matemática Entera)
+    // =========================================================================
+    public static void runCube3D() {
+        clearScreen();
+        g.setColor(C_CYAN);
+        g.drawString("Baremetal 3D Engine (JIT Integer Math) - Presiona ESC para salir", 20, 20);
+
+        // Geometría del cubo (Escala local +- 50)
+        int[] cubeX = {-50, 50, 50, -50, -50, 50, 50, -50};
+        int[] cubeY = {-50, -50, 50, 50, -50, -50, 50, 50};
+        int[] cubeZ = {-50, -50, -50, -50, 50, 50, 50, 50};
+
+        // Conexiones de las líneas (Aristas)
+        int[] edges = {
+            0,1, 1,2, 2,3, 3,0, // Cara Frontal
+            4,5, 5,6, 6,7, 7,4, // Cara Trasera
+            0,4, 1,5, 2,6, 3,7  // Conectores de profundidad
+        };
+
+        // Arrays de proyección (Evitan GC)
+        int[] projX = new int[8];
+        int[] projY = new int[8];
+        int[] oldProjX = new int[8];
+        int[] oldProjY = new int[8];
+
+        int angleX = 0, angleY = 0, angleZ = 0;
+
+        while (true) {
+            // 1. Borrar solo las líneas viejas (Hack Zero-Flicker)
+            g.setColor(C_BLACK);
+            for (int i = 0; i < 12; i++) {
+                int p1 = edges[i * 2], p2 = edges[i * 2 + 1];
+                if (oldProjX[p1] != 0) {
+                    g.drawLine(oldProjX[p1], oldProjY[p1], oldProjX[p2], oldProjY[p2]);
+                }
+            }
+
+            // 2. Pre-calcular trigonometría entera (Escalada a 256)
+            int sinX = sin(angleX), cosX = cos(angleX);
+            int sinY = sin(angleY), cosY = cos(angleY);
+            int sinZ = sin(angleZ), cosZ = cos(angleZ);
+
+            // 3. Proyección 3D Pipeline
+            for (int i = 0; i < 8; i++) {
+                int x = cubeX[i], y = cubeY[i], z = cubeZ[i];
+
+                // Rotación X
+                int xy = (y * cosX - z * sinX) / 256;
+                int xz = (y * sinX + z * cosX) / 256;
+                y = xy; z = xz;
+
+                // Rotación Y
+                int yx = (x * cosY + z * sinY) / 256;
+                int yz = (-x * sinY + z * cosY) / 256;
+                x = yx; z = yz;
+
+                // Rotación Z
+                int zx = (x * cosZ - y * sinZ) / 256;
+                int zy = (x * sinZ + y * cosZ) / 256;
+                x = zx; y = zy;
+
+                // Proyección Perspectiva al Centro de Pantalla (1024x768)
+                int z_shifted = z + 150; // Alejar cámara
+                projX[i] = (x * 400) / z_shifted + 512;
+                projY[i] = (y * 400) / z_shifted + 384;
+            }
+
+            // 4. Dibujar nuevo frame en verde hacker
+            g.setColor(C_GREEN);
+            for (int i = 0; i < 12; i++) {
+                int p1 = edges[i * 2], p2 = edges[i * 2 + 1];
+                g.drawLine(projX[p1], projY[p1], projX[p2], projY[p2]);
+            }
+
+            // 5. Guardar estado para el borrado del próximo frame
+            for (int i = 0; i < 8; i++) {
+                oldProjX[i] = projX[i];
+                oldProjY[i] = projY[i];
+            }
+
+            // 6. Actualizar rotación y esperar 16ms (~60 FPS)
+            angleX = (angleX + 2) % 360;
+            angleY = (angleY + 3) % 360;
+            angleZ = (angleZ + 1) % 360;
+            
+            Thread.sleep(16); 
+
+            // 7. Salir con ESC
+            if (Native.sys(Native.SYS_READ_KEYBOARD, 0, 0, 0, 0) == 27) break;
+        }
+    }
+
+    // Aproximación Matemática de Bhaskara I (Siglo VII)
+    // Permite calcular Senos precisos sin Float ni FPU. Retorna un valor escalado por 256.
+    public static int sin(int degrees) {
+        degrees = degrees % 360;
+        if (degrees < 0) degrees += 360;
+        boolean isNegative = false;
+        if (degrees >= 180) {
+            isNegative = true;
+            degrees -= 180;
+        }
+        int num = 4 * degrees * (180 - degrees);
+        int den = 40500 - degrees * (180 - degrees);
+        int result = (num * 256) / den; 
+        return isNegative ? -result : result;
+    }
+
+    public static int cos(int degrees) {
+        return sin(degrees + 90);
+    }
+
+    // =========================================================================
+    // MOTOR GRÁFICO (JExplorer)
     // =========================================================================
     public static void runStartX() {
         winX = 150; winY = 60; winW = 720; winH = 460;
@@ -251,7 +282,6 @@ public class Boot {
         drawMouse(oldMx, oldMy);
 
         while (true) {
-            // RELOJ RTC DINÁMICO EN LA BARRA DE TAREAS (Usando Micro-rt Calendar y Graphics2D)
             int hour = Calendar.get(Calendar.HOUR), min = Calendar.get(Calendar.MINUTE), sec = Calendar.get(Calendar.SECOND);
             int day = Calendar.get(Calendar.DAY), month = Calendar.get(Calendar.MONTH), year = Calendar.get(Calendar.YEAR);
             g.setColor(C_LIGHT_GRAY); g.fillRect(880, 728, 144, 38);
@@ -660,7 +690,6 @@ public class Boot {
         currentDir = root;
     }
 
-    // COMANDOS HISTÓRICOS INTERACTIVOS (Basados en Calendar)
     public static void showTime(int y) {
         int hour = Calendar.get(Calendar.HOUR), min  = Calendar.get(Calendar.MINUTE), sec  = Calendar.get(Calendar.SECOND);
         g.setColor(C_GREEN); g.drawString(" HORA: ", 20, y);
@@ -696,13 +725,13 @@ public class Boot {
 
     public static void shell() {
         g.setColor(C_GREEN);
-        g.drawString("JVMOS TERMINAL INTERACTIVA - Escriba 'startx'", 20, 30);
-        g.drawString("-----------------------------------------------------", 20, 50);
+        g.drawString("JVMOS TERMINAL INTERACTIVA - Escriba 'startx' o 'cube'", 20, 30);
+        g.drawString("----------------------------------------------------------", 20, 50);
     }
 
     public static void shutdown() {
         g.setColor(C_RED); g.drawString("SISTEMA APAGADO. CERRANDO EN 2s...", 380, 360);
-        Toolkit.getDefaultToolkit().beep(500); try{ Thread.sleep(500); } catch(Exception e){} Toolkit.getDefaultToolkit().beep(0);
+        //Toolkit.getDefaultToolkit().beep(500); try{ Thread.sleep(500); } catch(Exception e){} Toolkit.getDefaultToolkit().beep(0);
         try { Thread.sleep(1500); } catch(Exception e){} java.lang.System.exit(0);
     }
 }
