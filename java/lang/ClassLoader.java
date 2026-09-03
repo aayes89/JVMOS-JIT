@@ -37,7 +37,8 @@ public final class ClassLoader<T> {
 
     public static ClassLoader getSystemClassLoader() {
         // TODO
-        throw new NullPointerException("not implemented !");
+        //throw new NullPointerException("not implemented !");
+		return null;
     }
 
     public Class<?> loadClass(String name) throws ClassNotFoundException {
@@ -46,6 +47,7 @@ public final class ClassLoader<T> {
 
     protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {        
         // TODO
-        throw new NullPointerException("not implemented !");
+        //throw new NullPointerException("not implemented !");
+		return null;
     }
 }
