@@ -100,17 +100,38 @@ _start:
     je .fallback_vram
 
     mov eax, [ebx]
-    test eax, (1 << 11)
-    jz .fallback_vram
+	; grub 2 usa bit 12 para FB
+    test eax, (1 << 12)
+	jnz .parse_fb_info
+	
+	; legacy grub / bochs
+	test eax, (1 << 11)
+	jnz .parse_vbe_info
+	
+    jmp .fallback_vram
+.parse_fb_info:
+    ; En Multiboot, el Framebuffer Info comienza en el offset 88
+    mov eax, [ebx + 88]       ; framebuffer_addr (Low 32-bits)
+    mov [g_framebuffer], eax
+    
+    mov eax, [ebx + 100]      ; framebuffer_width
+    mov [g_width], eax
+    
+    mov eax, [ebx + 104]      ; framebuffer_height
+    mov [g_height], eax
+    
+    mov eax, [ebx + 96]       ; framebuffer_pitch
+    mov [g_pitch], eax
+    jmp .start_jvm
 
-    mov edi, [ebx + 76]
+.parse_vbe_info:
+    mov edi, [ebx + 76]       ; vbe_mode_info structure
     cmp edi, 0
     je .fallback_vram
 
-    mov eax, [edi + 40]
+    mov eax, [edi + 40]       ; phys_base_ptr
     cmp eax, 0
     je .fallback_vram
-
     mov [g_framebuffer], eax
 
     mov ax, [edi + 18]        ; XResolution
@@ -124,7 +145,7 @@ _start:
     mov ax, [edi + 16]        ; Pitch
     movzx eax, ax
     mov [g_pitch], eax
-    jmp .start_jvm
+    jmp .start_jvm	
 
 .fallback_vram:
     mov dword [g_framebuffer], 0xFD000000 
