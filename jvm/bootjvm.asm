@@ -1,3 +1,25 @@
+/*MIT License
+
+Copyright (c) 2026 Allan (Slam)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.*/
+
 [bits 32]
 
 global bootjvm_start
@@ -40,7 +62,7 @@ bootjvm_start:
     mov ebp, esp
     call sys_hardware_init
 	
-	mov ebx, [ebp+8]
+    mov ebx, [ebp+8]
     
     mov eax, [ebx]              ; Leer flags de Multiboot
     test eax, 8                 ; ¿El bit 3 (Mods) está activo?
@@ -77,8 +99,17 @@ bootjvm_start:
     ; Obtener Boot.class de GRUB
     cmp dword [class_count], 0
     je fatal_no_boot_class      ; Pánico si GRUB no cargó nada
+	
+    ; Nueva búsqueda del EntryPoint (EP)
+    push dword boot_class_str   ; "kernel/Boot"
+    push dword 11               ; Longitud exacta
+    call find_class_in_grub
+    add esp, 8
 
-    mov esi, [class_addr_ptr]   ; Leer Módulo 0 (Boot.class)
+    test eax, eax
+    jz fatal_no_boot_class      ; Pánico si Boot.class no está en los módulos
+
+    mov esi, eax                ; EAX contiene la dirección física tras encontrarlo
     mov [current_class_ptr], esi
 
     ; Validar Magic 'CAFEBABE'
@@ -108,18 +139,20 @@ bootjvm_start:
     call jit_init
 
     ; Buscar MAIN en bytecode
-    push dword main_name_str
-    push dword 4
+    push dword 22                   ; Longitud de "([Ljava/lang/String;)V"
+    push dword main_desc_str        ; Puntero al Descriptor
+    push dword 4                    ; Longitud de "main"
+    push dword main_name_str        ; Puntero al Nombre
     call find_method_bytecode
-    add esp, 8
+    add esp, 16	
 
     test eax, eax
     jz fatal_main_not_found
 
     mov [pc_ptr], eax
-    mov esi, eax                 
+    mov esi, eax                
 
-    mov ecx, [esi - 4]          
+    mov ecx, [esi - 4]         
     bswap ecx                   ; Convierte de BE a LE
 
     push msg_dbg_main_ok
@@ -192,113 +225,149 @@ parse_class_structure:
 find_method_bytecode:
     push ebp
     mov ebp, esp
-    sub esp, 8                  ; Variables locales: [ebp-4]=saved_esi, [ebp-8]=saved_edi
+    sub esp, 16                 ; [ebp-4]=name_ptr, [ebp-8]=name_len, [ebp-12]=desc_ptr, [ebp-16]=desc_len
     push ebx
     push ecx
     push edx
     push esi
     push edi
 
-    ; Iniciar directamente desde la cache de métodos
-    mov esi, [methods_ptr]
+    mov eax, [ebp + 8]
+    mov [ebp - 4], eax
+    mov eax, [ebp + 12]
+    mov [ebp - 8], eax
+    mov eax, [ebp + 16]
+    mov [ebp - 12], eax
+    mov eax, [ebp + 20]
+    mov [ebp - 16], eax
 
-    ; Leer Methods Count
+    mov esi, [methods_ptr]
+    test esi, esi
+    jz .method_not_found
+
     mov ax, [esi]
     xchg al, ah
-    movzx ecx, ax               ; methods_count
+    movzx ecx, ax               ; Total de métodos
     add esi, 2
 
 .search_methods_loop:
     cmp ecx, 0
     jle .method_not_found
 
-    mov edi, esi                ; Guardar puntero base del método en EDI
+    mov edi, esi                ; Guardar el inicio exacto
 
-    mov ax, [esi + 2]           ; name_index (offset +2)
+    ; Comprobar nombre
+    mov ax, [edi + 2]          
     xchg al, ah
     movzx eax, ax
-
     mov ebx, [cp_offsets + eax * 4]
     test ebx, ebx
     jz .skip_this_method
 
-    inc ebx                     ; Tag Utf8
-    mov ax, [ebx]
+    mov ax, [ebx + 1]          
     xchg al, ah
-    movzx edx, ax               ; Longitud del nombre en CP
-    add ebx, 2                  ; Texto ASCII en CP
+    movzx edx, ax              
+    add ebx, 3                 
 
-    ; Comparar longitud esperada ([ebp + 8])
-    mov eax, [ebp + 8]
+    mov eax, [ebp - 8]         
     cmp eax, edx
     jne .skip_this_method
 
-    ; Preservar ESI/EDI actuales antes del cmpsb
-    mov [ebp - 4], esi
-    mov [ebp - 8], edi
-
-    mov esi, [ebp + 12]         ; Puntero al nombre buscado
-    mov edi, ebx                ; Puntero al nombre en CP
+    push esi
+    push edi
     push ecx
+    mov esi, [ebp - 4]         
+    mov edi, ebx               
     mov ecx, edx
+    cld
     repe cmpsb
     pop ecx
-
-    mov esi, [ebp - 4]          ; Restaurar ESI intacto
-    mov edi, [ebp - 8]          ; Restaurar EDI intacto
+    pop edi
+    pop esi
     jne .skip_this_method
 
-    ; Si encuentra el método, ir a attributes_count
-    add esi, 6
+    ; Comprobar descriptor
+    mov ax, [edi + 4]          
+    xchg al, ah
+    movzx eax, ax
+    mov ebx, [cp_offsets + eax * 4]
+    test ebx, ebx
+    jz .skip_this_method
+
+    mov ax, [ebx + 1]          
+    xchg al, ah
+    movzx edx, ax              
+    add ebx, 3                 
+
+    mov eax, [ebp - 16]        
+    cmp eax, edx
+    jne .skip_this_method
+
+    push esi
+    push edi
+    push ecx
+    mov esi, [ebp - 12]        
+    mov edi, ebx               
+    mov ecx, edx
+    cld
+    repe cmpsb
+    pop ecx
+    pop edi
+    pop esi
+    jne .skip_this_method
+
+    ; Buscar Atributo "Code"
+    mov esi, edi
+    add esi, 6                 
     mov ax, [esi]
     xchg al, ah
-    movzx edx, ax               ; attributes_count
+    movzx edx, ax              
     add esi, 2
 
 .search_code:
     cmp edx, 0
     je .skip_this_method
 
-    mov ax, [esi]               ; attribute_name_index
+    mov ax, [esi]              
     xchg al, ah
     movzx eax, ax
-
     mov ebx, [cp_offsets + eax * 4]
-    add ebx, 3                  ; Saltar Tag(1B) y Length(2B)
+    add ebx, 3                 
     mov eax, [ebx]
     cmp eax, 0x65646F43          ; Magic "Code"
     je .found_code
 
     add esi, 2
     mov eax, [esi]
-    bswap eax                   ; attribute_length
+    bswap eax                  
     add esi, 4
     add esi, eax
     dec edx
     jmp .search_code
 
 .found_code:
-    add esi, 14                 ; Saltar cabecera Code_attribute
-    mov eax, esi
+    add esi, 14                
+    mov eax, esi               
     jmp .find_done
 
 .skip_this_method:
-    mov esi, edi                ; Restaurar ESI desde EDI
-    add esi, 6
+    mov esi, edi
+    add esi, 6                 
     mov ax, [esi]
     xchg al, ah
-    movzx edx, ax               ; attributes_count
+    movzx edx, ax              
     add esi, 2
-.skip_attrs:
+
+.skip_attrs_loop:
     cmp edx, 0
     je .next_method
-    add esi, 2
+    add esi, 2                  
     mov eax, [esi]
-    bswap eax                   ; attribute_length
+    bswap eax                  
     add esi, 4
-    add esi, eax
+    add esi, eax               
     dec edx
-    jmp .skip_attrs
+    jmp .skip_attrs_loop
 
 .next_method:
     dec ecx
@@ -306,30 +375,36 @@ find_method_bytecode:
 
 .method_not_found:
     xor eax, eax
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
 
 .find_done:
-    ; Extraer banderas para saber si es static o virtual
     push eax
     push esi
     
     mov ax, [edi]
     xchg al, ah
-    movzx ecx, ax               ; ECX = access_flags
+    movzx ecx, ax              
     
-    ; Extraer la cadena del Descriptor
     mov ax, [edi + 4]
     xchg al, ah
-    movzx ebx, ax               ; EBX = descriptor_index
+    movzx ebx, ax              
     mov ebx, [cp_offsets + ebx * 4]
-    add ebx, 3                  ; EBX = Puntero al texto UTF-8
+    add ebx, 3                 
     
-    xor edx, edx                ; EDX = Contador de parámetros
+    xor edx, edx               
     test ecx, 0x0008            ; ACC_STATIC
     jnz .parse_desc
     inc edx                     ; 'this' implícito
 
 .parse_desc:
-    inc ebx                     ; Saltar '('
+    inc ebx                    
 .desc_loop:
     mov al, [ebx]
     inc ebx
@@ -367,6 +442,7 @@ find_method_bytecode:
     pop edx
     pop ecx
     pop ebx
+    add esp, 16
     mov esp, ebp
     pop ebp
     ret
@@ -375,7 +451,7 @@ find_method_bytecode:
 resolve_and_compile_java_method:
     push ebp
     mov ebp, esp
-    sub esp, 20                 
+    sub esp, 28                 ; Ampliado a 28 bytes para guardar el Descriptor
     push ebx
     push ecx
     push edx
@@ -386,53 +462,64 @@ resolve_and_compile_java_method:
     mov [ebp - 20], edx
     mov [current_class_ptr], edx
 	
-	push eax
+    push eax
     call parse_constant_pool
-	pop eax
+    pop eax
 
-    ; 1. Obtener la entrada CONSTANT_Methodref_info
+    ; Obtener la entrada CONSTANT_Methodref_info
     mov ebx, [cp_offsets + eax * 4]
 
-    ; 2. Extraer Clase Destino
+    ; Extraer Clase Destino (Puntero y Longitud)
     movzx ecx, word [ebx + 1]
     xchg cl, ch
-    mov ecx, [cp_offsets + ecx * 4]     
+    mov ecx, [cp_offsets + ecx * 4]    
     
-    movzx ecx, word [ecx + 1]           
+    movzx ecx, word [ecx + 1]          
     xchg cl, ch
-    mov ecx, [cp_offsets + ecx * 4]     
+    mov ecx, [cp_offsets + ecx * 4]    
     
     mov ax, word [ecx + 1]
     xchg al, ah
-    movzx edi, ax                       
-    add ecx, 3                          
+    movzx edi, ax                      
+    add ecx, 3                         
 
-    mov [ebp - 4], ecx                  
-    mov [ebp - 8], edi                  
+    mov [ebp - 4], ecx                  ; Class Name Ptr
+    mov [ebp - 8], edi                  ; Class Name Len
 
-    ; 3. Extraer Método Destino
+    ; Obtener CONSTANT_NameAndType
     movzx ecx, word [ebx + 3]
     xchg cl, ch
-    mov ecx, [cp_offsets + ecx * 4]     
-    
-    movzx ecx, word [ecx + 1]
+    mov esi, [cp_offsets + ecx * 4]     ; ESI = NameAndType_info
+
+    ; Extraer Nombre del Método
+    movzx ecx, word [esi + 1]           ; name_index (offset 1)
     xchg cl, ch
-    mov ecx, [cp_offsets + ecx * 4]     
+    mov ecx, [cp_offsets + ecx * 4]    
     
     mov ax, word [ecx + 1]
     xchg al, ah
-    movzx edi, ax                       
-    add ecx, 3                          
+    movzx edi, ax                      
+    add ecx, 3                         
 
-    mov [ebp - 12], ecx                 
-    mov [ebp - 16], edi                 
+    mov [ebp - 12], ecx                 ; Method Name Ptr
+    mov [ebp - 16], edi                 ; Method Name Len
 
-    ; EVALUACIÓN Y DESPACHO EN EL ORQUESTADOR 
-    mov esi, [ebp - 4]                  
-    mov ecx, [ebp - 8]                  
+    ; Extraer Descriptor del Método
+    movzx ecx, word [esi + 3]           ; descriptor_index (offset 3)
+    xchg cl, ch
+    mov ecx, [cp_offsets + ecx * 4]
+    
+    mov ax, word [ecx + 1]
+    xchg al, ah
+    movzx edi, ax
+    add ecx, 3
 
-    ;cmp dword [esi], 0x6176616A         ; "java"
-    ;je .bypass_method
+    mov [ebp - 24], ecx                 ; Method Descriptor Ptr
+    mov [ebp - 28], edi                 ; Method Descriptor Len
+
+    ; Evaluación y despacho en el orquestador
+    mov esi, [ebp - 4]                 
+    mov ecx, [ebp - 8]                 
 
     cmp ecx, 6
     jl .check_user_class
@@ -449,19 +536,63 @@ resolve_and_compile_java_method:
     push dword [ebp - 8]
     call find_class_in_grub
     add esp, 8
+    
+    test eax, eax
+    jz .panic
 
+.search_class_hierarchy:
+    ; 1. Cargar el contexto de la clase actual en la jerarquía
     mov [current_class_ptr], eax
     call parse_constant_pool
     call parse_class_structure
 
-    push dword [ebp - 12]
-    push dword [ebp - 16]
+    ; 2. Buscar el método en la clase activa
+    push dword [ebp - 28]       ; Longitud Descriptor
+    push dword [ebp - 24]       ; Puntero Descriptor
+    push dword [ebp - 16]       ; Longitud Nombre
+    push dword [ebp - 12]       ; Puntero Nombre
     call find_method_bytecode
+    add esp, 16
+
+    test eax, eax
+    jnz .method_found           ; ¡Encontrado! Salir del bucle
+
+    ; --- 3. FALLBACK DE HERENCIA: Buscar en la Superclase ---
+    mov esi, [cp_end_ptr]
+    mov ax, [esi + 4]           ; Leer el índice 'super_class'
+    xchg al, ah
+    movzx eax, ax
+    test eax, eax
+    jz .panic                   ; Si super_class es 0 (ej. java/lang/Object), fallar definitivamente
+
+    ; Resolver el string del nombre de la superclase desde el CP
+    mov ebx, [cp_offsets + eax * 4] 
+    test ebx, ebx
+    jz .panic
+    mov ax, [ebx + 1]           
+    xchg al, ah
+    movzx eax, ax
+    mov ebx, [cp_offsets + eax * 4] 
+    test ebx, ebx
+    jz .panic
+    mov ax, [ebx + 1]           
+    xchg al, ah
+    movzx edx, ax               ; EDX = Longitud del nombre de la Superclase
+    add ebx, 3                  ; EBX = Puntero al texto UTF-8 de la Superclase
+
+    ; Buscar la Superclase en GRUB
+    push ebx
+    push edx
+    call find_class_in_grub
     add esp, 8
 
     test eax, eax
-    jz .panic
+    jz .panic                   ; Pánico si la superclase no está cargada en memoria
 
+    jmp .search_class_hierarchy ; Repetir todo el proceso escaneando la superclase
+    ; --------------------------------------------------------
+
+.method_found:
     mov esi, eax
     mov ecx, [esi - 4]
     bswap ecx
@@ -472,7 +603,7 @@ resolve_and_compile_java_method:
     mov eax, [jit_buffer_ptr]
     push eax
 
-    ; 1. Crear marco de pila x86 estándar
+    ; Crear marco de pila x86 estándar
     mov al, 0x55                ; push ebp
     call jit_emit_byte
     mov al, 0x89                ; mov ebp, esp
@@ -487,7 +618,7 @@ resolve_and_compile_java_method:
     mov al, 0x57                ; push edi
     call jit_emit_byte
 
-    ; 2. Extraer parámetros (ORDEN NORMAL: ID está al fondo de la pila en [ebp+24])
+    ; Extraer parámetros
     mov al, 0x8B                ; mov eax, [ebp + 24]
     call jit_emit_byte
     mov al, 0x45
@@ -543,7 +674,7 @@ resolve_and_compile_java_method:
     mov eax, sys_arg_d
     call jit_emit_dword
 
-    ; 3. Ejecutar Syscall en HAL
+    ; Ejecutar Syscall en HAL
     mov al, 0xE8                ; call sys_native_dispatch
     call jit_emit_byte
     mov eax, sys_native_dispatch
@@ -552,7 +683,7 @@ resolve_and_compile_java_method:
     sub eax, ebx
     call jit_emit_dword
 
-    ; 4. Restaurar registros y stack frame
+    ; Restaurar registros y stack frame
     mov al, 0x5F                ; pop edi
     call jit_emit_byte
     mov al, 0x5E                ; pop esi
@@ -562,7 +693,7 @@ resolve_and_compile_java_method:
     mov al, 0x5D                ; pop ebp
     call jit_emit_byte
 
-    ; 5. Retornar limpiando los 20 bytes (stdcall)
+    ; Retornar limpiando los 20 bytes (stdcall)
     mov al, 0xC2                ; ret 20
     call jit_emit_byte
     mov al, 20
@@ -570,9 +701,7 @@ resolve_and_compile_java_method:
     mov al, 0
     call jit_emit_byte
 
-    ; Limpiar variable global pos-envoltorio
     mov dword [current_param_count], 0
-
     pop eax
     jmp .done
 
@@ -580,7 +709,7 @@ resolve_and_compile_java_method:
     mov al, 0xC3
     call jit_emit_byte
     mov eax, [jit_buffer_ptr]
-    dec eax                             
+    dec eax                            
     jmp .done
 
 .panic:
@@ -594,21 +723,21 @@ resolve_and_compile_java_method:
     hlt
 
 .done:
-    push eax                    
+    push eax                   
     
     mov edx, [ebp - 20]
     mov [current_class_ptr], edx
     call parse_constant_pool
-    call parse_class_structure  
+    call parse_class_structure 
     
-    pop eax                     
+    pop eax                    
 
     pop edi
     pop esi
     pop edx
     pop ecx
     pop ebx
-    add esp, 20
+    add esp, 28                 ; Ajustado de 20 a 28 bytes
     mov esp, ebp
     pop ebp
     ret
@@ -772,7 +901,9 @@ fatal_halt:
     jmp .loop
 
 section .rodata
-main_name_str:         db "main"
+boot_class_str:        db "kernel/Boot", 0
+main_name_str:         db "main", 0
+main_desc_str: db "([Ljava/lang/String;)V", 0
 msg_dbg_start:         db 13, 10, "[BootJVM] Iniciando JVM Kernel [Modo JIT]...", 13, 10, 0
 msg_dbg_magic_ok:      db "[BootJVM] Número mágico 'CAFEBABE' verificado. Archivo Java-bytecode válido", 13, 10, 0
 msg_dbg_cp_ok:         db "[BootJVM] Constant Pool parseado correctamente", 13, 10, 0
@@ -804,8 +935,8 @@ section .bss
 cp_offsets:        resd 1024
 
 align 4
-class_name_ptr: resd 32
-class_addr_ptr: resd 32
+class_name_ptr: resd 256
+class_addr_ptr: resd 256
 class_count:    resd 1
 
 section .note.GNU-stack noalloc noexec nowrite progbits
