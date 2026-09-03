@@ -23,19 +23,20 @@ SOFTWARE.*/
 package java.awt;
 
 public class Color {
-    public static final Color BLACK       = new Color(0x000000);
-    public static final Color WHITE       = new Color(0xFFFFFF);
-    public static final Color RED         = new Color(0xFF0000);
-    public static final Color GREEN       = new Color(0x008000);
-    public static final Color BLUE        = new Color(0x0000FF);
-    public static final Color YELLOW      = new Color(0xFFFF00);
-    public static final Color GRAY        = new Color(0x808080);
-    public static final Color LIGHT_GRAY  = new Color(0xC0C0C0);
-    public static final Color DARK_GRAY   = new Color(0x404040);
-    public static final Color TRANSPARENT = new Color(0x00000000); // Dependiendo de tu alfa
+    public static final int BLACK       = 0x00000000;
+    public static final int WHITE       = 0x00FFFFFF;
+    public static final int RED         = 0x00FF0000;
+    public static final int GREEN       = 0x00008000;
+    public static final int BLUE        = 0x000000FF;
+    public static final int YELLOW      = 0x00FFFF00;
+    public static final int GRAY        = 0x00808080;
+    public static final int LIGHT_GRAY  = 0x00C0C0C0;
+    public static final int DARK_GRAY   = 0x00404040;
+    public static final int TRANSPARENT = 0x00000000; // Dependiendo de tu alfa
 
     private final int rgb;
-
+	
+	// constructores	
     public Color(int rgb) {
         this.rgb = rgb;
     }
