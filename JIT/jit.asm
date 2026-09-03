@@ -129,40 +129,33 @@ jit_runtime_trampoline:
 jit_emit_prologue:
     mov al, 0x55                    ; push ebp
     call jit_emit_byte
-
     mov al, 0x89                    ; mov ebp, esp
     call jit_emit_byte
     mov al, 0xE5
     call jit_emit_byte
-
     mov al, 0x53                    ; push ebx
     call jit_emit_byte
-
     mov al, 0x56                    ; push esi
     call jit_emit_byte
-
     mov al, 0x57                    ; push edi
     call jit_emit_byte
 
-    mov al, 0x81                    ; sub esp, 128
+    ; Ampliar marco de pila a 1024 bytes
+    mov al, 0x81                    ; sub esp, 1024
     call jit_emit_byte
     mov al, 0xEC
     call jit_emit_byte
-
-    mov eax, 128
+    mov eax, 1024
     call jit_emit_dword
 
     mov ecx, [current_param_count]
-
     test ecx, ecx
     jz .no_params
-
-    cmp ecx, 16
+    cmp ecx, 256
     ja .no_params
 
     mov al, 0xB9                    ; mov ecx, imm32
     call jit_emit_byte
-
     mov eax, ecx
     call jit_emit_dword
 
@@ -198,36 +191,28 @@ jit_emit_prologue:
     call jit_emit_byte
     mov al, 0x06
     call jit_emit_byte
-
     mov al, 0x89
     call jit_emit_byte
     mov al, 0x07
     call jit_emit_byte
-    
-    ; sub esi,4
     mov al, 0x83
     call jit_emit_byte
     mov al, 0xEE
     call jit_emit_byte
     mov al, 0x04
     call jit_emit_byte
-
-    ; sub edi,4
     mov al, 0x83
     call jit_emit_byte
     mov al, 0xEF
     call jit_emit_byte
     mov al, 0x04
     call jit_emit_byte
-
     mov al, 0x49
     call jit_emit_byte
-
     mov al, 0x75
     call jit_emit_byte
     mov al, 0xF3
     call jit_emit_byte
-
 .no_params:
     ret
 
@@ -479,8 +464,8 @@ sys_native_dispatch:
     jmp .done
 
 .sys_serial_puts:
-    push dword [sys_arg_c]      ; Las cadenas de Java vienen en arg_c
-    call sys_serial_print_java  ; <-- Ahora llama al handler exclusivo de Java
+    push dword [sys_arg_c]      ; las cadenas de Java vienen en arg_c
+    call sys_serial_print_java  ; llama al handler exclusivo de Java
     add esp, 4
     xor eax, eax
     jmp .done	
@@ -884,7 +869,8 @@ jit_op_getstatic:
     shl eax, 8
     or eax, ebx
 
-    ; Direccionar a memoria limpia (BSS) en lugar de sobrescribir el .class
+    ; Limitar el CP Index a 1023 max variables estáticas para no desbordar
+    and eax, 0x03FF             
     mov ebx, eax
     shl ebx, 2
     add ebx, java_static_vars
@@ -906,6 +892,8 @@ jit_op_putstatic:
     shl eax, 8
     or eax, ebx
 
+    ; Limitar el CP Index a 1023 max variables estáticas para no desbordar
+    and eax, 0x03FF
     mov ebx, eax
     shl ebx, 2
     add ebx, java_static_vars
@@ -1248,18 +1236,18 @@ jit_op_fload:
 jit_op_aload:
     movzx ebx, byte [esi]
     inc esi
-
     shl ebx, 2
     add ebx, 16
-    neg ebx
+    neg ebx                 ; ebx = offset negativo de 32-bits
 
-    mov al, 0x8B
+    mov al, 0x8B            ; mov eax, [ebp + disp32]
     call jit_emit_byte
-    mov al, 0x45
+    mov al, 0x85            ; ModR/M 0x85
     call jit_emit_byte
-    mov al, bl
-    call jit_emit_byte
-    mov al, 0x50
+    mov eax, ebx
+    call jit_emit_dword
+    
+    mov al, 0x50            ; push eax
     call jit_emit_byte
     ret
 
@@ -1320,19 +1308,19 @@ jit_op_astore:
 jit_op_fstore:
     movzx ebx, byte [esi]
     inc esi
-
     shl ebx, 2
     add ebx, 16
-    neg ebx
+    neg ebx                 ; ebx = offset negativo de 32-bits
 
-    mov al, 0x58
+    mov al, 0x58            ; pop eax
     call jit_emit_byte
-    mov al, 0x89
+    
+    mov al, 0x89            ; mov [ebp + disp32], eax
     call jit_emit_byte
-    mov al, 0x45
+    mov al, 0x85            ; ModR/M 0x85
     call jit_emit_byte
-    mov al, bl
-    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
     ret
 
 jit_op_iload_4:
@@ -1698,20 +1686,20 @@ jit_op_ixor:
 jit_op_iinc:
     movzx ebx, byte [esi]
     inc esi
-    movsx ecx, byte [esi]
+    movzx ecx, byte [esi]
     inc esi
-    ; offset = -(16 + index * 4)
+    
     shl ebx, 2
     add ebx, 16
     neg ebx
-    ; add dword [ebp+disp8], imm8
-    mov al, 0x83
+    
+    mov al, 0x83            ; add dword [ebp+disp32], imm8
     call jit_emit_byte
-    mov al, 0x45
+    mov al, 0x85
     call jit_emit_byte
-    mov al, bl
-    call jit_emit_byte
-    mov al, cl
+    mov eax, ebx
+    call jit_emit_dword
+    mov al, cl              ; emitir el valor a incrementar (1 byte)
     call jit_emit_byte
     ret
 
@@ -2672,19 +2660,18 @@ jit_op_jsr_w:
 jit_op_ret:
     movzx ebx, byte [esi]
     inc esi
-    ; offset = -(16 + index*4)
     shl ebx, 2
     add ebx, 16
     neg ebx
-    ; mov eax,[ebp+disp8]
-    mov al, 0x8B
+    
+    mov al, 0x8B            ; mov eax, [ebp + disp32]
     call jit_emit_byte
-    mov al, 0x45
+    mov al, 0x85
     call jit_emit_byte
-    mov al, bl
-    call jit_emit_byte
-    ; jmp eax
-    mov al, 0xFF
+    mov eax, ebx
+    call jit_emit_dword
+    
+    mov al, 0xFF            ; jmp eax
     call jit_emit_byte
     mov al, 0xE0
     call jit_emit_byte
@@ -2806,8 +2793,18 @@ jit_op_areturn:
     jmp jit_op_ireturn
 
 jit_op_athrow:
-    cli
-    hlt
+    ; Extraer el objeto Throwable
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+
+    ; Emitir CLI (Apagar interrupciones)
+    mov al, 0xFA
+    call jit_emit_byte
+
+    ; Emitir HLT (Congelar CPU)
+    mov al, 0xF4
+    call jit_emit_byte
+    ret
 
 jit_op_unsupported:
     movzx eax, byte [esi - 1]
