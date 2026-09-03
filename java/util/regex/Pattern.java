@@ -57,6 +57,8 @@ public final class Pattern implements Serializable {
 
     private final String pattern;
     private final int flags;
+	private boolean hitEnd = false;
+    private boolean requiresEnd = false;
 
     transient long address;
 
@@ -133,8 +135,8 @@ public final class Pattern implements Serializable {
 
         // Banderas nativas soportadas por ICU.        
         int icuFlags = flags & (CASE_INSENSITIVE | COMMENTS | MULTILINE | DOTALL | UNIX_LINES);
-
-        address = compileImpl(icuPattern, icuFlags);
+		// TODO
+        //address = compileImpl(icuPattern, icuFlags);
     }
 
     /**
@@ -181,7 +183,60 @@ public final class Pattern implements Serializable {
         compile();
     }*/
 
-	// NATIVOS - TODO
-    private static void closeImpl(long addr){}
-    private static long compileImpl(String regex, int flags){return 0;} 
+	/**
+     * Intenta hacer coincidir el patrón en la entrada a partir del índice 'start'.
+     * Si encuentra una coincidencia, rellena 'offsets' y devuelve true.
+     */
+    boolean match(String text, int start, int end, int[] offsets, boolean anchor, boolean transp) {
+        // TODO- Implementar el motor de búsqueda (Backtracking / NFA)
+        hitEnd = false;
+        requiresEnd = false;
+        return false; 
+    }
+
+    /**
+     * Intenta hacer coincidir el patrón empezando exactamente en el índice 'start'.
+     * Equivalente a lookingAt()
+     */
+    boolean matchAt(String text, int start, int end, int[] offsets, boolean anchor, boolean transp) {
+        // TODO- Implementar el motor de búsqueda (Backtracking / NFA) anclado al inicio
+        hitEnd = false;
+        requiresEnd = false;
+        return false;
+    }
+
+    /**
+     * Intenta hacer coincidir el patrón en toda la región de entrada.
+     * Equivalente a matches()
+     */
+    boolean matchEntire(String text, int start, int end, int[] offsets, boolean anchor, boolean transp) {
+        // TODO- Implementar coincidencia exacta de inicio a fin
+        hitEnd = false;
+        requiresEnd = false;
+        return false;
+    }
+
+    /**
+     * Devuelve el número de grupos de captura (...) encontrados durante la compilación.
+     */
+    int groupCount() {
+        // TODO- Escanear this.pattern y contar los paréntesis de grupos de captura válidos.
+        // Por ahora devuelve 0 (sin grupos de captura, solo la coincidencia global).
+        return 0;
+    }
+
+    /**
+     * Devuelve true si la última búsqueda llegó al final de la entrada.
+     */
+    boolean hitEnd() {
+        return hitEnd;
+    }
+
+    /**
+     * Devuelve true si la última búsqueda requirió el final de la entrada para coincidir.
+     */
+    boolean requiresEnd() {
+        return requiresEnd;
+    }
+	
 }
