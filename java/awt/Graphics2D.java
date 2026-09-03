@@ -25,19 +25,10 @@ package java.awt;
 import kernel.Native;
 
 public class Graphics2D {//extends Graphics{
-    private Color currentColor = Color.BLACK;
+    private Color currentColor;
 
     public Graphics2D(){
-        super();
-		// para sortear la ausencia de execution automática del <clinit>
-        /*if (Color.WHITE == null) {
-            Color.WHITE = new Color(0xFFFFFF);
-            Color.BLACK = new Color(0x000000);
-            Color.RED   = new Color(0xFF0000);
-            Color.GREEN = new Color(0x008000);
-            Color.BLUE  = new Color(0x0000FF);
-        }
-        this.currentColor = Color.BLACK;*/
+        super();		
     }
 
     //@Override
@@ -52,7 +43,7 @@ public class Graphics2D {//extends Graphics{
     public void setColor(int c) {
         this.currentColor = new Color(c);
 		// Syscall 1: Color activo VRAM
-        Native.sys(Native.SYS_SET_COLOR, 0, 0, c, 0);        
+        Native.sys(Native.SYS_SET_COLOR, c, 0, 0, 0);
     }
 	
     //@Override
