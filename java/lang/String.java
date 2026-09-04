@@ -180,20 +180,22 @@ public final class String implements CharSequence {
         }
         return true;
     }
-
+    
     @Override
-    public boolean equals(Object anObject) {
-        if (this == anObject) return true;
-        if (anObject instanceof String) {
-            String aString = (String)anObject;
-            if (this.length() != aString.length()) return false;
-            for (int i = 0; i < this.length(); i++) {
-                if (this.value[i] != aString.getBytes()[i]) return false;
-            }
-            return true;
-        }
-        return false;
-    }
+	public boolean equals(Object anObject) {
+		if (this == anObject) return true;
+		if (anObject instanceof String) {
+			String aString = (String)anObject;
+			if (this.length() != aString.length()) return false;
+
+			byte[] otherBytes = aString.getBytes(); // Extracción previa
+			for (int i = 0; i < this.length(); i++) {
+				if (this.value[i] != otherBytes[i]) return false;
+			}
+			return true;
+		}
+		return false;
+	}
 
     public String replace(char character_find, char character_replace) {
         StringBuilder sb = new StringBuilder();
