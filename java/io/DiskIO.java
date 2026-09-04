@@ -24,6 +24,10 @@ package java.io;
 
 import kernel.Native;
 
+/*
+Nota: RandomAccessFile ya no será necesario con esta clase, será eliminado en la próxima iteración.
+*/
+
 public class DiskIO {
     
     private int deviceId;
