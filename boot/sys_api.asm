@@ -20,7 +20,7 @@
 ; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ; SOFTWARE.
 
-; HAL Baremetal Mejorado para JVMOS-JIT (x86 32-bit)
+; HAL Baremetal Mejorado para JVM (x86 32-bit)
 [bits 32]
 
 ; SÍMBOLOS GLOBALES EXPORTADOS
@@ -1226,7 +1226,6 @@ sys_nosound:
 
 
 ; RED RTL8139
-
 sys_rtl8139_init:
     push ebp
     mov ebp, esp
@@ -1260,6 +1259,7 @@ sys_rtl8139_init:
     mov al, 0x0C
     out dx, al
 
+	mov eax, 1	; retornar 1 (éxito)
     pop ebp
     ret
 
