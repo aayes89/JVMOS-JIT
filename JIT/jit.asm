@@ -823,7 +823,18 @@ jit_op_ldc:
     ; EAX = Puntero al nuevo objeto String
 
     mov ebx, [esp + 16]         ; Recuperar puntero del byte[]
-    mov [eax + 8], ebx          ; Asignar arreglo al campo 'value' (Offset 8 del String)
+	; --- prueba de saturación ---
+	; Esto garantiza que text.getBytes() siempre funcione.
+    mov edi, eax
+    add edi, 8                  
+    mov ecx, 256                
+.fill_fields:
+    mov [edi], ebx
+    add edi, 4
+    dec ecx
+    jnz .fill_fields
+	; --- fin de prueba ---
+    ;mov [eax + 8], ebx          ; Asignar arreglo al campo 'value' (Offset 8 del String)
 
     mov [esp + 28], eax         ; Sobrescribir el EAX original con el objeto String
     popa
@@ -896,7 +907,17 @@ jit_op_ldc_w:
     add esp, 4
     
     mov ebx, [esp + 16]         
-    mov [eax + 8], ebx          
+    ;mov [eax + 8], ebx   
+	; --- prueba de saturación---
+	mov edi, eax
+	add edi, 8
+	mov ecx, 256
+.fill_fields_w:
+	mov [edi], ebx
+	add edi, 4
+	dec ecx
+	jnz .fill_fields_w
+	; --- fin d prueba ---
 
     mov [esp + 28], eax         
     popa
