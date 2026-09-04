@@ -51,7 +51,8 @@ public class Native {
     public static final int SYS_RTL8139_INIT     = 23; // Inicializar Tarjeta de Red
     public static final int SYS_RTL8139_SEND     = 24; // Enviar paquete de Red
     public static final int SYS_NET_RECEIVE      = 25; // Recibir paquete de Red
-
+    public static final int SYS_MEM_WRITE_BYTE   = 26; // Escribir un byte en una direccion fisica
+    public static final int SYS_MEM_READ_BYTE    = 27; // Leer un byte de una direccion fisica
 
     // FIRMAS NATIVAS
     public static native int sys(int id, int a, int b, Object c, int d);
