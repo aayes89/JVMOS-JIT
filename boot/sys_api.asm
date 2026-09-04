@@ -234,19 +234,27 @@ sys_serial_puts:
     pop ebp
     ret
 
+; IMPRESIÓN EN CONSOLA SERIE
 sys_serial_print_java:
     push ebp
     mov ebp, esp
     pusha
-    mov esi, [ebp + 8]
+    mov esi, [ebp + 8]          ; Objeto String real
     test esi, esi
     jz .done
     
-    movzx ecx, byte [esi - 2]
-    shl ecx, 8
-    mov cl, byte [esi - 1]
+    ; Extraer byte[] value
+    mov esi, [esi + 8]
+    test esi, esi
+    jz .done
+
+    ; Extraer longitud
+    mov ecx, [esi]
     test ecx, ecx
     jz .done
+
+    ; Apuntar a caracteres
+    add esi, 4
 .loop:
     movzx eax, byte [esi]
     push eax
@@ -1083,16 +1091,26 @@ sys_draw_string:
     pusha
     mov ebx, [ebp + 8]          ; x
     mov edx, [ebp + 12]         ; y
-    mov esi, [ebp + 16]         ; puntero al String
+    mov esi, [ebp + 16]         ; puntero al Objeto String real
     
-    movzx ecx, byte [esi - 2]
-    shl ecx, 8
-    mov cl, byte [esi - 1]      ; Extraer longitud del Constant Pool
+    test esi, esi
+    jz .done
+
+    ; Extraer byte[] value del String (alojado en el Offset 8)
+    mov esi, [esi + 8]
+    test esi, esi
+    jz .done
+
+    ; Extraer longitud del byte[] (alojada en el Offset 0)
+    mov ecx, [esi]
+    test ecx, ecx
+    jz .done
+
+    ; Apuntar a los caracteres reales (Offset 4)
+    add esi, 4
     
     mov edi, [current_color]
     or edi, 0xFF000000          
-    test ecx, ecx
-    jz .done
 
 .char:
     mov al, [esi]
