@@ -1994,48 +1994,50 @@ jit_op_aastore:
     ret
 
 jit_op_bastore:
-    mov al, 0x58
+    mov al, 0x58                ; pop eax (value)
     call jit_emit_byte
-    mov al, 0x59
+    mov al, 0x59                ; pop ecx (index)
     call jit_emit_byte
-    mov al, 0x5B
+    mov al, 0x5B                ; pop ebx (arrayref)
     call jit_emit_byte
-    mov al, 0x88
+    mov al, 0x88                ; mov [ebx + ecx + 4], al
     call jit_emit_byte
-    mov al, 0x04
+    mov al, 0x44                ; ModRM: mod=01 (Permite desplazamiento disp8)
     call jit_emit_byte
-    mov al, 0x0B
+    mov al, 0x0B                ; SIB: [ebx + ecx]
+    call jit_emit_byte
+    mov al, 0x04                ; disp8: +4 (Saltar cabecera)
     call jit_emit_byte
     ret
 
 jit_op_castore:
 jit_op_sastore:
-    mov al, 0x58
+    mov al, 0x58                ; pop eax
     call jit_emit_byte
-    mov al, 0x59
+    mov al, 0x59                ; pop ecx
     call jit_emit_byte
-    mov al, 0x5B
+    mov al, 0x5B                ; pop ebx
     call jit_emit_byte
     mov al, 0x66
     call jit_emit_byte
-    mov al, 0x89
+    mov al, 0x89                ; mov [ebx + ecx*2 + 4], ax
     call jit_emit_byte
-    mov al, 0x04
+    mov al, 0x44                ; ModRM: mod=01
     call jit_emit_byte
-    mov al, 0x4B
+    mov al, 0x4B                ; SIB: [ebx + ecx*2]
+    call jit_emit_byte
+    mov al, 0x04                ; disp8: +4
     call jit_emit_byte
     ret
 
 jit_op_arraylength:
-    mov al, 0x58
+    mov al, 0x58                ; pop eax
     call jit_emit_byte
-    mov al, 0x8B
+    mov al, 0x8B                ; mov eax, [eax] (Leer el header de longitud)
     call jit_emit_byte
-    mov al, 0x40
+    mov al, 0x00                ; ModRM: mod=00, reg=000, rm=000
     call jit_emit_byte
-    mov al, 0xF8
-    call jit_emit_byte
-    mov al, 0x50
+    mov al, 0x50                ; push eax
     call jit_emit_byte
     ret
 
@@ -2292,34 +2294,38 @@ jit_op_laload:
     jmp jit_op_iaload
 
 jit_op_baload:
-    mov al, 0x59
+    mov al, 0x59                ; pop ecx (index)
     call jit_emit_byte
-    mov al, 0x5B
+    mov al, 0x5B                ; pop ebx (arrayref)
     call jit_emit_byte
     mov al, 0x0F
     call jit_emit_byte
-    mov al, 0xBE
+    mov al, 0xBE                ; movsx eax, byte [ebx + ecx + 4]
     call jit_emit_byte
-    mov al, 0x0C
+    mov al, 0x44                ; ModRM: mod=01 (Permite desplazamiento disp8)
     call jit_emit_byte
-    mov al, 0x0B
+    mov al, 0x0B                ; SIB: [ebx + ecx]
     call jit_emit_byte
-    mov al, 0x50
+    mov al, 0x04                ; disp8: +4 (Saltar cabecera)
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
     call jit_emit_byte
     ret
 
 jit_op_caload:
-    mov al, 0x59
+    mov al, 0x59                ; pop ecx
     call jit_emit_byte
-    mov al, 0x5B
+    mov al, 0x5B                ; pop ebx
     call jit_emit_byte
     mov al, 0x0F
     call jit_emit_byte
-    mov al, 0xB7
+    mov al, 0xB7                ; movzx eax, word [ebx + ecx*2 + 4]
     call jit_emit_byte
-    mov al, 0x04
+    mov al, 0x44                ; ModRM: mod=01
     call jit_emit_byte
-    mov al, 0x4B
+    mov al, 0x4B                ; SIB: [ebx + ecx*2]
+    call jit_emit_byte
+    mov al, 0x04                ; disp8: +4
     call jit_emit_byte
     mov al, 0x50
     call jit_emit_byte
