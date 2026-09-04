@@ -26,33 +26,42 @@ import kernel.Native;
 
 public class NetworkAdapter {
     
-	//public static final String RTL8139 = "RTL8139";
-    private String modelName;
+	public static final int TYPE_RTL8139 = 1;
+	public static final int TYPE_E1000 = 2;
+	public static final int TYPE_VIRTIO = 3;
+	
+    private int modelType;
     private int ioPortBase;
     private boolean initialized;
 
     // Constructor que asocia la tarjeta a su puerto base PCI
-    public NetworkAdapter(String modelName, int ioPortBase) {
-        this.modelName = modelName;
-        this.ioPortBase = ioPortBase;
-        this.initialized = false;
+    public NetworkAdapter(int type, int ioPort) {
+        modelType = type;
+        ioPortBase = ioPort;
+        initialized = false;
     }
 
     // Inicializa la tarjeta según la especificación del modelo
     public boolean init() {
-        if (this.modelName.equals("RTL8139")) {
-            // Syscall 23: Inicializar Tarjeta de Red
-            int status = Native.sys(Native.SYS_RTL8139_INIT, this.ioPortBase, 0, 0, 0);
-            this.initialized = (status == 0);
-            return this.initialized;
+        if (modelType == TYPE_RTL8139) {            
+			// Inicializar Tarjeta de Red
+			// Syscall 23:  arg_a = Puerto I/O (SYS_RTL8139_INIT)			
+            int status = Native.sys(Native.SYS_RTL8139_INIT, ioPortBase, 0, 0, 0);
+            initialized = (status == 1);
+            return initialized;
         }
-        // Futuras tarjetas (ej. E1000, Virtio) debajo
+        // Soporte a futuras tarjetas
+		else if(modelType == TYPE_E1000){
+			// E1000			
+		}else if(modelType == TYPE_VIRTIO){		
+			// Virtio
+		}
         return false; 
     }
 
     // Transmite un paquete usando el arreglo de bytes del DatagramPacket
     public void send(DatagramPacket packet) {
-        if (!this.initialized || packet == null) return;
+        if (!initialized || packet == null) return;
         
         // Syscall 24: Enviar paquete de Red
         Native.sys(Native.SYS_RTL8139_SEND, 0, packet.getLength(), packet.getData(), 0);
@@ -60,7 +69,7 @@ public class NetworkAdapter {
 
     // Recibe un paquete en el buffer del DatagramPacket
     public int receive(DatagramPacket packet) {
-        if (!this.initialized || packet == null) return -1;
+        if (!initialized || packet == null) return -1;
         
         // Syscall 25: Recibir paquete de Red
         int bytesRead = Native.sys(Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
@@ -72,6 +81,6 @@ public class NetworkAdapter {
     }
 
     public boolean isInitialized() {
-        return this.initialized;
+        return initialized;
     }
 }
