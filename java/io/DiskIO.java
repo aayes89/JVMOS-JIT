@@ -23,10 +23,10 @@ SOFTWARE.*/
 package java.io;
 
 import kernel.Native;
-
 /*
-Nota: RandomAccessFile ya no será necesario con esta clase, será eliminado en la próxima iteración.
+	Nota: RandomAccessFile ya no será necesario con esta clase, será eliminado en la próxima iteración.
 */
+
 
 public class DiskIO {
     
@@ -41,13 +41,13 @@ public class DiskIO {
     // Constructor para múltiples discos
     public DiskIO(int deviceId) {
         this.deviceId = deviceId;
-        // Syscall 0: Asignar 512 bytes exactos en el Heap para operaciones de sector[cite: 8]
+        // Syscall 0: Asignar 512 bytes exactos en el Heap para operaciones de sector
         this.bufferAddr = Native.sys(Native.SYS_KALLOC, 512, 0, 0, 0);
     }
 
     // Lee un sector crudo a un arreglo de bytes (para sistemas de archivos)
     public byte[] readSector(int lba) {
-        // Syscall 8: Leer sector ATA[cite: 8, 13]
+        // Syscall 8: Leer sector ATA
         Native.sys(Native.SYS_DISK_READ, lba, 0, this.bufferAddr, 0);
         
         byte[] data = new byte[512];
@@ -59,7 +59,7 @@ public class DiskIO {
 
     // Lee un sector y lo interpreta directamente como String (hasta encontrar un byte 0)
     public String readString(int lba) {
-        Native.sys(Native.SYS_DISK_READ, lba, 0, this.bufferAddr, 0);[cite: 8, 13]
+        Native.sys(Native.SYS_DISK_READ, lba, 0, this.bufferAddr, 0);
         
         char[] chars = new char[512];
         int length = 0;
@@ -86,7 +86,7 @@ public class DiskIO {
             Native.sys(26, this.bufferAddr + i, data[i], 0, 0);
         }
         
-        // 3. Ordenar escritura al disco[cite: 8, 13]
+        // 3. Ordenar escritura al disco
         int result = Native.sys(Native.SYS_DISK_WRITE, lba, 0, this.bufferAddr, 0);
         return (result == 1);
     }
