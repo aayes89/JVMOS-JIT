@@ -27,6 +27,9 @@ public final class String implements CharSequence {
     private final byte[] value;
 
     // Constructores
+	public String(){
+		value = new byte[0];
+	}
     public String(byte[] bytes) {
         this.value = bytes;
     }   
@@ -41,6 +44,16 @@ public final class String implements CharSequence {
         for (int i = 0; i < count; i++) {
             this.value[i] = (byte) value[offset + i];
         }
+    }
+	
+	public String(byte[] value, int offset, int count) {
+        if (offset < 0 || count < 0 || offset + count > value.length) {
+            System.out.println("StringIndexOutOfBounds");
+            this.value = new byte[0];
+            return;
+        }
+        this.value = new byte[count];        
+        System.arraycopy(value, offset, this.value, 0, count);
     }
 
     // Constructor auxiliar muy útil (por si luego haces 'new String(charArray)')
@@ -79,8 +92,12 @@ public final class String implements CharSequence {
         int len = end - start;
         byte[] subBytes = new byte[len];
         System.arraycopy(this.value, start, subBytes, 0, len);
+		/*for (int i = 0; i < len; i++) {
+            subBytes[i] = this.value[start + i];
+        }*/
         return new String(subBytes);
     }
+	
 
     public boolean isEmpty() {
         return length() == 0;
@@ -134,6 +151,17 @@ public final class String implements CharSequence {
         }
         return -1;
     }
+	
+	// Devuelve el último índice de un caracter buscando a partir de una posición o '-1' si no la encontró
+    public int lastIndexOf(char c) {	
+		int index = -1;       
+        for (int i = 0; i < value.length; i++) {
+            if (charAt(i) == c) {
+                index = i;
+            }
+        }
+        return index;
+    }
 
     // comprobar si una cadena coincide con otra dada
     public boolean regionMatches(boolean condition, int index, String type, int arg, int length){
@@ -180,7 +208,7 @@ public final class String implements CharSequence {
         }
         return true;
     }
-    
+
     @Override
 	public boolean equals(Object anObject) {
 		if (this == anObject) return true;
@@ -305,13 +333,14 @@ public final class String implements CharSequence {
     }
 
     public char[] toCharArray() {
-        int len = length();
-        char[] chars = new char[len];
-        for (int i = 0; i < len; i++) {
-            chars[i] = (char) (value[i] & 0xFF);
-        }
-        return chars;
-    }
+		char[] chars = new char[value.length];
+
+		for (int i = 0; i < value.length; i++) {
+			chars[i] = (char) (value[i] & 0xFF);
+		}
+
+		return chars;
+	}
 
     public static String valueOf(long l) { return Long.toString(l); }
     public static String valueOf(float f) { return Float.toString(f); }
