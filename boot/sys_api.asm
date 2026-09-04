@@ -1473,6 +1473,15 @@ sys_disk_write_sector:
     out dx, ax
     add esi, 2
     loop .write
+	
+	mov dx, 0x1F7
+	mov al, 0xE7	; ATA CACHE FLUSH
+	out dx, al
+
+.wait_flush:	
+	in al, dx
+	test al, 0x80	; Esperar a BSY (Bit 7) sea 0
+	jnz .wait_flush
 
     mov eax, 1
     pop esi
