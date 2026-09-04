@@ -26,7 +26,14 @@ It is an improved fork of the repository: https://github.com/aayes89/JVMOS.
 
 ### JIT Tests PASSED!
 <img width="1016" height="389" alt="imagen" src="https://github.com/user-attachments/assets/ca85eb75-cab0-4432-a411-461381ccc0fc" />
+
+### I/O
 <img width="622" height="361" alt="imagen" src="https://github.com/user-attachments/assets/3e062dd3-c122-4653-8b60-7a0be0d3ddeb" />
+
+### RTL8139 
+## Rx
+<img width="593" height="371" alt="imagen" src="https://github.com/user-attachments/assets/3d75dc57-c6b9-47b4-9b7a-e38deb8b0215" />
+
 
 
 ### Test UI
