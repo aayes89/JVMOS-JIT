@@ -22,6 +22,8 @@ SOFTWARE.*/
 
 package java.io;
 
+// Usar DiskIO para IO en discos duros, esta clase será eliminada en la próxima iteración
+
 public class RandomAccessFile {
 	
     public void readSector(int lba, byte[] buffer) {
