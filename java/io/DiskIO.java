@@ -23,6 +23,7 @@ SOFTWARE.*/
 package java.io;
 
 import kernel.Native;
+import java.lang.String;
 /*
 	Nota: RandomAccessFile ya no será necesario con esta clase, será eliminado en la próxima iteración.
 */
@@ -30,82 +31,87 @@ import kernel.Native;
 
 public class DiskIO {
     
-    private int deviceId;
+    private int deviceId;	// Disco 0
     private int bufferAddr; // Puntero físico privado alineado a 4 bytes para DMA
 
-    // Constructor por defecto (Disco primario IDE)
+    // Constructor por defecto
     public DiskIO() {
+		// (Disco primario IDE)
         this(0);
     }
 
     // Constructor para múltiples discos
     public DiskIO(int deviceId) {
         this.deviceId = deviceId;
-        // Syscall 0: Asignar 512 bytes exactos en el Heap para operaciones de sector
+        // Syscall 0: SYS_KALLOC
+		// Asignar 512 bytes exactos en el Heap para operaciones de sector
         this.bufferAddr = Native.sys(Native.SYS_KALLOC, 512, 0, 0, 0);
     }
 
     // Lee un sector crudo a un arreglo de bytes (para sistemas de archivos)
     public byte[] readSector(int lba) {
-        // Syscall 8: Leer sector ATA
+        // Syscall 8: SYS_DISK_READ (Leer sector ATA)
         Native.sys(Native.SYS_DISK_READ, lba, 0, this.bufferAddr, 0);
         
         byte[] data = new byte[512];
         for (int i = 0; i < 512; i++) {
-            data[i] = (byte) Native.sys(27, this.bufferAddr + i, 0, 0, 0); // SYS_MEM_READ_BYTE
+			// Syscall 27: SYS_MEM_READ_BYTE
+            data[i] = (byte) Native.sys(27, this.bufferAddr + i, 0, 0, 0); 
         }
         return data;
     }
 
-    // Lee un sector y lo interpreta directamente como String (hasta encontrar un byte 0)
-    public String readString(int lba) {
+    // Lee un sector y lo interpreta directamente como String (hasta encontrar un byte 0)    
+	public String readString(int lba) {
+		// Syscall 8: SYS_DISK_READ (Leer sector ATA)
         Native.sys(Native.SYS_DISK_READ, lba, 0, this.bufferAddr, 0);
         
-        char[] chars = new char[512];
+        byte[] bytes = new byte[512];
         int length = 0;
         
         for (int i = 0; i < 512; i++) {
-            int b = Native.sys(27, this.bufferAddr + i, 0, 0, 0);
-            if (b == 0) break; // Fin de cadena
-            chars[length++] = (char) b;
+			// Syscall 27: SYS_MEM_READ_BYTE
+            int b = Native.sys(27, this.bufferAddr + i, 0, 0, 0); 
+            if (b == 0) break; // Fin de la cadena
+            bytes[length++] = (byte) b;
         }
-        return new String(chars, 0, length);
+        
+        // Evitando el constructor complejo ([CII)V
+        String fullStr = new String(bytes); 
+        return fullStr.substring(0, length);
     }
 
     // Escribe un arreglo de bytes crudos al disco
     public boolean writeSector(int lba, byte[] data) {
         if (data == null || data.length > 512) return false;
         
-        // 1. Limpiar el buffer físico con 0s
+        // Relleno con 0 el buffer
         for (int i = 0; i < 512; i++) {
-            Native.sys(26, this.bufferAddr + i, 0, 0, 0); // SYS_MEM_WRITE_BYTE
+			// Syscall 26: SYS_MEM_WRITE_BYTE
+            Native.sys(26, this.bufferAddr + i, 0, 0, 0); 
         }
         
-        // 2. Inyectar datos de Java a la RAM física
+        // Escribo en la RAM física el arreglo
         for (int i = 0; i < data.length; i++) {
+			// Syscall 26: SYS_MEM_WRITE_BYTE
             Native.sys(26, this.bufferAddr + i, data[i], 0, 0);
         }
         
-        // 3. Ordenar escritura al disco
+        // Escribo en disco
+		// Syscall 9: SYS_DISK_WRITE
         int result = Native.sys(Native.SYS_DISK_WRITE, lba, 0, this.bufferAddr, 0);
         return (result == 1);
     }
 
-    // Escribe un String directamente en un sector
+	// Escribe un String directamente en un sector
     public boolean writeString(int lba, String text) {
-        if (text == null) return false;
+        if (text == null) return false;        	
         
-        // Asumiendo que has implementado toCharArray() o un iterador similar en tu String básico
-        char[] chars = text.toCharArray(); 
-        byte[] bytes = new byte[chars.length];
-        
-        for (int i = 0; i < chars.length; i++) {
-            bytes[i] = (byte) chars[i];
-        }
+		byte[] bytes = text.getBytes();
         
         return writeSector(lba, bytes);
     }
-    
+	
     // Liberar la memoria (para cuando implemente SYS_KFREE en el futuro)
     public void close() {
         // Native.sys(SYS_KFREE, this.bufferAddr, ...);
