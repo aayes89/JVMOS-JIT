@@ -339,6 +339,10 @@ sys_native_dispatch:
     je .sys_rtl8139_send_packet
     cmp eax, 25
     je .sys_net_receive_packet
+	cmp eax, 26
+    je .sys_mem_write_byte
+    cmp eax, 27
+    je .sys_mem_read_byte
 
     xor eax, eax
     jmp .done
@@ -527,6 +531,23 @@ sys_native_dispatch:
     call sys_net_receive_packet
     add esp, 8
     jmp .done	
+	
+.sys_mem_write_byte:
+    ; sys_arg_a = Dirección física (Puntero)
+    ; sys_arg_b = Valor del byte a escribir (0-255)
+    mov eax, [sys_arg_a]
+    mov ebx, [sys_arg_b]
+    mov byte [eax], bl          ; Escribir el byte en la memoria RAM
+    xor eax, eax                ; Retornar 0
+    jmp .done
+
+.sys_mem_read_byte:
+    ; sys_arg_a = Dirección física (Puntero)
+    mov eax, [sys_arg_a]
+    xor ebx, ebx
+    mov bl, byte [eax]          ; Leer el byte de la memoria RAM
+    mov eax, ebx                ; Retornar el byte leído
+    jmp .done
 
 .done:
     pop edx
