@@ -25,10 +25,28 @@ package java.lang;
 public final class String implements CharSequence {
     
     private final byte[] value;
-    
+
+    // Constructores
     public String(byte[] bytes) {
         this.value = bytes;
     }   
+    
+    public String(char[] value, int offset, int count) {
+        if (offset < 0 || count < 0 || offset + count > value.length) {
+            System.out.println("StringIndexOutOfBounds");
+            this.value = new byte[0];
+            return;
+        }
+        this.value = new byte[count];
+        for (int i = 0; i < count; i++) {
+            this.value[i] = (byte) value[offset + i];
+        }
+    }
+
+    // Constructor auxiliar muy útil (por si luego haces 'new String(charArray)')
+    public String(char[] value) {
+        this(value, 0, value.length);
+    }
     
     @Override
     public int length() {
