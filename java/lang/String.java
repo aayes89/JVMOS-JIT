@@ -284,6 +284,15 @@ public final class String implements CharSequence {
         return value;
     }
 
+    public char[] toCharArray() {
+        int len = length();
+        char[] chars = new char[len];
+        for (int i = 0; i < len; i++) {
+            chars[i] = (char) (value[i] & 0xFF);
+        }
+        return chars;
+    }
+
     public static String valueOf(long l) { return Long.toString(l); }
     public static String valueOf(float f) { return Float.toString(f); }
     public static String valueOf(double d) { return Double.toString(d); }
