@@ -72,6 +72,17 @@ public class Graphics2D {//extends Graphics{
             Native.sys(Native.SYS_DRAW_STRING, x, y, text, 0);
         }
     }    
+	// Método especializado para imprimir Strings creados dinámicamente en RAM
+    public void drawText(String text, int x, int y) {
+        if (text == null) return;
+        
+        int currentX = x;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == 0) break; // Ignorar nulos para evitar colapsos
+            currentX = this.drawChar(c, currentX, y);
+        }
+    }
 	//@Override
 	public int drawChar(char c, int x, int y) {
         // Syscall 15: Renderizar carácter en VRAM
