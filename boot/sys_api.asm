@@ -19,7 +19,8 @@
 ; LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 ; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ; SOFTWARE.
-; HAL Baremetal Mejorado para JVM (x86 32-bit)
+
+; HAL Baremetal Mejorado para JVMOS-JIT (x86 32-bit)
 [bits 32]
 
 ; SÍMBOLOS GLOBALES EXPORTADOS
@@ -1241,15 +1242,24 @@ sys_rtl8139_init:
     test al, 0x10
     jnz .wait_rst
 
+    ; Configurar inicio del buffer de recepción (RBSTART)
     mov dx, [rtl8139_io_port]
     add dx, 0x30
     mov eax, rx_buffer
     out dx, eax
 
+    ; Configurar RCR para aceptar Broadcast y Physical Match (0x8F)
+    mov dx, [rtl8139_io_port]
+    add dx, 0x44
+    mov eax, 0x8F
+    out dx, eax
+
+    ; Habilitar Rx y Tx
     mov dx, [rtl8139_io_port]
     add dx, 0x37
     mov al, 0x0C
     out dx, al
+
     pop ebp
     ret
 
@@ -1276,9 +1286,73 @@ sys_rtl8139_send_packet:
     ret
 
 sys_net_receive_packet:
-    xor eax, eax
-    ret
+    push ebp
+    mov ebp, esp
+    push ebx
+    push esi
+    push edi
 
+    ; Chequear Command Register (0x37) bit 0 (BUFE - Buffer Empty)
+    mov dx, [rtl8139_io_port]
+    add dx, 0x37
+    in al, dx
+    test al, 0x01
+    jnz .no_packet
+
+    ; Hay paquete? Obtener puntero actual en el anillo
+    mov ebx, [rtl8139_rx_ptr]
+    mov esi, rx_buffer
+    add esi, ebx
+
+    ; Leer longitud del paquete desde la cabecera hardware
+    movzx ecx, word [esi + 2]
+
+    ; Copiar payload al buffer en Java (Arg C está en ebp+8 vía dispatch)
+    mov edi, [ebp + 8]
+    push ecx
+    add esi, 4          ; Saltar cabecera de 4 bytes de RTL8139
+    sub ecx, 4          ; Copiar el payload puro
+    rep movsb
+    pop ecx
+
+    ; Actualizar puntero Rx circular alineado a 4 bytes
+    add ebx, ecx
+    add ebx, 4
+    add ebx, 3
+    and ebx, ~3
+    cmp ebx, 8192
+    jl .no_wrap
+    sub ebx, 8192
+.no_wrap:
+    mov [rtl8139_rx_ptr], ebx
+
+    ;Notificar a la tarjeta actualizando el CAPR (0x38)
+    mov dx, [rtl8139_io_port]
+    add dx, 0x38
+    mov eax, ebx
+    sub eax, 16
+    out dx, ax
+
+    ; Limpiar bit Rx OK en el ISR (0x3E) para recibir más
+    mov dx, [rtl8139_io_port]
+    add dx, 0x3E
+    mov ax, 0x01
+    out dx, ax
+
+    ; Retornar tamaño del paquete a Java
+    mov eax, ecx
+    sub eax, 4
+    jmp .done
+
+.no_packet:
+    xor eax, eax
+
+.done:
+    pop edi
+    pop esi
+    pop ebx
+    pop ebp
+    ret
 
 ; DISCO ATA IDE LBA28
 
@@ -1288,6 +1362,11 @@ sys_disk_read_sector:
     push ebx
     push edi
 
+	mov edi, [ebp + 12]         ; Obtener puntero del argumento
+    cmp edi, 0                  ; Si es 0 (null)...
+    jne .skip_default_r
+    mov edi, disk_sector_buf    ; ...usar el buffer global de 512 bytes
+.skip_default_r:    
     mov dx, 0x1F7
 .wait_bsy:
     in al, dx
@@ -1344,7 +1423,12 @@ sys_disk_write_sector:
     mov ebp, esp
     push ebx
     push esi
-
+	
+	mov esi, [ebp + 12]         ; Obtener puntero del argumento
+    cmp esi, 0                  ; Si es 0 (null)...
+    jne .skip_default_w
+    mov esi, disk_sector_buf    ; ...usar el buffer global de 512 bytes
+.skip_default_w:
     mov dx, 0x1F7
 .wait_bsy_w:
     in al, dx
@@ -1452,6 +1536,7 @@ sys_wait_io:
 section .data
 align 16
 
+rtl8139_rx_ptr		dd 0
 idtr:
     idtr_limit      dw 2047
     idtr_base       dd idt_entries
