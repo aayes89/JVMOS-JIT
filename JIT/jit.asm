@@ -788,6 +788,45 @@ jit_op_ldc:
     mov ebx, [cp_base_ptr]
     mov eax, [ebx + eax * 4]
     add eax, 3
+	
+	; Crear Objeto en el Heap durante Compilación 
+    pusha
+    mov esi, eax                ; ESI apunta a los caracteres en el CP
+    movzx ecx, byte [esi - 2]
+    shl ecx, 8
+    mov cl, byte [esi - 1]      ; ECX = Longitud real de la cadena
+
+    mov edx, ecx
+    add edx, 4                  ; Tamaño = Longitud + 4 bytes de header
+    push edx
+    call sys_kalloc
+    add esp, 4
+    ; EAX = Puntero al nuevo arreglo byte[] en el Heap
+
+    ; Recuperar EAX original de pusha porque sys_kalloc altera registros
+    mov esi, [esp + 28]         
+    movzx ecx, byte [esi - 2]
+    shl ecx, 8
+    mov cl, byte [esi - 1]
+
+    mov [eax], ecx              ; Escribir longitud en el header del arreglo
+    mov edi, eax
+    add edi, 4                  ; Apuntar a los datos del arreglo
+    rep movsb                   ; Copiar los caracteres
+
+    mov [esp + 16], eax         ; Guardar puntero del byte[] en la posición EBX de pusha
+
+    ; Crear el objeto String
+    push 4096
+    call sys_kalloc
+    add esp, 4
+    ; EAX = Puntero al nuevo objeto String
+
+    mov ebx, [esp + 16]         ; Recuperar puntero del byte[]
+    mov [eax + 8], ebx          ; Asignar arreglo al campo 'value' (Offset 8 del String)
+
+    mov [esp + 28], eax         ; Sobrescribir el EAX original con el objeto String
+    popa
     jmp .emit_val
 
 .fallback_zero:
@@ -827,6 +866,40 @@ jit_op_ldc_w:
     mov ebx, [cp_offsets + eax * 4]
     add ebx, 3
     mov eax, ebx
+	; Crear objeto en el Heap durante compilación
+	pusha
+    mov esi, eax                
+    movzx ecx, byte [esi - 2]
+    shl ecx, 8
+    mov cl, byte [esi - 1]      
+
+    mov edx, ecx
+    add edx, 4                  
+    push edx
+    call sys_kalloc
+    add esp, 4
+    
+    mov esi, [esp + 28]         
+    movzx ecx, byte [esi - 2]
+    shl ecx, 8
+    mov cl, byte [esi - 1]
+
+    mov [eax], ecx              
+    mov edi, eax
+    add edi, 4                  
+    rep movsb                   
+
+    mov [esp + 16], eax         
+
+    push 4096
+    call sys_kalloc
+    add esp, 4
+    
+    mov ebx, [esp + 16]         
+    mov [eax + 8], ebx          
+
+    mov [esp + 28], eax         
+    popa
     jmp .emit_val_w
 
 .fallback_zero:
