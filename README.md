@@ -15,6 +15,33 @@ It is an improved fork of the repository: https://github.com/aayes89/JVMOS.
 * run <code>clear && make clean && make run</code><br>
 <b>Note:</b> I shared a 10MB image pre-configured for QEMU so you won't have any issues starting it up, but you can run `kernel.bin` if you'd like to test without a hard drive.
 
+# Architecture
+                 HARDWARE
+                     │
+                     ▼
+              BOOTLOADER ASM
+                     │
+                     ▼
+             KERNEL / RUNTIME ASM
+                     │
+          ┌──────────┴──────────┐
+          ▼                     ▼
+       HAL ASM                 ABI 
+          │                     │
+          └──────────┬──────────┘
+                     ▼
+                 JVMOS-JIT
+                 ASM → x86 
+                     │
+                     ▼
+                JAVA BYTECODE 
+                     │
+                     ▼
+          JAVA CLASSES and RUNTIME
+                     │
+                     ▼
+                   JVMOS
+
 # TODO
 * Test useful apps (Notepad, Paint, Calculator)
 * Sound support
