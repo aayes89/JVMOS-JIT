@@ -26,7 +26,7 @@ It is an improved fork of the repository: https://github.com/aayes89/JVMOS.
                      │
           ┌──────────┴──────────┐
           ▼                     ▼
-       HAL ASM                 ABI 
+       HAL ASM               JAVA ABI 
           │                     │
           └──────────┬──────────┘
                      ▼
