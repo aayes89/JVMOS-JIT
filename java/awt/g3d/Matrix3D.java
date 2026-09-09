@@ -84,4 +84,12 @@ public class Matrix3D {
         m21 = sin;
         m22 = cos;
     }
+
+    public void setRotationY(int sin, int cos) {
+        setIdentity();
+        m00 = cos;
+        m02 = sin;
+        m20 = -sin;
+        m22 = cos;
+    }
 }
