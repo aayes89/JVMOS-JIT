@@ -138,7 +138,7 @@ public class Graphics2D {//extends Graphics{
     }
 	
 	//@Override
-	public abstract void drawPixel(int x, int y){
+	public void drawPixel(int x, int y){
 		fillRect(x,y,1,1);
 	}
 	
