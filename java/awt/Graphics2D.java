@@ -71,7 +71,8 @@ public class Graphics2D {//extends Graphics{
 			// Syscall 5: Imprimir cadena texto en modo gráfico
             Native.sys(Native.SYS_DRAW_STRING, x, y, text, 0);
         }
-    }    
+    }   
+	
 	// Método especializado para imprimir Strings creados dinámicamente en RAM
     public void drawText(String text, int x, int y) {
         if (text == null) return;
@@ -129,18 +130,26 @@ public class Graphics2D {//extends Graphics{
         
         return endX;
     }
-    //@Override
+    
+	//@Override
     public int getPixel(int x, int y) {
 		// Syscall 14: Leer pixel de VRAM
         return Native.sys(Native.SYS_GET_PIXEL, x, y, 0, 0);
     }
-
+	
+	//@Override
+	public abstract void drawPixel(int x, int y){
+		fillRect(x,y,1,1);
+	}
+	
+	//@Override
 	public void drawTriangle(int x0, int y0,int x1, int y1,	int x2, int y2) {
 		drawLine(x0, y0, x1, y1);
 		drawLine(x1, y1, x2, y2);
 		drawLine(x2, y2, x0, y0);
 	}
-
+	
+	//@Override
 	public void fillTriangle(int x0, int y0,int x1, int y1,int x2, int y2) {
 		// Ordenar los vértices por Y: y0 <= y1 <= y2
 		if (y0 > y1) {
@@ -211,6 +220,67 @@ public class Graphics2D {//extends Graphics{
 		}
 	}
 	
-	// Faltan por añadir drawCircle, fillCircle, clipText, etc.
+	//@Override	
+	public void drawCircle(int centerX, int centerY, int radius) {
+		if (radius < 0) {
+			return;
+		}
+		int x = radius;
+		int y = 0;
+		int decision = 1 - radius;
+		// Variación del algoritmo de Bresenham
+		while (x >= y) {
+			// Octante 1
+			drawPixel(centerX + x, centerY + y);
+			// Octante 2
+			drawPixel(centerX + y, centerY + x);
+			// Octante 3
+			drawPixel(centerX - y, centerY + x);
+			// Octante 4
+			drawPixel(centerX - x, centerY + y);
+			// Octante 5
+			drawPixel(centerX - x, centerY - y);
+			// Octante 6
+			drawPixel(centerX - y, centerY - x);
+			// Octante 7
+			drawPixel(centerX + y, centerY - x);
+			// Octante 8
+			drawPixel(centerX + x, centerY - y);
+			y++;
+			if (decision <= 0) {
+				decision = decision + (y << 1) + 1;
+			} else {
+				x--;
+				decision = decision + ((y - x) << 1) + 1;
+			}
+		}
+	}
+
+	//@Override
+	public void fillCircle(int centerX, int centerY, int radius) {
+		if (radius < 0) {
+			return;
+		}
+		int x = radius;
+		int y = 0;
+		int decision = 1 - radius;
+		while (x >= y) {
+			// Parte superior e inferior
+			fillRect(centerX - x,centerY + y,(x << 1) + 1,1);
+			fillRect(centerX - x,centerY - y,(x << 1) + 1,1);
+			// Laterales
+			fillRect(centerX - y,centerY + x,(y << 1) + 1,1);
+			fillRect(centerX - y,centerY - x,(y << 1) + 1,1);
+			y++;
+			if (decision <= 0) {
+				decision = decision	+ (y << 1) + 1;
+			} else {
+				x--;
+				decision = decision + ((y - x) << 1) + 1;
+			}
+		}
+	}
+	
+	// Faltan por añadir otros pero con los que hay, creo que es suficiente por ahora.
 	
 }
