@@ -51,7 +51,109 @@ public class Renderer3D {
         projectionScale = scale;
     }
 
+	// Adaptado de implementación en OpenGL	a JVMOS-JIT g3d
     public void render(Mesh mesh,Matrix3D transform) {
-      // TODO
+        if (mesh == null) {
+            return;
+        }
+        if (mesh.vertices == null) {
+            return;
+        }
+        if (mesh.triangles == null) {
+            return;
+        }
+        int vertexCount = mesh.vertices.length;
+        
+		// Vértices transformados
+        Vertex3D[] transformed = new Vertex3D[vertexCount];
+        
+		// Coordenadas proyectadas
+        int[] screenX = new int[vertexCount];
+        int[] screenY = new int[vertexCount];
+
+        // Transformación
+        for (int i = 0; i < vertexCount; i++) {
+            transformed[i] = transform.transform(mesh.vertices[i]);
+        }
+        
+		// Proyección
+        for (int i = 0; i < vertexCount; i++) {
+            Vertex3D v = transformed[i];
+            int z = v.z + cameraZ;
+            // Evitar división por cero y valores detrás de cámara
+            if (z <= 0) {
+                screenX[i] = 0;
+                screenY[i] = 0;
+                continue;
+            }
+            screenX[i] = (v.x * projectionScale) / z + (screenWidth / 2);
+            screenY[i] = (v.y * projectionScale) / z + (screenHeight / 2);
+		}
+
+        // Algoritmo para pintar en pantalla (versión simple con triangulos por ahora)
+		// Si alguien sabe hacerlo más profesional, acepto sugerencias
+        int triangleCount = mesh.triangles.length;
+        int[] order = new int[triangleCount];
+        int[] depth = new int[triangleCount];
+
+        for (int i = 0; i < triangleCount; i++) {
+            Triangle3D t = mesh.triangles[i];
+            order[i] = i;
+            Vertex3D a = transformed[t.v0];
+            Vertex3D b = transformed[t.v1];
+            Vertex3D c = transformed[t.v2];
+            depth[i] = a.z + b.z + c.z;
+        }
+
+        // Ordenamiento simple. (El triángulo con mayor Z se dibuja primero)
+        for (int i = 0; i < triangleCount - 1; i++) {
+            for (int j = i + 1;j < triangleCount;j++) {
+                if (depth[order[i]] < depth[order[j]]) {
+                    int temp = order[i];
+                    order[i] = order[j];
+                    order[j] = temp;
+                }
+            }
+        }
+
+        // Rasterización
+        for (int n = 0;n < triangleCount;n++) {
+            Triangle3D t = mesh.triangles[order[n]];
+            Vertex3D a = transformed[t.v0];
+            Vertex3D b = transformed[t.v1];
+            Vertex3D c = transformed[t.v2];
+            
+			int z0 = a.z + cameraZ;
+            int z1 = b.z + cameraZ;
+            int z2 = c.z + cameraZ;
+
+            // Si algún vértice está detrás de la cámara, no dibujamos el triángulo.
+            if (z0 <= 0 || z1 <= 0 || z2 <= 0) {
+                continue;
+            }
+            // Productos cruzados: (B-A) x (C-A)
+            int ax = screenX[t.v0];
+            int ay = screenY[t.v0];
+            int bx = screenX[t.v1];
+            int by = screenY[t.v1];
+            int cx = screenX[t.v2];
+            int cy = screenY[t.v2];
+            int cross = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+
+            // Triángulo degenerado
+            if (cross == 0) {
+                continue;
+            }
+            // Sólo se dibuja una orientación
+            if (cross < 0) {
+                continue;
+            }
+            // Color del triángulo
+            graphics.setColor(
+                new Color(t.color)
+            );
+            // Rasterizador 2D
+            graphics.fillTriangle(ax, ay, bx, by, cx, cy);
+        }
     }
 }
