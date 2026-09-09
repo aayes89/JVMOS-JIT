@@ -134,7 +134,83 @@ public class Graphics2D {//extends Graphics{
 		// Syscall 14: Leer pixel de VRAM
         return Native.sys(Native.SYS_GET_PIXEL, x, y, 0, 0);
     }
+
+	public void drawTriangle(int x0, int y0,int x1, int y1,	int x2, int y2) {
+		drawLine(x0, y0, x1, y1);
+		drawLine(x1, y1, x2, y2);
+		drawLine(x2, y2, x0, y0);
+	}
+
+	public void fillTriangle(int x0, int y0,int x1, int y1,int x2, int y2) {
+		// Ordenar los vértices por Y: y0 <= y1 <= y2
+		if (y0 > y1) {
+			int t = x0;
+			x0 = x1;
+			x1 = t;
+
+			t = y0;
+			y0 = y1;
+			y1 = t;
+		}
+
+		if (y0 > y2) {
+			int t = x0;
+			x0 = x2;
+			x2 = t;
+
+			t = y0;
+			y0 = y2;
+			y2 = t;
+		}
+
+		if (y1 > y2) {
+			int t = x1;
+			x1 = x2;
+			x2 = t;
+
+			t = y1;
+			y1 = y2;
+			y2 = t;
+		}
+
+
+		// Triángulo plano. Sin área
+		if (y0 == y2) {
+			return;
+		}
+		// Parte superior
+		if (y1 > y0) {
+			for (int y = y0; y < y1; y++) {
+				int xA = x0 + ((x1 - x0) * (y - y0)) / (y1 - y0);
+				int xB = x0 + ((x2 - x0) * (y - y0)) / (y2 - y0);
+
+				// xA <= xB
+				if (xA > xB) {
+					int t = xA;
+					xA = xB;
+					xB = t;
+				}
+
+				// Un scanline es simplemente un rectángulo de altura 1.
+				fillRect(xA,y,xB - xA + 1,1);
+			}
+		}
+
+		// Parte inferior
+		if (y2 > y1) {
+			for (int y = y1; y <= y2; y++) {
+				int xA = x1 + ((x2 - x1) * (y - y1)) / (y2 - y1);
+				int xB = x0 + ((x2 - x0) * (y - y0)) / (y2 - y0);
+				if (xA > xB) {
+					int t = xA;
+					xA = xB;
+					xB = t;
+				}
+				fillRect(xA,y,xB - xA + 1,1);
+			}
+		}
+	}
 	
-	// Faltan por añadir drawCircle, fillCircle, drawTriangle, fillTriangle, clipText, etc.
+	// Faltan por añadir drawCircle, fillCircle, clipText, etc.
 	
 }
