@@ -69,4 +69,11 @@ public class Matrix3D {
         ty = y;
         tz = z;
     }
+  
+    public void setScale(int sx,int sy,int sz) {
+        setIdentity();
+        m00 = sx * FIXED_ONE;
+        m11 = sy * FIXED_ONE;
+        m22 = sz * FIXED_ONE;
+    }
 }
