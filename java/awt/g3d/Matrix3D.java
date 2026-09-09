@@ -76,4 +76,12 @@ public class Matrix3D {
         m11 = sy * FIXED_ONE;
         m22 = sz * FIXED_ONE;
     }
+
+    public void setRotationX(int sin, int cos) {
+        setIdentity();
+        m11 = cos;
+        m12 = -sin;
+        m21 = sin;
+        m22 = cos;
+    }
 }
