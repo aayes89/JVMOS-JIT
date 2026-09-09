@@ -121,4 +121,35 @@ public class Matrix3D {
 
         return new Vertex3D(x, y, z);
     }
+
+    // Multiplica esta matriz por otra. (Gracias Algebralineal 1 y 2!)
+    public void multiply(Matrix3D other) {
+        int n00 = ((m00 * other.m00) + (m01 * other.m10) + (m02 * other.m20)) >> 8;
+        int n01 = ((m00 * other.m01) + (m01 * other.m11) + (m02 * other.m21)) >> 8;
+        int n02 = ((m00 * other.m02) + (m01 * other.m12) + (m02 * other.m22)) >> 8;
+        int n10 = ((m10 * other.m00) + (m11 * other.m10) + (m12 * other.m20)) >> 8;
+        int n11 = ((m10 * other.m01) + (m11 * other.m11) + (m12 * other.m21)) >> 8;
+        int n12 = ((m10 * other.m02) + (m11 * other.m12) + (m12 * other.m22)) >> 8;
+        int n20 = ((m20 * other.m00) + (m21 * other.m10) + (m22 * other.m20)) >> 8;
+        int n21 = ((m20 * other.m01) + (m21 * other.m11) + (m22 * other.m21)) >> 8;
+        int n22 = ((m20 * other.m02) + (m21 * other.m12) + (m22 * other.m22)) >> 8;
+        int ntx = (( tx * other.m00) + ( ty * other.m01) + ( tz * other.m02)) >> 8;
+        int nty = (( tx * other.m10) + ( ty * other.m11) + ( tz * other.m12)) >> 8;
+        int ntz = (( tx * other.m20) + ( ty * other.m21) + ( tz * other.m22)) >> 8;
+        ntx += other.tx;
+        nty += other.ty;
+        ntz += other.tz;
+        m00 = n00;
+        m01 = n01;
+        m02 = n02;
+        tx = ntx;		
+        m10 = n10;
+        m11 = n11;
+        m12 = n12;
+        ty = nty;
+        m20 = n20;
+        m21 = n21;
+        m22 = n22;
+        tz = ntz;
+    }
 }
