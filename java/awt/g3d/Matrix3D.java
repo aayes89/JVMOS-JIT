@@ -63,4 +63,10 @@ public class Matrix3D {
         m22 = FIXED_ONE;
         tz = 0;
     }
+    public void setTranslation(int x,int y,int z) {
+        setIdentity();
+        tx = x;
+        ty = y;
+        tz = z;
+    }
 }
