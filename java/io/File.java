@@ -22,47 +22,107 @@ SOFTWARE.*/
 
 package java.io;
 
-public class File {
-    public static final byte FLAG_FILE = 1;
-    public static final byte FLAG_DIR = 2;
+import java.io.PrintStream;
 
+public class File {
+	public static final byte FLAG_EMPTY = 0;
+    public static final byte FLAG_FILE  = 1;
+    public static final byte FLAG_DIR 	= 2;
+	public static final int INVALID_LBA = -1;
+
+	private byte type;
     private String path;
-    private String name;
-    private boolean isDirectory;
+    private String name;    
     private int startLBA;
     private int size;
+	private int parentLBA;
 
-    // File no almacena datos en un sistema real solo las referencias
-    
-    public File(String pathname) {
-        this.path = pathname;
-        this.name = extractName(pathname);
-        // El administrador de archivos poblará estos datos
-        this.startLBA = -1; 
-        this.size = 0;
-        this.isDirectory = false;
-    }
-
-    // Constructor
-    public File(String name, boolean isDirectory, int startLBA, int size) {
+    // Nota: File no almacena datos en un sistema real solo las referencias    
+	// Constructor completo
+    public File(String path, String name, byte type, int startLBA, int size, int parentLBA) {
+		if (type != FLAG_EMPTY && type != FLAG_FILE && type != FLAG_DIR) {
+			//throw new IllegalArgumentException("Tipo de archivo invalido");
+			java.lang.System.out.println("Tipo de archivo invalido");
+			return;
+		}
+        this.path = path;
         this.name = name;
-        this.isDirectory = isDirectory;
-        this.startLBA = startLBA;
+        this.type = type;        
         this.size = size;
+        this.startLBA = startLBA;
+        this.parentLBA = parentLBA;
     }
+	
+	public File(String pathname) {
+		this.path = pathname;
+		this.name = extractName(pathname);
+		this.type = FLAG_EMPTY;		
+		this.size = 0;		
+		this.startLBA = INVALID_LBA;
+		this.parentLBA = INVALID_LBA;
+	}
 
     private String extractName(String path) {
+        if (path == null || path.length() == 0) {
+            return "";
+        }
+
         int lastSlash = path.lastIndexOf('/');
-        if (lastSlash == -1) return path;
+
+        if (lastSlash < 0) {
+            return path;
+        }
+
+        if (lastSlash == path.length() - 1) {
+            return "";
+        }
+
         return path.substring(lastSlash + 1);
     }
+	
+	public boolean exists(){		
+		return type != FLAG_EMPTY && startLBA >= 0;
+	}
+	public String getAbsolutePath(){
+		return path;
+	}
+	
+	public String getTypeName() {
+		switch (type) {
+			case FLAG_EMPTY:
+				return "Vacio";
+
+			case FLAG_FILE:
+				return "Archivo binario";
+
+			case FLAG_DIR:
+				return "Directorio";
+
+			default:
+				return "Desconocido";
+		}
+	}
+		
+	public String getExtension() {
+		if (name == null) {
+			return "FILE";
+		}
+		int dotIdx = name.lastIndexOf('.');
+		if (dotIdx <= 0 || dotIdx == name.length() - 1) {
+			return "FILE";
+		}
+		return name.substring(dotIdx + 1);
+	}
 
     public String getName() { return name; }
     public String getPath() { return path; }
     public int length() { return size; }
-    public boolean isDirectory() { return isDirectory; }
-    public boolean isFile() { return !isDirectory; }
+	public boolean isEmpty(){ return type==FLAG_EMPTY; }
+    public boolean isDirectory() { return type==FLAG_DIR; }
+    public boolean isFile() { return type==FLAG_FILE; }
+	public byte getType(){ return type; }
     
     // getter
     public int getStartLBA() { return startLBA; }
+	public int getParentLBA() { return parentLBA; }
 }
