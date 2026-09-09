@@ -26,6 +26,8 @@ public abstract class Graphics {
     protected Graphics() {
         // para la invocación invokespecial desde Graphics2D
     }
+	
+	// Primitivas de Graphics para JVMOS-JIT
     public abstract void setColor(Color c);
 	public abstract void setColor(int c);
     public abstract Color getColor();
@@ -35,6 +37,11 @@ public abstract class Graphics {
     public abstract void fillRect(int x, int y, int width, int height);
     public abstract void drawRect(int x, int y, int width, int height);
     public abstract int drawInt(int value, int x, int y);   
-    public abstract int getPixel(int x, int y);
+	public abstract int getPixel(int x, int y);
+    public abstract void drawPixel(int x, int y);
+	public abstract void drawTriangle(int x0, int y0,int x1, int y1, int x2, int y2);
+	public abstract void fillTriangle(int x0, int y0,int x1, int y1, int x2, int y2);	
+	public abstract void drawCircle(int centerX, int centerY, int radius);
+	public abstract void fillCircle(int centerX, int centerY, int radius);
     
 }
