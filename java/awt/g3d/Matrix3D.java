@@ -23,4 +23,44 @@ SOFTWARE.*/
 package java.awt.g3d;
 
 public class Matrix3D {
+  // Inspirado en la implementación de OpenGL
+    // Fixed point 8.8 (256 = 1.0)
+    public static final int FIXED_ONE = 256;
+
+    public int m00;
+    public int m01;
+    public int m02;
+    public int tx;
+
+    public int m10;
+    public int m11;
+    public int m12;
+    public int ty;
+
+    public int m20;
+    public int m21;
+    public int m22;
+    public int tz;
+
+
+    public Matrix3D() {
+        setIdentity();
+    }
+
+    public void setIdentity() {
+        m00 = FIXED_ONE;
+        m01 = 0;
+        m02 = 0;
+        tx = 0;
+
+        m10 = 0;
+        m11 = FIXED_ONE;
+        m12 = 0;
+        ty = 0;
+
+        m20 = 0;
+        m21 = 0;
+        m22 = FIXED_ONE;
+        tz = 0;
+    }
 }
