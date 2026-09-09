@@ -27,4 +27,31 @@ import java.awt.Color;
 
 //Basado en librería de OpenGL
 public class Renderer3D {
+    private Graphics2D graphics;
+    private int screenWidth;
+    private int screenHeight;
+    private int cameraZ;
+    private int projectionScale;
+
+	  // Constructor 
+    public Renderer3D(Graphics2D graphics,int screenWidth,int screenHeight) {
+        this.graphics = graphics;
+        this.screenWidth = screenWidth;
+        this.screenHeight = screenHeight;
+
+        cameraZ = 150;
+        projectionScale = 400;
+    }
+
+    public void setCameraZ(int z) {
+        cameraZ = z;
+    }
+
+    public void setProjectionScale(int scale) {
+        projectionScale = scale;
+    }
+
+    public void render(Mesh mesh,Matrix3D transform) {
+      // TODO
+    }
 }
