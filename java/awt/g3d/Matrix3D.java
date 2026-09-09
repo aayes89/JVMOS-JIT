@@ -47,6 +47,7 @@ public class Matrix3D {
         setIdentity();
     }
 
+    // Inicializar vértices
     public void setIdentity() {
         m00 = FIXED_ONE;
         m01 = 0;
@@ -63,13 +64,16 @@ public class Matrix3D {
         m22 = FIXED_ONE;
         tz = 0;
     }
+
+    // Movimiento en ejes
     public void setTranslation(int x,int y,int z) {
         setIdentity();
         tx = x;
         ty = y;
         tz = z;
     }
-  
+
+    // Escalas
     public void setScale(int sx,int sy,int sz) {
         setIdentity();
         m00 = sx * FIXED_ONE;
@@ -77,6 +81,7 @@ public class Matrix3D {
         m22 = sz * FIXED_ONE;
     }
 
+    // Rotaciones en X e Y e Z
     public void setRotationX(int sin, int cos) {
         setIdentity();
         m11 = cos;
@@ -99,5 +104,21 @@ public class Matrix3D {
         m01 = -sin;
         m10 = sin;
         m11 = cos;
+    }
+
+    // Transforma un Vertex3D. (Basado en OpenGL)
+    public Vertex3D transform(Vertex3D v) {
+        int x;
+        int y;
+        int z;
+        x = ((v.x * m00) + (v.y * m01) + (v.z * m02)) >> 8;
+        y = ((v.x * m10) + (v.y * m11) + (v.z * m12)) >> 8;
+        z = ((v.x * m20) + (v.y * m21) + (v.z * m22)) >> 8;
+
+        x += tx;
+        y += ty;
+        z += tz;
+
+        return new Vertex3D(x, y, z);
     }
 }
