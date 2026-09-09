@@ -25,11 +25,11 @@ package kernel;
 public class AppTest {
     public static void main(String[] args) {
         // Syscall 1: SYS_SET_COLOR (Rojo)
-        kernel.Native.sys(1, 0xFFFF0000, 0, 0, 0);
+        kernel.Native.sys(1, 0x00FF0000, 0, 0, 0);
         // Syscall 2: SYS_FILL_RECT
         kernel.Native.sys(2, 200, 200, 300, 300);
 		// Syscall 1: SYS_SET_COLOR (Azul)
-        kernel.Native.sys(1, 0xFF00FF00, 0, 0, 0);
+        kernel.Native.sys(1, 0x000000FF, 0, 0, 0);
 		// Imprime texto en el rectángulo
 		kernel.Native.sys(5, 210, 220, "Hola mundo JVMOS-JIT!",0);
         // Pausar 3 segundos para observar el cambio
