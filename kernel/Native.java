@@ -23,6 +23,9 @@ SOFTWARE.*/
 package kernel;
 
 public class Native {
+	// Nota:
+	// Tengo que organizar esta tabla para que exista un orden
+	// cada elemento fue añadido a medida que se fueron creando 
 
     // TABLA DE SYSCALLS
     public static final int SYS_KALLOC           = 0;  // Asignación de memoria en Heap
@@ -51,8 +54,11 @@ public class Native {
     public static final int SYS_RTL8139_INIT     = 23; // Inicializar Tarjeta de Red
     public static final int SYS_RTL8139_SEND     = 24; // Enviar paquete de Red
     public static final int SYS_NET_RECEIVE      = 25; // Recibir paquete de Red
-    public static final int SYS_MEM_WRITE_BYTE   = 26; // Escribir un byte en una direccion fisica
+	public static final int SYS_MEM_WRITE_BYTE   = 26; // Escribir un byte en una direccion fisica
     public static final int SYS_MEM_READ_BYTE    = 27; // Leer un byte de una direccion fisica
+	// valor 28 y 29 reservados por ahora
+	public static final int SYS_EXEC    		 = 30; // Ejecutar un .class
+
 
     // FIRMAS NATIVAS
     public static native int sys(int id, int a, int b, Object c, int d);
