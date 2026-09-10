@@ -1199,6 +1199,8 @@ jit_op_wide:
     mov eax, edx
     call jit_emit_dword
     ret
+
+; Opcode: 0xC4 (Branch .ret interno para wide ret)
 .ret:
     mov al, 0x8B
     call jit_emit_byte
@@ -1206,7 +1208,84 @@ jit_op_wide:
     call jit_emit_byte
     mov eax, ecx
     call jit_emit_dword
+    
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, pc_map
+    call jit_emit_dword
+    
     mov al, 0xFF
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    ret
+	
+; Opcode: 0xA8
+jit_op_jsr:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl eax, 8
+    or eax, ebx
+    movsx eax, ax
+
+    mov ecx, esi
+    sub ecx, [jit_bytecode_base]
+
+    mov al, 0x68
+    call jit_emit_byte
+    push eax
+    mov eax, ecx
+    call jit_emit_dword
+    pop eax
+
+    mov ecx, esi
+    sub ecx, [jit_bytecode_base]
+    sub ecx, 3
+    add ecx, eax
+
+    mov al, 0xE9
+    call jit_emit_byte
+    mov edx, [fixup_count]
+    mov ebx, [jit_buffer_ptr]
+    mov [fixup_addr + edx * 4], ebx
+    mov [fixup_target + edx * 4], ecx
+    inc edx
+    mov [fixup_count], edx
+    xor eax, eax
+    call jit_emit_dword
+    ret
+
+; Opcode: 0xA9
+jit_op_ret:
+    movzx ebx, byte [esi]
+    inc esi
+    shl ebx, 2
+    add ebx, 16
+    neg ebx
+    
+    mov al, 0x8B            
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    
+    mov al, 0x8B            
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, pc_map
+    call jit_emit_dword
+    
+    mov al, 0xFF            
     call jit_emit_byte
     mov al, 0xE0
     call jit_emit_byte
@@ -4178,45 +4257,6 @@ jit_op_goto_w:
     call jit_emit_dword
     ret
 
-jit_op_jsr:
-    movzx eax, byte [esi]
-    inc esi
-    movzx ebx, byte [esi]
-    inc esi
-    shl eax, 8
-    or eax, ebx
-    movsx eax, ax
-
-    mov ecx, esi
-    sub ecx, [jit_bytecode_base]
-
-    mov al, 0x68
-    call jit_emit_byte
-    mov edx, [fixup_count]
-    mov ebx, [jit_buffer_ptr]
-    mov [fixup_addr + edx * 4], ebx
-    mov [fixup_target + edx * 4], ecx
-    inc edx
-    mov [fixup_count], edx
-    xor eax, eax
-    call jit_emit_dword
-
-    mov ecx, esi
-    sub ecx, [jit_bytecode_base]
-    sub ecx, 3
-    add ecx, eax
-
-    mov al, 0xE9
-    call jit_emit_byte
-    mov edx, [fixup_count]
-    mov ebx, [jit_buffer_ptr]
-    mov [fixup_addr + edx * 4], ebx
-    mov [fixup_target + edx * 4], ecx
-    inc edx
-    mov [fixup_count], edx
-    xor eax, eax
-    call jit_emit_dword
-    ret
 
 jit_op_jsr_w:
     mov eax, esi
@@ -4234,25 +4274,7 @@ jit_op_jsr_w:
     call jit_emit_branch_target
     ret
 
-jit_op_ret:
-    movzx ebx, byte [esi]
-    inc esi
-    shl ebx, 2
-    add ebx, 16
-    neg ebx
-    
-    mov al, 0x8B            ; mov eax, [ebp + disp32]
-    call jit_emit_byte
-    mov al, 0x85
-    call jit_emit_byte
-    mov eax, ebx
-    call jit_emit_dword
-    
-    mov al, 0xFF            ; jmp eax
-    call jit_emit_byte
-    mov al, 0xE0
-    call jit_emit_byte
-    ret
+
 
 jit_op_tableswitch:
     mov eax, esi
