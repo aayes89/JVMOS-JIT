@@ -25,17 +25,17 @@ package java.awt.g3d;
 import java.awt.Color;
 
 public class MeshFactory {    
-    // traslado de métodos en Boot.java a clase nueva para conservar responsabilidad única por clases
+
     // --- PRIMITIVAS 3D ---
     public static Mesh createCube() {
-        Vertex3D v0 = new Vertex3D(-50, -50, -50);
-        Vertex3D v1 = new Vertex3D( 50, -50, -50);
-        Vertex3D v2 = new Vertex3D( 50,  50, -50);
-        Vertex3D v3 = new Vertex3D(-50,  50, -50);
-        Vertex3D v4 = new Vertex3D(-50, -50,  50);
-        Vertex3D v5 = new Vertex3D( 50, -50,  50);
-        Vertex3D v6 = new Vertex3D( 50,  50,  50);
-        Vertex3D v7 = new Vertex3D(-50,  50,  50);
+        Vertex3D v0 = new Vertex3D(-25, -25, -25);
+        Vertex3D v1 = new Vertex3D( 25, -25, -25);
+        Vertex3D v2 = new Vertex3D( 25,  25, -25);
+        Vertex3D v3 = new Vertex3D(-25,  25, -25);
+        Vertex3D v4 = new Vertex3D(-25, -25,  25);
+        Vertex3D v5 = new Vertex3D( 25, -25,  25);
+        Vertex3D v6 = new Vertex3D( 25,  25,  25);
+        Vertex3D v7 = new Vertex3D(-25,  25,  25);
                 
         Triangle3D t0 = new Triangle3D(v0, v1, v2);        
         Triangle3D t1 = new Triangle3D(v0, v2, v3);        
@@ -69,11 +69,11 @@ public class MeshFactory {
     }
 
     public static Mesh createPyramid() {
-        Vertex3D v0 = new Vertex3D(-40, -40, -40);
-        Vertex3D v1 = new Vertex3D( 40, -40, -40);
-        Vertex3D v2 = new Vertex3D( 40, -40,  40);
-        Vertex3D v3 = new Vertex3D(-40, -40,  40);
-        Vertex3D v4 = new Vertex3D(  0,  60,   0);
+        Vertex3D v0 = new Vertex3D(-25, -25, -25);
+        Vertex3D v1 = new Vertex3D( 25, -25, -25);
+        Vertex3D v2 = new Vertex3D( 25, -25,  25);
+        Vertex3D v3 = new Vertex3D(-25, -25,  25);
+        Vertex3D v4 = new Vertex3D(  0,  25,   0);
 
         Triangle3D t0 = new Triangle3D(v0, v2, v1);
         Triangle3D t1 = new Triangle3D(v0, v3, v2);
@@ -95,7 +95,7 @@ public class MeshFactory {
     }
     
     public static Mesh createSphere() {
-        int radius = 45;
+        int radius = 25;
         int rings = 8;
         int sectors = 8;
         
