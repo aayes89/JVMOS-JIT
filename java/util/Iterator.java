@@ -31,8 +31,7 @@ public interface Iterator<E> {
     E next();
 
     // Elimina el último elemento
-    //default 
-	void remove() {
+    default void remove() {
         //throw new UnsupportedOperationException("remove");
     }
 
