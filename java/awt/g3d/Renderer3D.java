@@ -64,8 +64,67 @@ public class Renderer3D {
     public void setProjectionScale(int scale) {
         projectionScale = scale;
     }
+
+	// versión mejorada de render para establecer posición en X, Y y tamaño en porcierto (%)
+	public void render(Mesh mesh, Matrix3D mt, int screenX, int screenY, int scalePercent) {
+        if (mesh == null || mesh.getTriangleCount() == 0) return;
+        
+        int triangleCount = mesh.getTriangleCount();
+        int currentProjScale = (projectionScale * scalePercent) / 100;
+
+        for (int i = 0; i < triangleCount; i++) {
+            Triangle3D t = mesh.getTriangle(i);
+            order[i] = i;
+            
+            mt.transform(t.getV0(), projA[i]);
+            mt.transform(t.getV1(), projB[i]);
+            mt.transform(t.getV2(), projC[i]);
+            
+            depth[i] = projA[i].getZ() + projB[i].getZ() + projC[i].getZ();
+        }
+
+        for (int i = 0; i < triangleCount - 1; i++) {
+            for (int j = i + 1; j < triangleCount; j++) {
+                if (depth[order[i]] < depth[order[j]]) {
+                    int temp = order[i];
+                    order[i] = order[j];
+                    order[j] = temp;
+                }
+            }
+        }
+
+        for (int n = 0; n < triangleCount; n++) {
+            int idx = order[n];
+            Triangle3D t = mesh.getTriangle(idx);
+            
+            Vertex3D a = projA[idx];
+            Vertex3D b = projB[idx];
+            Vertex3D c = projC[idx]; 
+            
+            int z0 = a.getZ() + cameraZ;
+            int z1 = b.getZ() + cameraZ;            
+            int z2 = c.getZ() + cameraZ;
+            
+            if (z0 <= 0 || z1 <= 0 || z2 <= 0) continue;
+
+            // Proyectamos directamente a la coordenada X, Y deseada
+            int x0 = (a.getX() * currentProjScale) / z0 + screenX;
+            int y0 = (a.getY() * currentProjScale) / z0 + screenY;
+            int x1 = (b.getX() * currentProjScale) / z1 + screenX;
+            int y1 = (b.getY() * currentProjScale) / z1 + screenY;
+            int x2 = (c.getX() * currentProjScale) / z2 + screenX;
+            int y2 = (c.getY() * currentProjScale) / z2 + screenY;            
+
+            int cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
+            
+            if (cross <= 0) continue;
+            
+            graphics.setColor(t.getColor());
+            graphics.fillTriangle(x0, y0, x1, y1, x2, y2);
+        }
+    }
 	
-	public void render(Mesh mesh, Matrix3D mt) {
+	public void render_old(Mesh mesh, Matrix3D mt) {
 		if (mesh == null ||mesh.triangles == null) {
 			return;
 		}
