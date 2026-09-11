@@ -29,8 +29,6 @@ import java.lang.System;
 import java.lang.Class;
 import java.lang.StringBuilder;
 
-
-
 public final class Arrays {
 	// tomado de implementación original
 	private static final long serialVersionUID = -2764017481108945198L;
@@ -74,6 +72,13 @@ public final class Arrays {
         } catch (ArrayIndexOutOfBoundsException e) {
             throw java.util.ArrayList.throwIndexOutOfBoundsException(location, a.length);
         }*/
+	}
+
+	// Rellenar el arreglo con val en una región
+	public static void fill(Object[] array, int val, int cantMax, Object n){
+		for(int i=0;i<cantMax;i++){
+			array[i] = val;	
+		}		
 	}
 	
 	// Retorna el índice de la primera ocurrencia del objecto, sino está entonces -1
