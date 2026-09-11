@@ -22,7 +22,6 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-
 /*MIT License
 
 Copyright (c) 2026 Allan (Slam)
@@ -47,29 +46,28 @@ SOFTWARE.*/
 
 package java.util;
 
+import java.lang.E;
+
 public interface ListIterator<E> extends Iterator<E> {
-    // Operaciones de Consulta
-	// Retorna True si hay otro elemento, False de lo contrario
+    // Operaciones de consulta
+	// Hay más?
     boolean hasNext();
-
-    // Devuelve el próximo elemento
+	// Siguiente elemento
     E next();
-
-    // Retorna True si hubo un elemento previo
+	// Tenía un anterior?
     boolean hasPrevious();
-	// Retorna el elemento previo
+	// Devuele el elemento anterior
     E previous();
-	// Retorna el índice del próximo elemento
+	// Retorna el índice del próximo elemento 
     int nextIndex();
-	// Retorna el índice del elemento previo
+	// Retorna el índice del elemento anterior
     int previousIndex();
 
-
-    // Operaciónes de Modificación
-	// Elimina el elemento que fue devuelto por next en la última llamada
+    // Operaciones de modificación
+	// Elimina el último elemento en la Pila (POP sin almacenar elemento)
     void remove();
-	// Reemplaza el último elemento que fuera tratado con next o previous
+	// Reemplaza el último elemento en la Pila por el nuevo
     void set(E e);
-	// Agrega el elemento a la pila
+	// Inserta en la cima de la Pila un nuevo elemento
     void add(E e);
 }
