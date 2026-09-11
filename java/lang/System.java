@@ -40,6 +40,13 @@ public final class System {
         Native.sys(17, status, 0, 0, 0);
     }
 
+	// tomado de función reboot en C
+	public static void reboot(){
+		//Syscall 11: Puerto E/S (outb)
+		Runtime.outb(0x64, 0xFE);
+		//while (1) asm volatile ("hlt");
+	}
+
     // Copia manual para eludir punteros inseguros de C
     public static void arraycopy(Object src, int srcPos, Object dest, int destPos, int length) {
         if (src instanceof byte[] && dest instanceof byte[]) {
