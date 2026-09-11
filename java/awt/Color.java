@@ -33,6 +33,11 @@ public class Color {
     public static final int LIGHT_GRAY  = 0x00C0C0C0;
     public static final int DARK_GRAY   = 0x00404040;
     public static final int TRANSPARENT = 0x00000000; // Dependiendo de tu alfa
+	public static final int WIN_BG 		= 0x00E0E0E0; 
+	public static final int WIN_TITLE 	= 0x00000080;
+    public static final int SEL 		= 0x00D0D0FF;
+	public static final int FOLDER 		= 0x00F0C000; 
+	public static final int	FILE		= 0x00A0A0A0;
 
     private final int rgb;
 	
