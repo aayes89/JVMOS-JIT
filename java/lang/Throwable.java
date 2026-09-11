@@ -47,6 +47,11 @@ public class Throwable {
 		System.out.println(message);
     }
 
+	public void initCause(Throwable cause){
+		// TODO pero evita panic en el JIT
+		System.out.println(cause.getMessage());
+	}
+
     public String getMessage() {
         return msg;
     }
