@@ -30,6 +30,7 @@ import kernel.Native;
 public class Demo3D {
     // liberado código de Boot.java para limpiar código y permitir ejecución independiente.
     // antigua función runShapes3D ahora run(Graphics2D)
+    // como me quedan superpuestas los render, toca añadir una función para indicar posición donde hacer render y % del tamaño de las figuras
 
     public static void run(Graphics2D g) {
         Renderer3D renderer = new Renderer3D(g, 1024, 768);
