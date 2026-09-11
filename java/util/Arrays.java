@@ -35,7 +35,9 @@ public final class Arrays {
 	private final E[] a;
 	
 	// constructor
-	public Arrays(){}
+	public Arrays(){
+		a = new E[1];
+	}
 
 	// comprobar longitud de registro y contar si es válido
 	public static void checkOffsetAndCount(int arrayLength, int offset, int count) {
@@ -70,7 +72,7 @@ public final class Arrays {
         /*try {
             return a[location];
         } catch (ArrayIndexOutOfBoundsException e) {
-            throw java.util.ArrayList.throwIndexOutOfBoundsException(location, a.length);
+            throw new IndexOutOfBoundsException(location, a.length);
         }*/
 	}
 	
