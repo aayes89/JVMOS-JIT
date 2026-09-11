@@ -34,6 +34,7 @@ import java.awt.g3d.Mesh;
 import java.awt.g3d.Vertex3D;
 import java.awt.g3d.Matrix3D;
 import java.awt.g3d.Demo3D;
+import java.awt.g3d.MeshFactory;
 import java.awt.Toolkit;
 import java.util.Calendar;
 import java.lang.Thread;
@@ -408,11 +409,11 @@ public class Boot {
 			clearScreen(); 
 			cursorY = 40; 
 		}
-		else if(cmd.equals("cube3d")){
-			runCube3D();
+		else if(cmd.equals("cube2d")){
+			runCube2D();
 			clearScreen();
 			cursorY = 40;
-		}else if(cmd.equals("cubem")){
+		}else if(cmd.equals("cube3d")){
 			runCubeMesh3D();			
 			clearScreen();
 			cursorY = 40;
@@ -497,8 +498,8 @@ public class Boot {
         printLine("  date       : Muestra fecha");
         printLine("  time       : Muestra hora");
         printLine("  cube       : Animacion de Cubo en wireframe");
-		printLine("  cube3d     : Animacion de Cubo en 3D");
-		printLine("  cubem      : Animacion de Cubo en 3D con Mesh");
+		printLine("  cube2d     : Animacion de Cubo en 3D");
+		printLine("  cube3d     : Animacion de Cubo en 3D con Mesh");
 		printLine("  demo3d     : Test de motor 3D final");
         printLine("  startx     : Interfaz Grafica (Deshabilitada)");
         printLine("  ver        : Info del sistema");
@@ -569,7 +570,7 @@ public class Boot {
             if (Native.sys(Native.SYS_READ_KEYBOARD, 0, 0, 0, 0) == 27) break;
         }
     }
-	public static void runCube3D() {
+	public static void runCube2D() {
 		clearScreen();
 		g.setColor(0x0000FFFF);
 		g.drawString("Baremetal 3D Engine - Filled Cube - ESC para salir",20,20);
@@ -734,52 +735,10 @@ public class Boot {
 			}
 		}
 	}
-
-	public static Mesh createCube() {
-		Vertex3D v0 = new Vertex3D( -50,  -50, -50);
-		Vertex3D v1 = new Vertex3D( 50, -50, -50);
-		Vertex3D v2 = new Vertex3D( 50, 50, -50);
-		Vertex3D v3 = new Vertex3D( -50,  50, -50);
-		Vertex3D v4 = new Vertex3D( -50,  -50, 50);
-		Vertex3D v5 = new Vertex3D( 50, -50, 50);
-		Vertex3D v6 = new Vertex3D( 50, 50, 50);
-		Vertex3D v7 = new Vertex3D( -50,  50, 50);
-				
-		Triangle3D t0 = new Triangle3D(v0, v1, v2);		
-		Triangle3D t1 = new Triangle3D(v0, v2, v3);		
-		Triangle3D t2 = new Triangle3D(v1, v5, v6);		
-		Triangle3D t3 = new Triangle3D(v1, v6, v2);
-		Triangle3D t4 = new Triangle3D(v5, v4, v7);
-		Triangle3D t5 = new Triangle3D(v5, v7, v6);
-		Triangle3D t6 = new Triangle3D(v4, v0, v3);
-		Triangle3D t7 = new Triangle3D(v4, v3, v7);
-		Triangle3D t8 = new Triangle3D(v3, v2, v6);
-		Triangle3D t9 = new Triangle3D(v3, v6, v7);
-		Triangle3D t10 = new Triangle3D(v4, v5, v1);
-		Triangle3D t11 = new Triangle3D(v4, v1, v0);
-		
-		// Colores
-		t0.setColor(Color.RED); 
-		t1.setColor(Color.RED);
-		t2.setColor(Color.GREEN);
-		t3.setColor(Color.GREEN);
-		t4.setColor(Color.BLUE); 
-		t5.setColor(Color.BLUE);
-		t6.setColor(Color.YELLOW);
-		t7.setColor(Color.YELLOW);
-		t8.setColor(Color.CYAN); 
-		t9.setColor(Color.CYAN);
-		t10.setColor(Color.MAGENT);
-		t11.setColor(Color.MAGENT);	
-		
-		Vertex3D[] vertices = {	v0, v1, v2, v3,	v4, v5, v6, v7 };
-		Triangle3D[] triangles = { t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 };
-		return new Mesh(vertices,triangles);
-	}
-		
 	public static void runCubeMesh3D() {
         Renderer3D renderer = new Renderer3D(g, 1024, 768);
-        Mesh cube = createCube();
+		
+        Mesh cube = MeshFactory.createCube();
         
         // Pre-asignar matrices fuera del bucle para proteger la memoria
         Matrix3D matrix = new Matrix3D();
@@ -815,7 +774,7 @@ public class Boot {
             matrix.multiply(rotZ);
 
             // Renderizar la geometría final combinada
-            renderer.render(cube, matrix);
+            renderer.render_old(cube, matrix);
             
             // Avanzar rotaciones a distintas velocidades para un efecto más natural
             angleX = (angleX + 1) % 360;
