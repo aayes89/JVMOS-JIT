@@ -33,7 +33,7 @@ import java.awt.g3d.Triangle3D;
 import java.awt.g3d.Mesh;
 import java.awt.g3d.Vertex3D;
 import java.awt.g3d.Matrix3D;
-import java.awt.g3d.MeshFactory;
+import java.awt.g3d.Demo3D;
 import java.awt.Toolkit;
 import java.util.Calendar;
 import java.lang.Thread;
@@ -417,7 +417,7 @@ public class Boot {
 			clearScreen();
 			cursorY = 40;
 		}else if(cmd.equals("demo3d")){
-			runShapes3D();
+			Demo3D.run(g);
 			clearScreen();
 			cursorY = 40;
 		}
@@ -831,63 +831,7 @@ public class Boot {
             }
         }
     }
-	
-	public static void runShapes3D() {
-        Renderer3D renderer = new Renderer3D(g, 1024, 768);
-        
-        Mesh cube = MeshFactory.createCube();
-        Mesh pyramid = MeshFactory.createPyramid();
-        Mesh sphere = MeshFactory.createSphere();
-        
-        Matrix3D rotX = new Matrix3D();
-        Matrix3D rotY = new Matrix3D();
-        Matrix3D rotZ = new Matrix3D();
-        
-        Matrix3D transCube = new Matrix3D();
-        Matrix3D transPyramid = new Matrix3D();
-        Matrix3D transSphere = new Matrix3D();
-        
-        int angle = 0;
-        
-        while (true) {
-            clearScreen();
 
-            int sinA = Math.sin(angle);
-            int cosA = Math.cos(angle);
-            int sinB = Math.sin(angle / 2);
-            int cosB = Math.cos(angle / 2);
-
-            rotX.setRotationX(sinA, cosA);
-            rotY.setRotationY(sinA, cosA);
-            rotZ.setRotationZ(sinB, cosB);
-
-            // Pirámide
-            transPyramid.setTranslation(-220, 0, 80);
-            transPyramid.multiply(rotY); 
-            renderer.render(pyramid, transPyramid);
-
-            // Cubo
-            transCube.setTranslation(0, 0, 80); 
-            transCube.multiply(rotX); 
-            transCube.multiply(rotY);
-            renderer.render(cube, transCube);
-
-            // Esfera
-            transSphere.setTranslation(220, 0, 80); 
-            transSphere.multiply(rotX);
-            transSphere.multiply(rotZ); 
-            renderer.render(sphere, transSphere);
-
-            g.setColor(Color.WHITE);
-            g.drawString("Demo Bare-Metal 3D: Piramide, Cubo y Esfera (60 FPS). ESC para salir.", 20, 20);
-
-            angle = (angle + 2) % 360;
-
-            Native.sys(12, 16, 0, 0, 0); 
-            if (Native.sys(6, 0, 0, 0, 0) == 27) break;
-        }
-    }
-	
     public static void runStartX() {
         g.setColor(Color.RED); printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");				
     }
