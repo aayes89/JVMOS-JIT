@@ -27,9 +27,11 @@ SECTIONS
         *(.bootstrap_stack)
     }
 
-    .bss BLOCK(4K) : ALIGN(16)
+     .bss BLOCK(4K) : ALIGN(16)
     {
+        bss_start = .;    
         *(COMMON)
         *(.bss*)
+        bss_end = .;      
     }
 }
