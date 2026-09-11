@@ -52,13 +52,13 @@ public interface List<E> extends Collection<E> {
 	// True si la lista está vacia, de lo contrario False
     public boolean isEmpty();
 	// Retorna el iterador de la lista.
-    //public Iterator<E> iterator();
+    public Iterator<E> iterator();
 	// Retorna el índice de la última aparición del objeto en la lista, -1 si no
     public int lastIndexOf(Object object);
 	// Retorna el iterador de lista
-    //public ListIterator<E> listIterator();
+    public ListIterator<E> listIterator();
 	// Retorna el iterador de cierto elemento segun posición
-    //public ListIterator<E> listIterator(int location);
+    public ListIterator<E> listIterator(int location);
 	// Operación similar a POP en pila (obtiene elemento al inicio y lo elimina de la lista)
     public E remove(int location);
 	// Elimina el elemento si existe
