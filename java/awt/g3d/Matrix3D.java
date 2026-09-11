@@ -107,19 +107,18 @@ public class Matrix3D {
     }
 
     // Transforma un Vertex3D. (Basado en OpenGL)
-    public Vertex3D transform(Vertex3D v) {
-        int x;
-        int y;
-        int z;
-        x = ((v.x * m00) + (v.y * m01) + (v.z * m02)) >> 8;
-        y = ((v.x * m10) + (v.y * m11) + (v.z * m12)) >> 8;
-        z = ((v.x * m20) + (v.y * m21) + (v.z * m22)) >> 8;
+    public void transform(Vertex3D v, Vertex3D out) {
+        int vx = v.getX();
+        int vy = v.getY();
+        int vz = v.getZ();
+        
+        int rx = ((vx * m00) + (vy * m01) + (vz * m02)) >> 8;
+        int ry = ((vx * m10) + (vy * m11) + (vz * m12)) >> 8;
+        int rz = ((vx * m20) + (vy * m21) + (vz * m22)) >> 8;
 
-        x += tx;
-        y += ty;
-        z += tz;
-
-        return new Vertex3D(x, y, z);
+        out.setX(rx + tx);
+        out.setY(ry + ty);
+        out.setZ(rz + tz);
     }
 
     // Multiplica esta matriz por otra. (Gracias Algebralineal 1 y 2!)
