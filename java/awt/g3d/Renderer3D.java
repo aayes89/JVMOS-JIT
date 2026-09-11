@@ -27,20 +27,34 @@ import java.awt.Color;
 
 //Basado en librería de OpenGL
 public class Renderer3D {
+	
     private Graphics2D graphics;
     private int screenWidth;
     private int screenHeight;
     private int cameraZ;
     private int projectionScale;
+	private static final int MAX_TRIANGLES = 256;
+	
+	// Pre-asignación de arreglos (memoria máxima 256 triángulos)
+    private int[] order = new int[MAX_TRIANGLES];
+    private int[] depth = new int[MAX_TRIANGLES];
+    private Vertex3D[] projA = new Vertex3D[MAX_TRIANGLES];
+    private Vertex3D[] projB = new Vertex3D[MAX_TRIANGLES];
+    private Vertex3D[] projC = new Vertex3D[MAX_TRIANGLES];
 
-	  // Constructor 
+	// Constructor 
     public Renderer3D(Graphics2D graphics,int screenWidth,int screenHeight) {
         this.graphics = graphics;
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
-
         cameraZ = 150;
         projectionScale = 400;
+		
+		for(int i=0;i<MAX_TRIANGLES;i++){
+			projA[i] = new Vertex3D();
+			projB[i] = new Vertex3D();
+			projC[i] = new Vertex3D();
+		}
     }
 
     public void setCameraZ(int z) {
@@ -50,29 +64,24 @@ public class Renderer3D {
     public void setProjectionScale(int scale) {
         projectionScale = scale;
     }
-
-	// Adaptado de implementación en OpenGL	a JVMOS-JIT g3d
-    public void render(Mesh mesh, Matrix3D transform) {
-		if (mesh == null) {
+	
+	public void render(Mesh mesh, Matrix3D mt) {
+		if (mesh == null ||mesh.triangles == null) {
 			return;
 		}
-		if (mesh.triangles == null) {
-			return;
-		}
-		int triangleCount = mesh.triangles.length;
 		
-		// Profundidad de cada triángulo
-		int[] order = new int[triangleCount];
-		int[] depth = new int[triangleCount];
+		int triangleCount = mesh.getTriangleCount();
 
 		// Transformar y calcular profundidad
 		for (int i = 0; i < triangleCount; i++) {
-			Triangle3D t = mesh.triangles[i];
+			Triangle3D t = mesh.getTriangle(i);
 			order[i] = i;
-			Vertex3D a = transform.transform(t.v0);
-			Vertex3D b = transform.transform(t.v1);
-			Vertex3D c = transform.transform(t.v2);
-			depth[i] = a.z + b.z + c.z;
+			
+			mt.transform(t.getV0(), projA[i]);
+			mt.transform(t.getV1(), projB[i]);
+			mt.transform(t.getV2(), projC[i]);
+			
+			depth[i] = projA[i].getZ() + projB[i].getZ() + projC[i].getZ();
 		}
 
 		// Se dibuja primero el triángulo que está más lejos
@@ -88,38 +97,31 @@ public class Renderer3D {
 
 		// Rasterización
 		for (int n = 0;n < triangleCount;n++) {
-			Triangle3D t = mesh.triangles[order[n]];
+			int idx = order[n];
+			Triangle3D t = mesh.getTriangle(idx);
 			
 			// Transformar los tres vértices
-			Vertex3D a = transform.transform(t.v0);
-			Vertex3D b = transform.transform(t.v1);
-			Vertex3D c = transform.transform(t.v2);
+			Vertex3D a = projA[idx];
+			Vertex3D b = projB[idx];
+			Vertex3D c = projC[idx]; 
 			
 			// Trasladar al espacio de cámara
-			int z0 = a.z + cameraZ;
-			int z1 = b.z + cameraZ;			
-			int z2 = c.z + cameraZ;
+			int z0 = a.getZ() + cameraZ;
+			int z1 = b.getZ() + cameraZ;			
+			int z2 = c.getZ() + cameraZ;
 			
 			// Si un vértice está detrás de la cámara, descartamos el triángulo
 			if (z0 <= 0 || z1 <= 0 || z2 <= 0) {
 				continue;
 			}
 
-			// Proyección perspectiva
-			int x0 = (a.x * projectionScale) / z0;
-			int y0 = (a.y * projectionScale) / z0;
-			int x1 = (b.x * projectionScale) / z1;
-			int y1 = (b.y * projectionScale) / z1;
-			int x2 = (c.x * projectionScale) / z2;
-			int y2 = (c.y * projectionScale) / z2;
-			
-			// Centro de pantalla
-			x0 += screenWidth / 2;
-			y0 += screenHeight / 2;
-			x1 += screenWidth / 2;
-			y1 += screenHeight / 2;
-			x2 += screenWidth / 2;
-			y2 += screenHeight / 2;
+			// Proyección perspectiva y centro de pantalla
+			int x0 = (a.getX() * projectionScale) / z0 + screenWidth / 2;
+			int y0 = (a.getY() * projectionScale) / z0 + screenHeight / 2;
+			int x1 = (b.getX() * projectionScale) / z1 + screenWidth / 2;
+			int y1 = (b.getY() * projectionScale) / z1 + screenHeight / 2;
+			int x2 = (c.getX() * projectionScale) / z2 + screenWidth / 2;
+			int y2 = (c.getY() * projectionScale) / z2 + screenHeight / 2;			
 
 			// Producto cruzado 2D: (B-A) x (C-A)
 			int cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
@@ -134,10 +136,10 @@ public class Renderer3D {
 			}
 			
 			// Activar color del triángulo
-			graphics.setColor(new Color(t.color));
+			graphics.setColor(t.getColor());
 			
 			// Entregar rasterización a Graphics2D
-			graphics.fillTriangle(x0, y0,x1, y1,x2, y2);
+			graphics.fillTriangle(x0, y0, x1, y1, x2, y2);
 		}
 	}
 }
