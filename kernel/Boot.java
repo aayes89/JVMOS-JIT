@@ -25,12 +25,18 @@ package kernel;
 import java.io.DiskIO;
 import java.io.FileSystem;
 import java.io.File;
+import java.io.PrintStream;
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.g3d.Renderer3D;
+import java.awt.g3d.Triangle3D;
+import java.awt.g3d.Mesh;
+import java.awt.g3d.Vertex3D;
+import java.awt.g3d.Matrix3D;
 import java.awt.Toolkit;
 import java.util.Calendar;
-import java.io.PrintStream;
 import java.lang.Thread;
+import java.lang.Math;
 
 public class Boot {
      
@@ -397,9 +403,18 @@ public class Boot {
 			}
         }
         else if (cmd.equals("cube")) { 
-			runCube3D(); 
+			runCubeWireframe();
 			clearScreen(); 
 			cursorY = 40; 
+		}
+		else if(cmd.equals("cube3d")){
+			runCube3D();
+			clearScreen();
+			cursorY = 40;
+		}else if(cmd.equals("cubem")){
+			runCubeMesh3D();
+			clearScreen();
+			cursorY = 40;
 		}
 		else if (cmd.equals("startx")) {
 			runStartX(); 
@@ -476,7 +491,9 @@ public class Boot {
         printLine("  cls / clear: Limpia pantalla");
         printLine("  date       : Muestra fecha");
         printLine("  time       : Muestra hora");
-        printLine("  cube       : Animacion 3D");
+        printLine("  cube       : Animacion de Cubo en wireframe");
+		printLine("  cube3d     : Animacion de Cubo en 3D");
+		printLine("  cubem      : Animacion de Cubo en 3D con Mesh");
         printLine("  startx     : Interfaz Grafica (Deshabilitada)");
         printLine("  ver        : Info del sistema");
         printLine("  exit       : Apagar equipo");
@@ -494,7 +511,7 @@ public class Boot {
     // =========================================================================
     // MOTOR 3D BAREMETAL (Cubo Giratorio)
     // =========================================================================
-    public static void runCube3D() {
+    public static void runCubeWireframe() {
         clearScreen();
         g.setColor(Color.CYAN);
         g.drawString("Baremetal 3D Engine (JIT Integer Math) - Presiona ESC para salir", 20, 20);
@@ -503,14 +520,20 @@ public class Boot {
         int[] cubeY = {-50, -50, 50, 50, -50, -50, 50, 50};
         int[] cubeZ = {-50, -50, -50, -50, 50, 50, 50, 50};
         int[] edges = { 0,1, 1,2, 2,3, 3,0, 4,5, 5,6, 6,7, 7,4, 0,4, 1,5, 2,6, 3,7 };
-        int[] projX = new int[8], projY = new int[8], oldProjX = new int[8], oldProjY = new int[8];
+        int[] projX = new int[8];
+		int[] projY = new int[8];
+		int[] oldProjX = new int[8];
+		int[] oldProjY = new int[8];
         int angleX = 0, angleY = 0, angleZ = 0;
 
         while (true) {
             g.setColor(Color.BLACK);
             for (int i = 0; i < 12; i++) {
-                int p1 = edges[i * 2], p2 = edges[i * 2 + 1];
-                if (oldProjX[p1] != 0) g.drawLine(oldProjX[p1], oldProjY[p1], oldProjX[p2], oldProjY[p2]);
+                int p1 = edges[i * 2];
+				int p2 = edges[i * 2 + 1];
+                if (oldProjX[p1] != 0){
+					g.drawLine(oldProjX[p1], oldProjY[p1], oldProjX[p2], oldProjY[p2]);
+				}
             }
 
             int sinX = Math.sin(angleX), cosX = Math.cos(angleX);
@@ -540,9 +563,292 @@ public class Boot {
             if (Native.sys(Native.SYS_READ_KEYBOARD, 0, 0, 0, 0) == 27) break;
         }
     }
+	public static void runCube3D() {
+		clearScreen();
+		g.setColor(0x0000FFFF);
+		g.drawString("Baremetal 3D Engine - Filled Cube - ESC para salir",20,20);
 
+		int[] cubeX = {-50,  50,  50, -50, -50,  50,  50, -50};
+		int[] cubeY = {-50, -50,  50,  50, -50, -50,  50,  50};
+		int[] cubeZ = {-50, -50, -50, -50,  50,  50,  50,  50};
+
+		int[] faces = {	0, 1, 2, 3,	4, 7, 6, 5,	0, 4, 5, 1,	3, 2, 6, 7,	0, 3, 7, 4,	1, 5, 6, 2};
+		int[] faceColors = {
+			0x00FF0000, // rojo
+			0x00000080, // azul oscuro
+			0x0000AA00, // verde
+			0x0000FF00, // verde brillante
+			0x000000FF, // azul
+			0x00FFFF00  // amarillo
+		};
+
+		int[] projX = new int[8];
+		int[] projY = new int[8];
+
+		int[] rotZ = new int[8];
+
+		int[] faceDepth = new int[6];
+		int[] faceOrder = {0, 1, 2, 3, 4, 5};
+
+		int angleX = 0;
+		int angleY = 0;
+		int angleZ = 0;
+
+		while (true) {
+			clearScreen();
+			// Seno y Coseno
+			int sinX = Math.sin(angleX);
+			int cosX = Math.cos(angleX);
+
+			int sinY = Math.sin(angleY);
+			int cosY = Math.cos(angleY);
+
+			int sinZ = Math.sin(angleZ);
+			int cosZ = Math.cos(angleZ);
+
+			// Rotadr y proyectar los 8 vértices
+			for (int i = 0; i < 8; i++) {
+				int x = cubeX[i];
+				int y = cubeY[i];
+				int z = cubeZ[i];
+
+				// Rotación en X
+				int newY = (y * cosX - z * sinX) >> 8;
+				int newZ = (y * sinX + z * cosX) >> 8;
+				y = newY;
+				z = newZ;
+
+				// Rotación en Y
+				int newX = (x * cosY + z * sinY) >> 8;
+				newZ = (-x * sinY + z * cosY) >> 8;
+				x = newX;
+				z = newZ;
+
+				// Rotación en Z
+				newX = (x * cosZ - y * sinZ) >> 8;
+				newY = (x * sinZ + y * cosZ) >> 8;
+				x = newX;
+				y = newY;
+				
+				// Respaldamos la profundidad
+				rotZ[i] = z;
+
+				// Perspectiva
+				int zShifted = z + 200;
+
+				// Protección contra división entre cero y geometría detrás de la cámara.
+				if (zShifted < 1) {
+					zShifted = 1;
+				}
+
+				projX[i] = (x * 400) / zShifted + 512;
+				projY[i] = (y * 400) / zShifted + 384;
+			}
+
+			// Calcular profundidad promedio de cada cara
+			for (int i = 0; i < 6; i++) {
+				int base = i << 2;
+
+				int v0 = faces[base];
+				int v1 = faces[base + 1];
+				int v2 = faces[base + 2];
+				int v3 = faces[base + 3];
+
+				faceDepth[i] = rotZ[v0]	+ rotZ[v1] + rotZ[v2] + rotZ[v3];
+			}
+
+			// Ordenar caras
+			for (int i = 0; i < 6; i++) {
+				for (int j = i + 1; j < 6; j++) {
+					if (faceDepth[faceOrder[i]] > faceDepth[faceOrder[j]]) {
+						int temp = faceOrder[i];
+						faceOrder[i] = faceOrder[j];
+						faceOrder[j] = temp;
+					}
+				}
+			}
+
+			// Dibujar caras
+			for (int f = 0; f < 6; f++) {
+				int face = faceOrder[f];
+				int base = face << 2;
+
+				int v0 = faces[base];
+				int v1 = faces[base + 1];
+				int v2 = faces[base + 2];
+				int v3 = faces[base + 3];
+
+
+				// Producto cruzado en espacio de pantalla.
+				int cross = (projX[v1] - projX[v0])	* (projY[v2] - projY[v0]) -	(projY[v1] - projY[v0])	* (projX[v2] - projX[v0]);
+
+				// Si la cara apunta hacia atrás, no se dibuja.
+				if (cross >= 0) {
+					continue;
+				}
+				// Color de la cara actual
+				g.setColor(faceColors[face]);
+
+
+				// CUADRILATERO -> DOS TRIANGULOS
+				g.fillTriangle(projX[v0],projY[v0],projX[v1],projY[v1],projX[v2],projY[v2]);
+				g.fillTriangle(projX[v0],projY[v0],projX[v2],projY[v2],projX[v3],projY[v3]);
+			}
+
+
+			// Dibujar los border para dar aspecto de cubo			
+			g.setColor(Color.BLACK);
+
+			for (int i = 0; i < 6; i++) {
+				int face = faceOrder[i];
+				int base = face << 2;
+
+				int v0 = faces[base];
+				int v1 = faces[base + 1];
+				int v2 = faces[base + 2];
+				int v3 = faces[base + 3];
+
+				g.drawLine(projX[v0],projY[v0],projX[v1],projY[v1]);
+				g.drawLine(projX[v1],projY[v1],projX[v2],projY[v2]);
+				g.drawLine(projX[v2],projY[v2],projX[v3],projY[v3]);
+				g.drawLine(projX[v3],projY[v3],projX[v0],projY[v0]);
+			}
+
+			// Siguiente frame
+			angleX = (angleX + 2) % 360;
+			angleY = (angleY + 3) % 360;
+			angleZ = (angleZ + 1) % 360;
+			try {
+				Thread.sleep(16);
+			} catch (Exception e) {
+			}
+
+			if (kernel.Native.sys(kernel.Native.SYS_READ_KEYBOARD,0,0,0,0) == 27) {
+				break;
+			}
+		}
+	}
+
+	public static Mesh createCube() {
+		Vertex3D v0 = new Vertex3D(-50, -50, -50);
+		Vertex3D v1 = new Vertex3D( 50, -50, -50);
+		Vertex3D v2 = new Vertex3D( 50,  50, -50);
+		Vertex3D v3 = new Vertex3D(-50,  50, -50);
+		Vertex3D v4 = new Vertex3D(-50, -50,  50);
+		Vertex3D v5 = new Vertex3D( 50, -50,  50);
+		Vertex3D v6 = new Vertex3D( 50,  50,  50);
+		Vertex3D v7 = new Vertex3D(-50,  50,  50);
+				
+		Triangle3D t0 = new Triangle3D(v0, v1, v2);		
+		Triangle3D t1 = new Triangle3D(v0, v2, v3);		
+		Triangle3D t2 = new Triangle3D(v1, v5, v6);		
+		Triangle3D t3 = new Triangle3D(v1, v6, v2);
+		Triangle3D t4 = new Triangle3D(v5, v4, v7);
+		Triangle3D t5 = new Triangle3D(v5, v7, v6);
+		Triangle3D t6 = new Triangle3D(v4, v0, v3);
+		Triangle3D t7 = new Triangle3D(v4, v3, v7);
+		Triangle3D t8 = new Triangle3D(v3, v2, v6);
+		Triangle3D t9 = new Triangle3D(v3, v6, v7);
+		Triangle3D t10 = new Triangle3D(v4, v5, v1);
+		Triangle3D t11 = new Triangle3D(v4, v1, v0);
+		
+		// Colores
+		t0.color = 0xFFFF0000; // Rojo
+		t1.color = 0xFFFF0000;
+		t2.color = 0xFF00FF00; // Verde
+		t3.color = 0xFF00FF00;
+		t4.color = 0xFF0000FF; // Azul
+		t5.color = 0xFF0000FF;
+		t6.color = 0xFFFFFF00; // Amarillo
+		t7.color = 0xFFFFFF00;
+		t8.color = 0xFF00FFFF; // Cyan
+		t9.color = 0xFF00FFFF;
+		t10.color = 0xFFFF00FF; // Magenta
+		t11.color = 0xFFFF00FF;
+		
+		
+		Vertex3D[] vertices = {	v0, v1, v2, v3,	v4, v5, v6, v7};
+		return new Mesh(vertices,new Triangle3D[]{t0,t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11});
+	}
+	
+	public static void runCubeMesh3D() {
+		Renderer3D renderer = new Renderer3D(g, 1024, 768);
+
+		renderer.setCameraZ(150);
+		renderer.setProjectionScale(400);
+
+		Mesh cube = createCube();
+
+		int angleY = 0;
+
+		while (true) {
+			// Limpiar pantalla
+			g.setColor(Color.BLACK);
+			g.fillRect(0, 0, 1024, 768);
+
+			// Trigonometría
+			double rad = Math.toRadians(angleY);
+			int sinY = (int)(Math.sin(rad) * Matrix3D.FIXED_ONE);
+			int cosY = (int)(Math.cos(rad) * Matrix3D.FIXED_ONE);
+
+			// Transformación
+			Matrix3D matrix = new Matrix3D();
+			matrix.setRotationY(sinY, cosY);
+
+			// Renderizar mesh
+			renderer.render(cube, matrix);
+			
+			// Avanzar rotación
+			angleY += 2;
+
+			if (angleY >= 360) {
+				angleY -= 360;
+			}
+
+			// ~60 FPS
+			Native.sys(Native.SYS_SLEEP,250,0,0,0);
+
+			// ESC
+			if (Native.sys(Native.SYS_READ_KEYBOARD,0, 0, 0, 0) == 27) {
+				break;
+			}
+		}
+	}
+		
+	public static void runCubeMesh3D1() {
+		Renderer3D renderer = new Renderer3D(g, 1024, 768);
+		renderer.setCameraZ(150);
+		renderer.setProjectionScale(400);
+		Mesh cube = createCube();
+		int angleY = 0;
+
+		while (true) {
+			int sinY = Math.sin(angleY);
+			int cosY = Math.cos(angleY);
+			
+			Matrix3D matrix = new Matrix3D();
+			matrix.setRotationY(sinY,cosY);
+			renderer.render(cube,matrix);
+			angleY += 2;
+
+			if (angleY >= 360) {
+				angleY -= 360;
+			}
+
+			try {
+				Thread.sleep(16);
+			}
+			catch (Exception e) {
+			}
+			// ESC para salir
+			if (Native.sys(Native.SYS_READ_KEYBOARD,0,0,0,0) == 27) {
+				break;
+			}
+		}
+	}
+	
     public static void runStartX() {
-        g.setColor(Color.RED); printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");
+        g.setColor(Color.RED); printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");				
     }
 
     public static void showTime(int y) {
