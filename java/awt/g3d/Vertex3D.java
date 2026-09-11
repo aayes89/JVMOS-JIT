@@ -29,6 +29,9 @@ public class Vertex3D {
     public int z;
 
     public Vertex3D() {
+		this.x = 0;
+		this.y = 0;
+		this.z = 0;
     }
 
     public Vertex3D(int x, int y, int z) {
@@ -36,4 +39,23 @@ public class Vertex3D {
         this.y = y;
         this.z = z;
     }
+	// getters y setters
+    public int getX() {
+		return x; 
+	}
+    public int getY() { 
+		return y; 
+	}
+    public int getZ() { 
+		return z; 
+	}
+    public void setX(int nx) {
+		x = nx; 
+	}
+    public void setY(int ny) {
+		y = ny; 
+	}
+    public void setZ(int nz) { 
+		z = nz; 
+	}
 }
