@@ -730,14 +730,14 @@ public class Boot {
 	}
 
 	public static Mesh createCube() {
-		Vertex3D v0 = new Vertex3D(-50, -50, -50);
+		Vertex3D v0 = new Vertex3D( -50,  -50, -50);
 		Vertex3D v1 = new Vertex3D( 50, -50, -50);
-		Vertex3D v2 = new Vertex3D( 50,  50, -50);
-		Vertex3D v3 = new Vertex3D(-50,  50, -50);
-		Vertex3D v4 = new Vertex3D(-50, -50,  50);
-		Vertex3D v5 = new Vertex3D( 50, -50,  50);
-		Vertex3D v6 = new Vertex3D( 50,  50,  50);
-		Vertex3D v7 = new Vertex3D(-50,  50,  50);
+		Vertex3D v2 = new Vertex3D( 50, 50, -50);
+		Vertex3D v3 = new Vertex3D( -50,  50, -50);
+		Vertex3D v4 = new Vertex3D( -50,  -50, 50);
+		Vertex3D v5 = new Vertex3D( 50, -50, 50);
+		Vertex3D v6 = new Vertex3D( 50, 50, 50);
+		Vertex3D v7 = new Vertex3D( -50,  50, 50);
 				
 		Triangle3D t0 = new Triangle3D(v0, v1, v2);		
 		Triangle3D t1 = new Triangle3D(v0, v2, v3);		
@@ -753,99 +753,78 @@ public class Boot {
 		Triangle3D t11 = new Triangle3D(v4, v1, v0);
 		
 		// Colores
-		t0.color = 0xFFFF0000; // Rojo
-		t1.color = 0xFFFF0000;
-		t2.color = 0xFF00FF00; // Verde
-		t3.color = 0xFF00FF00;
-		t4.color = 0xFF0000FF; // Azul
-		t5.color = 0xFF0000FF;
-		t6.color = 0xFFFFFF00; // Amarillo
-		t7.color = 0xFFFFFF00;
-		t8.color = 0xFF00FFFF; // Cyan
-		t9.color = 0xFF00FFFF;
-		t10.color = 0xFFFF00FF; // Magenta
-		t11.color = 0xFFFF00FF;
+		t0.setColor(Color.RED); 
+		t1.setColor(Color.RED);
+		t2.setColor(Color.GREEN);
+		t3.setColor(Color.GREEN);
+		t4.setColor(Color.BLUE); 
+		t5.setColor(Color.BLUE);
+		t6.setColor(Color.YELLOW);
+		t7.setColor(Color.YELLOW);
+		t8.setColor(Color.CYAN); 
+		t9.setColor(Color.CYAN);
+		t10.setColor(Color.MAGENT);
+		t11.setColor(Color.MAGENT);	
 		
-		
-		Vertex3D[] vertices = {	v0, v1, v2, v3,	v4, v5, v6, v7};
-		return new Mesh(vertices,new Triangle3D[]{t0,t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11});
+		Vertex3D[] vertices = {	v0, v1, v2, v3,	v4, v5, v6, v7 };
+		Triangle3D[] triangles = { t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 };
+		return new Mesh(vertices,triangles);
 	}
-	
+		
 	public static void runCubeMesh3D() {
-		Renderer3D renderer = new Renderer3D(g, 1024, 768);
+        Renderer3D renderer = new Renderer3D(g, 1024, 768);
+        Mesh cube = createCube();
+        
+        // Pre-asignar matrices fuera del bucle para proteger la memoria
+        Matrix3D matrix = new Matrix3D();
+        Matrix3D rotY = new Matrix3D();
+        Matrix3D rotZ = new Matrix3D();
+        
+        // Inicializar ángulos independientes
+        int angleX = 0;
+        int angleY = 0;
+        int angleZ = 0;
+        
+        while (true) {
+            // Limpiar pantalla
+            clearScreen();
 
-		renderer.setCameraZ(150);
-		renderer.setProjectionScale(400);
+            // Calcular trigonometría para los tres ejes
+            int sinX = Math.sin(angleX); 
+            int cosX = Math.cos(angleX); 
+            int sinY = Math.sin(angleY); 
+            int cosY = Math.cos(angleY); 
+            int sinZ = Math.sin(angleZ); 
+            int cosZ = Math.cos(angleZ); 
 
-		Mesh cube = createCube();
+            // 1. Iniciar la matriz principal con la rotación X
+            matrix.setRotationX(sinX, cosX);
+            
+            // 2. Preparar rotación Y y multiplicar
+            rotY.setRotationY(sinY, cosY);
+            matrix.multiply(rotY);
+            
+            // 3. Preparar rotación Z y multiplicar
+            rotZ.setRotationZ(sinZ, cosZ);
+            matrix.multiply(rotZ);
 
-		int angleY = 0;
+            // Renderizar la geometría final combinada
+            renderer.render(cube, matrix);
+            
+            // Avanzar rotaciones a distintas velocidades para un efecto más natural
+            angleX = (angleX + 1) % 360;
+            angleY = (angleY + 2) % 360;
+            angleZ = (angleZ + 3) % 360;
 
-		while (true) {
-			// Limpiar pantalla
-			g.setColor(Color.BLACK);
-			g.fillRect(0, 0, 1024, 768);
+            // Mantener ~60 FPS
+            Native.sys(12, 16, 0, 0, 0);
 
-			// Trigonometría
-			double rad = Math.toRadians(angleY);
-			int sinY = (int)(Math.sin(rad) * Matrix3D.FIXED_ONE);
-			int cosY = (int)(Math.cos(rad) * Matrix3D.FIXED_ONE);
-
-			// Transformación
-			Matrix3D matrix = new Matrix3D();
-			matrix.setRotationY(sinY, cosY);
-
-			// Renderizar mesh
-			renderer.render(cube, matrix);
-			
-			// Avanzar rotación
-			angleY += 2;
-
-			if (angleY >= 360) {
-				angleY -= 360;
-			}
-
-			// ~60 FPS
-			Native.sys(Native.SYS_SLEEP,250,0,0,0);
-
-			// ESC
-			if (Native.sys(Native.SYS_READ_KEYBOARD,0, 0, 0, 0) == 27) {
-				break;
-			}
-		}
-	}
-		
-	public static void runCubeMesh3D1() {
-		Renderer3D renderer = new Renderer3D(g, 1024, 768);
-		renderer.setCameraZ(150);
-		renderer.setProjectionScale(400);
-		Mesh cube = createCube();
-		int angleY = 0;
-
-		while (true) {
-			int sinY = Math.sin(angleY);
-			int cosY = Math.cos(angleY);
-			
-			Matrix3D matrix = new Matrix3D();
-			matrix.setRotationY(sinY,cosY);
-			renderer.render(cube,matrix);
-			angleY += 2;
-
-			if (angleY >= 360) {
-				angleY -= 360;
-			}
-
-			try {
-				Thread.sleep(16);
-			}
-			catch (Exception e) {
-			}
-			// ESC para salir
-			if (Native.sys(Native.SYS_READ_KEYBOARD,0,0,0,0) == 27) {
-				break;
-			}
-		}
-	}
+            // Salir con ESC
+            if (Native.sys(6, 0, 0, 0, 0) == 27) {
+                break;
+            }
+        }
+    }
 	
     public static void runStartX() {
         g.setColor(Color.RED); printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");				
