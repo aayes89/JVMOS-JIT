@@ -83,7 +83,7 @@ _start:
     cli
     mov esp, stack_top
 
-    ; 1. CARGAR NUESTRA PROPIA GDT (Evita el Triple Fault de GRUB)
+    ; (Evita el Triple Fault de GRUB)
     lgdt [gdtr]
     jmp 0x08:.reload_segments
 
@@ -95,11 +95,12 @@ _start:
     mov gs, ax
     mov ss, ax
 
-    ; 2. Capturar datos de Video Multiboot
+    ; Capturar datos de Video Multiboot
     cmp ebx, 0
     je .fallback_vram
 
-    mov eax, [ebx]
+    mov eax, [ebx] ; multiboot_info flags
+	
 	; grub 2 usa bit 12 para FB
     test eax, (1 << 12)
 	jnz .parse_fb_info
@@ -109,9 +110,12 @@ _start:
 	jnz .parse_vbe_info
 	
     jmp .fallback_vram
+	
 .parse_fb_info:
     ; En Multiboot, el Framebuffer Info comienza en el offset 88
     mov eax, [ebx + 88]       ; framebuffer_addr (Low 32-bits)
+	cmp eax, 0
+	je .parse_vbe_info
     mov [g_framebuffer], eax
     
     mov eax, [ebx + 100]      ; framebuffer_width
@@ -134,22 +138,22 @@ _start:
     je .fallback_vram
     mov [g_framebuffer], eax
 
-    mov ax, [edi + 18]        ; XResolution
-    movzx eax, ax
+    movzx eax, word [edi + 18]        ; XResolution    
     mov [g_width], eax
 
-    mov ax, [edi + 20]        ; YResolution
-    movzx eax, ax
+    movzx eax, word [edi + 20]        ; YResolution    
     mov [g_height], eax
 
-    mov ax, [edi + 16]        ; Pitch
-    movzx eax, ax
+    movzx eax, word [edi + 16]        ; Pitch    
     mov [g_pitch], eax
     jmp .start_jvm	
 
 .fallback_vram:
-    mov dword [g_framebuffer], 0xFD000000 
-    mov dword [g_pitch], 4096
+	cmp dword [g_framebuffer], 0
+	jne .start_jvm
+	mov dword [g_framebuffer], 0xE0000000
+    ;mov dword [g_framebuffer], 0xFD000000 
+    ;mov dword [g_pitch], 4096
 
 .start_jvm:
 	push ebx	; pasa puntero como argumento
