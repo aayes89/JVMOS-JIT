@@ -20,7 +20,6 @@
 ; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ; SOFTWARE.
 
-; HEADER MULTIBOOT Y ARRANQUE INICIAL CON GDT
 MBALIGN  equ  1 << 0
 MEMINFO  equ  1 << 1
 VIDINFO  equ  1 << 2
@@ -34,19 +33,18 @@ align 4
     dd FLAGS
     dd CHECKSUM
     dd 0, 0, 0, 0, 0
-    ; Petición de Video a GRUB (1024x768 x 32bpp)
+    ; Dejamos que GRUB decida usando grub.cfg
     dd 0
-    dd 1024
-    dd 768
+    dd 0
+    dd 0
     dd 32
 
 section .bootstrap_stack nobits
 align 16
 stack_bottom:
-    resb 32768 ; Pila x86 reservada de 32 KB
+    resb 32768
 stack_top:
 
-; Variables globales expuestas para la JVM
 global g_framebuffer
 global g_width
 global g_height
@@ -54,23 +52,16 @@ global g_pitch
 
 section .data
 g_framebuffer: dd 0
-g_width:       dd 1024
-g_height:      dd 768
-g_pitch:       dd 4096
+g_width:       dd 0
+g_height:      dd 0
+g_pitch:       dd 0
 
-; GDT BÁSICA DE 32 BITS
 align 16
 gdt_start:
-    ; Descriptor 0x00: Nulo
-    dd 0x00000000, 0x00000000
-
-    ; Descriptor 0x08: Código (Base 0, Límite 4GB, R0, Exec/Read)
-    dd 0x0000FFFF, 0x00CF9A00
-
-    ; Descriptor 0x10: Datos (Base 0, Límite 4GB, R0, Read/Write)
-    dd 0x0000FFFF, 0x00CF9200
+    dd 0x00000000, 0x00000000 
+    dd 0x0000FFFF, 0x00CF9A00 
+    dd 0x0000FFFF, 0x00CF9200 
 gdt_end:
-
 gdtr:
     dw gdt_end - gdt_start - 1
     dd gdt_start
@@ -78,12 +69,22 @@ gdtr:
 section .text
 global _start
 extern bootjvm_start
+extern bss_start
+extern bss_end
 
 _start:
     cli
     mov esp, stack_top
-
-    ; (Evita el Triple Fault de GRUB)
+	
+	fninit	; coprocesador matemático FPU
+	
+	; 2. Limpiar la memoria BSS (Poner a cero para las variables de Java)
+    mov edi, bss_start
+    mov ecx, bss_end
+    sub ecx, edi
+    xor eax, eax
+    rep stosb        ; Escribe EAX (0) en EDI repetidamente ECX veces
+	
     lgdt [gdtr]
     jmp 0x08:.reload_segments
 
@@ -95,70 +96,58 @@ _start:
     mov gs, ax
     mov ss, ax
 
-    ; Capturar datos de Video Multiboot
     cmp ebx, 0
-    je .fallback_vram
+    je .hang
 
-    mov eax, [ebx] ; multiboot_info flags
-	
-	; grub 2 usa bit 12 para FB
-    test eax, (1 << 12)
-	jnz .parse_fb_info
-	
-	; legacy grub / bochs
-	test eax, (1 << 11)
-	jnz .parse_vbe_info
-	
-    jmp .fallback_vram
-	
-.parse_fb_info:
-    ; En Multiboot, el Framebuffer Info comienza en el offset 88
-    mov eax, [ebx + 88]       ; framebuffer_addr (Low 32-bits)
-	cmp eax, 0
-	je .parse_vbe_info
+    mov eax, [ebx]           ; Leer banderas Multiboot
+
+    test eax, (1 << 12)      ; ¿Estructura Framebuffer presente?
+    jnz .parse_fb
+
+    test eax, (1 << 11)      ; ¿Estructura VBE presente?
+    jnz .parse_vbe
+
+    jmp .hang                ; Sin video, detener (hlt) para evitar crash.
+
+.parse_fb:
+    mov eax, [ebx + 88]
+    cmp eax, 0
+    je .hang                 ; Protección estricta contra puntero nulo
     mov [g_framebuffer], eax
     
-    mov eax, [ebx + 100]      ; framebuffer_width
+    mov eax, [ebx + 100]
     mov [g_width], eax
     
-    mov eax, [ebx + 104]      ; framebuffer_height
+    mov eax, [ebx + 104]
     mov [g_height], eax
     
-    mov eax, [ebx + 96]       ; framebuffer_pitch
+    mov eax, [ebx + 96]
     mov [g_pitch], eax
     jmp .start_jvm
 
-.parse_vbe_info:
-    mov edi, [ebx + 76]       ; vbe_mode_info structure
+.parse_vbe:
+    mov edi, [ebx + 76]      ; vbe_mode_info
     cmp edi, 0
-    je .fallback_vram
+    je .hang
 
-    mov eax, [edi + 40]       ; phys_base_ptr
+    mov eax, [edi + 40]      ; phys_base_ptr
     cmp eax, 0
-    je .fallback_vram
+    je .hang                 ; Protección estricta contra puntero nulo
     mov [g_framebuffer], eax
 
-    movzx eax, word [edi + 18]        ; XResolution    
+    movzx eax, word [edi + 18]
     mov [g_width], eax
 
-    movzx eax, word [edi + 20]        ; YResolution    
+    movzx eax, word [edi + 20]
     mov [g_height], eax
 
-    movzx eax, word [edi + 16]        ; Pitch    
+    movzx eax, word [edi + 16]
     mov [g_pitch], eax
-    jmp .start_jvm	
-
-.fallback_vram:
-	cmp dword [g_framebuffer], 0
-	jne .start_jvm
-	mov dword [g_framebuffer], 0xE0000000
-    ;mov dword [g_framebuffer], 0xFD000000 
-    ;mov dword [g_pitch], 4096
 
 .start_jvm:
-	push ebx	; pasa puntero como argumento
+    push ebx
     call bootjvm_start
-	add esp, 4	; limpiar pila
+    add esp, 4
 
 .hang:
     hlt
