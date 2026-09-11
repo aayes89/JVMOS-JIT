@@ -20,6 +20,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.*/
 
+
 package java.awt.g3d;
 
 public class Triangle3D {
@@ -35,4 +36,21 @@ public class Triangle3D {
         this.v1 = v1;
         this.v2 = v2;
     }
+	
+	public Vertex3D getV0() {
+		return v0; 
+	}
+    public Vertex3D getV1() { 
+		return v1; 
+	}
+    public Vertex3D getV2() { 
+		return v2; 
+	}
+    
+    public void setColor(int c) { 
+		this.color = c; 
+	}
+    public int getColor() { 
+		return color; 
+	}
 }
