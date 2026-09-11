@@ -71,18 +71,16 @@ public final class Objects {
     return Arrays.hashCode(values);
   }
 
-  // Devuelve 0 o null 
-  public static int hashCode(Object o) {
-    return (o == null) ? 0 : o.hashCode();
-  }
+	// Devuelve 0 o null 
+	public static int hashCode(Object o) {
+		return (o == null) ? 0 : o.hashCode();
+	}
 
-  // Retorna objeto si no es null, sino excepción
-  public static <T> T requireNonNull(T o) {
-    if (o == null) {
-      throw new NullPointerException();
-    }
-    return o;
-  }
+	// Retorna objeto si no es null, sino excepción
+	public static <T> T requireNonNull(T o) {
+		return o;
+		//if(o==null) throw new NullPointerException("Object null");
+	}
 
   // Retorna objeto si no es null, sino excepción con el mensaje
   public static <T> T requireNonNull(T o, String message) {
