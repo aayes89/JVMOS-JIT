@@ -68,3 +68,6 @@ It is an improved fork of the repository: https://github.com/aayes89/JVMOS.
 
 <img width="1021" height="826" alt="imagen" src="https://github.com/user-attachments/assets/4bd80ea3-48e1-4743-b3a5-f7174f54dbbe" />
 
+## 3D motor
+
+<img width="913" height="624" alt="imagen" src="https://github.com/user-attachments/assets/c6b57487-223f-4d84-9695-eed51c03e02e" />
