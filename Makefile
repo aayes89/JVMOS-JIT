@@ -118,7 +118,7 @@ endif
 
 # VGA, HDD, RTC, Sound, Network, PacketSniffer, 	
 run: $(OS_ISO)
-	qemu-system-i386 -cdrom $(OS_ISO) -drive file=disk.img,format=raw -m 128M -serial stdio -netdev user,id=net0,hostfwd=tcp::5555-:80 -device rtl8139,netdev=net0 -object filter-dump,id=f1,netdev=net0,file=trafico.pcap -rtc base=localtime -machine pcspk-audiodev=snd0 -audiodev pa,id=snd0	
+	qemu-system-i386 -cdrom $(OS_ISO) -drive file=disk.img,format=raw,if=ide,index=0 -m 128M -serial stdio -netdev user,id=net0 -device rtl8139,netdev=net0 -rtc base=localtime -machine pcspk-audiodev=snd0 -audiodev alsa,id=snd0
 
 run-mac: $(OS_ISO)
 	qemu-system-i386 -cdrom $(OS_ISO) -boot d -m 128M -serial stdio -rtc base=localtime
@@ -129,6 +129,7 @@ clean:
 .PHONY: all run clean
 
 # LISTA ESTRICTA DE CLASES JAVA A COMPILAR
+# qemu-img create -f raw mi_disk.img 10M
 #JAVA_SOURCES := kernel/Boot.java kernel/Native.java kernel/vfs/Node.java \
 #                java/lang/Object.java java/lang/String.java java/lang/StringBuilder.java \
 #                java/lang/System.java java/lang/Thread.java java/lang/Runtime.java \
