@@ -23,8 +23,10 @@ package java.util;
 
 import java.lang.System;
 import java.lang.IndexOutOfBoundsException;
+import java.lang.IllegalArgumentException;
+import java.io.Serializable;
 	
-public class ArrayList {
+public class ArrayList<E> extends AbstractList<E> implements Serializable, RandomAccess, Cloneable {
 	// Tomado de implementación original
 	private static final long serialVersionUID = 8683452581122892189L;
 	// Capacidad inicial		
@@ -37,14 +39,41 @@ public class ArrayList {
 	// Constructores
 	public ArrayList(int capacity) {
 		if (capacity < 0) {
-			//throw new IllegalArgumentException("capacity < 0: " + capacity);
-			System.out.println("IllegalArgumentException(capacity < 0)");
+			throw new IllegalArgumentException("capacity < 0: " + capacity);			
 		}
 		array = (capacity == 0 ? EmptyArray.OBJECT : new Object[capacity]);
 	}
-	// Vacío 
+	// Arreglo vacío por defecto
 	public ArrayList() {
 		array = EmptyArray.OBJECT;
+	}
+	
+	// Constructor para colecciones
+	public ArrayList(Collection<? extends E> collection) {		
+		if (collection == null) {
+			new NullPointerException("collection == null");
+			return null;
+		}		
+
+		Object[] a = collection.toArray();
+		if ((size = a.length) != 0) {
+			if (a.getClass() != Object[].class) {
+				a = Arrays.copyOf(a, size, Object[].class);
+			}
+		} else {
+			a = EmptyArray.OBJECT;
+		}
+		array = a;
+	}
+	
+	
+	@Override
+	public E get(int index) {
+		if (index >= size || index < 0) {
+			String ex = "Index: " + index + ", Size: " + size;
+			throw new IndexOutOfBoundsException(ex);
+		}
+		return (E) array[index];
 	}
 
 	// Añadir un elemento
@@ -67,8 +96,8 @@ public class ArrayList {
 		Object[] a = array;
 		int s = size;
 		if (index > s || index < 0) {
-			throw IndexOutOfBoundsException(index, s);
-			//System.out.println("IndexOutOfBoundsException");
+			String ex = "Index: " + index + ", Size: " + s;
+			throw new IndexOutOfBoundsException(ex);
 		}
 
 		if (s < a.length) {
@@ -103,11 +132,13 @@ public class ArrayList {
 	// Devuelve clon del arreglo
 	public Object clone() {
 		try {
-			ArrayList<?> result = (ArrayList<?>) super.clone();
-			result.array = array.clone();
-			return result;
-		} catch (CloneNotSupportedException e) {
-		   throw new AssertionError();
+			ArrayList<E> result = (ArrayList<E>) super.clone();
+            result.array = Arrays.copyOf(array, size);
+            result.modCount = 0;
+            return result;
+		} catch (Exception e) {
+			throw new CloneNotSupportedException(e.getMessage());
+			//throw new AssertionError();
 		}
 	}
 	// Garantizar capacidad
@@ -195,11 +226,12 @@ public class ArrayList {
 	public E remove(int index) {
 		Object[] a = array;
 		int s = size;
-		if (index >= s) {
-			throw IndexOutOfBoundsException(index, s);
+		if (index >= s || index < 0) {
+			throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + s);
 		}		
+		E result = (E) a[index];
 		System.arraycopy(a, index + 1, a, index, --s - index);
-		a[s] = null;  // Prevenir fuga, por determinar
+		a[s] = null;
 		size = s;
 		modCount++;
 		return result;
@@ -263,9 +295,10 @@ public class ArrayList {
 	// Reemplazar elemento en posición dada
 	public E set(int index, E object) {
 		Object[] a = array;
-		if (index >= size) {
-			throw IndexOutOfBoundsException(index, size);
+		if (index >= size || index < 0) {
+			throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + size);
 		}		
+		E result = (E) a[index];
 		a[index] = object;
 		return result;
 	}
@@ -339,7 +372,4 @@ public class ArrayList {
 		}
 		return true;
 	}
-
-	
-
 }
