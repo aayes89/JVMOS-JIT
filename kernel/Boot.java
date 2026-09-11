@@ -852,10 +852,10 @@ public class Boot {
         while (true) {
             clearScreen();
 
-            int sinA = MeshFactory.sin(angle);
-            int cosA = MeshFactory.cos(angle);
-            int sinB = MeshFactory.sin(angle / 2);
-            int cosB = MeshFactory.cos(angle / 2);
+            int sinA = Math.sin(angle);
+            int cosA = Math.cos(angle);
+            int sinB = Math.sin(angle / 2);
+            int cosB = Math.cos(angle / 2);
 
             rotX.setRotationX(sinA, cosA);
             rotY.setRotationY(sinA, cosA);
