@@ -73,13 +73,6 @@ public final class Arrays {
             throw java.util.ArrayList.throwIndexOutOfBoundsException(location, a.length);
         }*/
 	}
-
-	// Rellenar el arreglo con val en una región
-	public static void fill(Object[] array, int val, int cantMax, Object n){
-		for(int i=0;i<cantMax;i++){
-			array[i] = val;	
-		}		
-	}
 	
 	// Retorna el índice de la primera ocurrencia del objecto, sino está entonces -1
 	public int indexOf(Object object) {
@@ -133,6 +126,12 @@ public final class Arrays {
     public Object[] toArray() {
 		return a.clone();
     }
+	// Rellenar el arreglo con val en una región
+	public static void fill(Object[] array, int val, int cantMax, Object n){
+		for(int i=0;i<cantMax;i++){
+			array[i] = val;	
+		}		
+	}
 	
 	// Comprobación de igualdad a partir de tipos de clase	
 	private static boolean deepEqualsElements(Object e1, Object e2) {
@@ -511,6 +510,18 @@ public final class Arrays {
         }
         sb.append(']');
         return sb.toString();
+    }
+	
+	public static <T, U> T[] copyOf(U[] original, int newLength, Class<? extends T[]> newType) {
+        T[] copy = ((Object) newType == (Object) Object[].class)
+            ? (T[]) new Object[newLength]
+            : (T[]) java.lang.reflect.Array.newInstance(newType.getComponentType(), newLength);
+        System.arraycopy(original, 0, copy, 0, Math.min(original.length, newLength));
+        return copy;
+    }
+
+    public static <T> T[] copyOf(T[] original, int newLength) {
+        return (T[]) copyOf(original, newLength, original.getClass());
     }
 	
 	// Copia de un arreglo según rango
