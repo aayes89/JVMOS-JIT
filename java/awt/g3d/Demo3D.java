@@ -30,8 +30,6 @@ import kernel.Native;
 public class Demo3D {
     // liberado código de Boot.java para limpiar código y permitir ejecución independiente.
     // antigua función runShapes3D ahora run(Graphics2D)
-    // como me quedan superpuestas los render, toca añadir una función para indicar posición donde hacer render y % del tamaño de las figuras
-
     public static void run(Graphics2D g) {
         Renderer3D renderer = new Renderer3D(g, 1024, 768);
         
@@ -62,27 +60,21 @@ public class Demo3D {
             rotY.setRotationY(sinA, cosA);
             rotZ.setRotationZ(sinB, cosB);
 
-            // --- 1. PIRÁMIDE (Izquierda) ---
-            matPyramid.setRotationY(sinA, cosA); 
-            matPyramid.tx = -160;   // Alineado a la izquierda
-            matPyramid.tz = 250;    // Distancia ideal para escala 25
-            renderer.render(pyramid, matPyramid);
+            // --- 1. PIRÁMIDE (Izquierda) X, Y, Tamaño (%) ---
+            matPyramid.setRotationY(sinA, cosA);             
+            renderer.render(pyramid, matPyramid, 200, 384, 100);
 
-            // --- 2. CUBO (Centro) ---
+            // --- 2. CUBO (Centro) X, Y, Tamaño (%) ---
             matCube.setIdentity();
             matCube.multiply(rotX); 
             matCube.multiply(rotY);
-            matCube.tx = 0;         // Centro exacto
-            matCube.tz = 250;
-            renderer.render(cube, matCube);
+            renderer.render(cube, matCube, 512, 384, 100);
 
-            // --- 3. ESFERA (Derecha) ---
+            // --- 3. ESFERA (Derecha) X, Y, Tamaño (%) ---
             matSphere.setIdentity();
             matSphere.multiply(rotX);
             matSphere.multiply(rotZ);
-            matSphere.tx = 160;     // Alineado a la derecha
-            matSphere.tz = 250;
-            renderer.render(sphere, matSphere);
+            renderer.render(sphere, matSphere, 768, 384, 100);
 
             g.setColor(Color.WHITE);
             g.drawString("Demo Bare-Metal 3D: Piramide, Cubo y Esfera. ESC para salir.", 20, 20);
