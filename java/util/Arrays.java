@@ -22,6 +22,15 @@ SOFTWARE.*/
 
 package java.util;
 
+import java.lang.E;
+import java.lang.T;
+import java.lang.Object;
+import java.lang.System;
+import java.lang.Class;
+import java.lang.StringBuilder;
+
+
+
 public final class Arrays {
 	// tomado de implementación original
 	private static final long serialVersionUID = -2764017481108945198L;
@@ -502,11 +511,13 @@ public final class Arrays {
 	// Copia de un arreglo según rango
 	public static boolean[] copyOfRange(boolean[] original, int start, int end) {
         if (start > end) {
-            throw new IllegalArgumentException();
+            //throw new IllegalArgumentException();
+			System.out.println("Arrays: copyOfRange boolean IllegalArgumentException");
         }
         int originalLength = original.length;
         if (start < 0 || start > originalLength) {
-            throw new ArrayIndexOutOfBoundsException();
+            //throw new ArrayIndexOutOfBoundsException();
+			System.out.println("Arrays: copyOfRange boolean ArrayIndexOutOfBoundsException");
         }
         int resultLength = end - start;
         int copyLength = Math.min(resultLength, originalLength - start);
@@ -517,11 +528,13 @@ public final class Arrays {
 	// Copia de un arreglo según rango
 	public static char[] copyOfRange(char[] original, int start, int end) {
         if (start > end) {
-            throw new IllegalArgumentException();
+            //throw new IllegalArgumentException();
+			System.out.println("Arrays: copyOfRange char IllegalArgumentException");
         }
         int originalLength = original.length;
         if (start < 0 || start > originalLength) {
-            throw new ArrayIndexOutOfBoundsException();
+            //throw new ArrayIndexOutOfBoundsException();
+			System.out.println("Arrays: copyOfRange char ArrayIndexOutOfBoundsException");
         }
         int resultLength = end - start;
         int copyLength = Math.min(resultLength, originalLength - start);
@@ -532,11 +545,13 @@ public final class Arrays {
 	// Copia de un arreglo según rango
 	public static int[] copyOfRange(int[] original, int start, int end) {
         if (start > end) {
-            throw new IllegalArgumentException();
+            //throw new IllegalArgumentException();
+			System.out.println("Arrays: copyOfRange int IllegalArgumentException");
         }
         int originalLength = original.length;
         if (start < 0 || start > originalLength) {
-            throw new ArrayIndexOutOfBoundsException();
+            //throw new ArrayIndexOutOfBoundsException();
+			System.out.println("Arrays: copyOfRange int ArrayIndexOutOfBoundsException");
         }
         int resultLength = end - start;
         int copyLength = Math.min(resultLength, originalLength - start);
@@ -547,11 +562,13 @@ public final class Arrays {
 	// Copia de un arreglo según rango
 	public static byte[] copyOfRange(byte[] original, int start, int end) {
         if (start > end) {
-            throw new IllegalArgumentException();
+            //throw new IllegalArgumentException();
+			System.out.println("Arrays: copyOfRange byte IllegalArgumentException");
         }
         int originalLength = original.length;
         if (start < 0 || start > originalLength) {
-            throw new ArrayIndexOutOfBoundsException();
+            //throw new ArrayIndexOutOfBoundsException();
+			System.out.println("Arrays: copyOfRange byte ArrayIndexOutOfBoundsException");
         }
         int resultLength = end - start;
         int copyLength = Math.min(resultLength, originalLength - start);
@@ -562,11 +579,13 @@ public final class Arrays {
 	// Copia de un arreglo según rango
 	public static short[] copyOfRange(short[] original, int start, int end) {
         if (start > end) {
-            throw new IllegalArgumentException();
+            //throw new IllegalArgumentException();
+			System.out.println("Arrays: copyOfRange short IllegalArgumentException");
         }
         int originalLength = original.length;
         if (start < 0 || start > originalLength) {
-            throw new ArrayIndexOutOfBoundsException();
+            //throw new ArrayIndexOutOfBoundsException();
+			System.out.println("Arrays: copyOfRange short ArrayIndexOutOfBoundsException");
         }
         int resultLength = end - start;
         int copyLength = Math.min(resultLength, originalLength - start);
@@ -577,11 +596,13 @@ public final class Arrays {
 	// Copia de un arreglo según rango
 	public static float[] copyOfRange(float[] original, int start, int end) {
         if (start > end) {
-            throw new IllegalArgumentException();
+            //throw new IllegalArgumentException();
+			System.out.println("Arrays: copyOfRange float IllegalArgumentException");
         }
         int originalLength = original.length;
         if (start < 0 || start > originalLength) {
-            throw new ArrayIndexOutOfBoundsException();
+            //throw new ArrayIndexOutOfBoundsException();
+			System.out.println("Arrays: copyOfRange float ArrayIndexOutOfBoundsException");
         }
         int resultLength = end - start;
         int copyLength = Math.min(resultLength, originalLength - start);
@@ -592,11 +613,13 @@ public final class Arrays {
 	// Copia de un arreglo según rango
 	public static double[] copyOfRange(double[] original, int start, int end) {
         if (start > end) {
-            throw new IllegalArgumentException();
+            //throw new IllegalArgumentException();
+			System.out.println("Arrays: copyOfRange double IllegalArgumentException");
         }
         int originalLength = original.length;
         if (start < 0 || start > originalLength) {
-            throw new ArrayIndexOutOfBoundsException();
+            //throw new ArrayIndexOutOfBoundsException();
+			System.out.println("Arrays: copyOfRange double ArrayIndexOutOfBoundsException");
         }
         int resultLength = end - start;
         int copyLength = Math.min(resultLength, originalLength - start);
@@ -607,11 +630,13 @@ public final class Arrays {
 	// Copia de un arreglo según rango
 	public static long[] copyOfRange(long[] original, int start, int end) {
         if (start > end) {
-            throw new IllegalArgumentException();
+            //throw new IllegalArgumentException();
+			System.out.println("Arrays: copyOfRange long IllegalArgumentException");
         }
         int originalLength = original.length;
         if (start < 0 || start > originalLength) {
-            throw new ArrayIndexOutOfBoundsException();
+            //throw new ArrayIndexOutOfBoundsException();
+			System.out.println("Arrays: copyOfRange long ArrayIndexOutOfBoundsException");
         }
         int resultLength = end - start;
         int copyLength = Math.min(resultLength, originalLength - start);
@@ -622,11 +647,13 @@ public final class Arrays {
 	// Copia de un arreglo según rango
 	public static String[] copyOfRange(String[] original, int start, int end) {
         if (start > end) {
-            throw new IllegalArgumentException();
+            //throw new IllegalArgumentException();
+			System.out.println("Arrays: copyOfRange String IllegalArgumentException");
         }
         int originalLength = original.length;
         if (start < 0 || start > originalLength) {
-            throw new ArrayIndexOutOfBoundsException();
+            //throw new ArrayIndexOutOfBoundsException();
+			System.out.println("Arrays: copyOfRange String ArrayIndexOutOfBoundsException");
         }
         int resultLength = end - start;
         int copyLength = Math.min(resultLength, originalLength - start);
@@ -638,7 +665,5 @@ public final class Arrays {
 	public static int hashCode(Object o) {
 		return (o == null) ? 0 : o.hashCode();
 	}
-	public static int hashCode(){
-		return 0;
-	}
+	
 }
