@@ -97,10 +97,10 @@ $(OS_ISO): $(KERNEL_BIN) kernel/Boot.class
 	@$(MKDIR)
 	@$(COPY_KERN)
 	@$(COPY_CLS)
-	@echo set timeout=0 > isodir/boot/grub/grub.cfg
+	@echo set timeout=5 > isodir/boot/grub/grub.cfg
 	@echo set default=0 >> isodir/boot/grub/grub.cfg
 	@echo menuentry "JVM-OS Self-Hosting" { >> isodir/boot/grub/grub.cfg
-	@echo    set gfxpayload=1024x768x32 >> isodir/boot/grub/grub.cfg
+	@echo    set gfxpayload=1024x768x32,800x600x32,640x480x32,auto >> isodir/boot/grub/grub.cfg
 	@echo    multiboot /boot/kernel.bin >> isodir/boot/grub/grub.cfg
 	
 	$(foreach src, $(JAVA_SOURCES), $(call ADD_MODULE, $(src)))    
