@@ -448,6 +448,9 @@ public class Boot {
         else if (cmd.equals("exit")) { 
 			shutdown(); 
 		}
+		else if(cmd.equals("reboot")){
+			reboot();
+		}	
         else if (!cmd.equals("")) {
             g.setColor(Color.RED);
             g.drawString("Comando no reconocido: ", 20, cursorY);
@@ -503,6 +506,7 @@ public class Boot {
 		printLine("  demo3d     : Test de motor 3D final");
         printLine("  startx     : Interfaz Grafica (Deshabilitada)");
         printLine("  ver        : Info del sistema");
+		printLine("  reboot     : Reiniciar el sistema");
         printLine("  exit       : Apagar equipo");
     }
     
@@ -893,4 +897,7 @@ public class Boot {
 		} 
 		java.lang.System.exit(0);
     }
+	public static void reboot(){
+		java.lang.System.reboot();
+	}
 }
