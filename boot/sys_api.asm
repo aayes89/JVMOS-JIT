@@ -1372,7 +1372,66 @@ sys_net_receive_packet:
     pop ebp
     ret
 
-; DISCO ATA IDE LBA28
+; DISCO ATA IDE LBA28 (CON TIMEOUT Y RETARDO 400ns)
+; --- Subrutina: Esperar a que el disco se libere (BSY = 0) ---
+ata_wait_bsy:
+    push ecx
+    push edx
+    mov dx, 0x3F6
+    in al, dx
+    in al, dx
+    in al, dx
+    in al, dx
+    mov ecx, 100000         ; Timeout de seguridad
+    mov dx, 0x1F7
+.poll_bsy:
+    in al, dx
+    test al, 0x80           
+    jz .ready               
+    dec ecx
+    jnz .poll_bsy
+    stc                     ; Activa CF por timeout
+    jmp .done
+.ready:
+    clc                     
+.done:
+    pop edx
+    pop ecx
+    ret
+
+; --- Subrutina: Esperar a que el disco pida datos (DRQ = 1) ---
+ata_wait_drq:
+    push ecx
+    push edx
+    mov dx, 0x3F6
+    in al, dx
+    in al, dx
+    in al, dx
+    in al, dx
+    mov ecx, 100000         
+    mov dx, 0x1F7
+.poll_drq:
+    in al, dx
+    test al, 0x80           
+    jnz .retry
+    test al, 0x08           
+    jnz .ready
+    test al, 0x01           
+    jnz .error
+.retry:
+    dec ecx
+    jnz .poll_drq
+.error:
+    stc                     
+    jmp .done
+.ready:
+    clc
+.done:
+    pop edx
+    pop ecx
+    ret
+
+; ---------------------------------------------------------
 
 sys_disk_read_sector:
     push ebp
@@ -1380,19 +1439,16 @@ sys_disk_read_sector:
     push ebx
     push edi
 
-	mov edi, [ebp + 12]         ; Obtener puntero del argumento
-    cmp edi, 0                  ; Si es 0 (null)...
+    mov edi, [ebp + 12]         
+    cmp edi, 0                  
     jne .skip_default_r
-    mov edi, disk_sector_buf    ; ...usar el buffer global de 512 bytes
-.skip_default_r:    
-    mov dx, 0x1F7
-.wait_bsy:
-    in al, dx
-    test al, 0x80
-    jnz .wait_bsy
+    mov edi, disk_sector_buf    
+.skip_default_r:  
+    
+    call ata_wait_bsy           
+    jc .disk_error
 
-    mov eax, [ebp + 8]          ; LBA
-    mov edi, [ebp + 12]         ; buffer
+    mov eax, [ebp + 8]          ; LBA (Nota: No sobrescribir EDI aquí)
 
     mov dx, 0x1F6
     shr eax, 24
@@ -1414,13 +1470,11 @@ sys_disk_read_sector:
     out dx, al
 
     mov dx, 0x1F7
-    mov al, 0x20
+    mov al, 0x20                
     out dx, al
 
-.wait_drq:
-    in al, dx
-    test al, 0x08
-    jz .wait_drq
+    call ata_wait_drq           
+    jc .disk_error
 
     mov ecx, 256
     mov dx, 0x1F0
@@ -1430,7 +1484,13 @@ sys_disk_read_sector:
     add edi, 2
     loop .read
 
-    mov eax, 1
+    mov eax, 1                  
+    jmp .done
+
+.disk_error:
+    xor eax, eax                
+
+.done:
     pop edi
     pop ebx
     pop ebp
@@ -1441,20 +1501,17 @@ sys_disk_write_sector:
     mov ebp, esp
     push ebx
     push esi
-	
-	mov esi, [ebp + 12]         ; Obtener puntero del argumento
-    cmp esi, 0                  ; Si es 0 (null)...
+    
+    mov esi, [ebp + 12]         
+    cmp esi, 0                  
     jne .skip_default_w
-    mov esi, disk_sector_buf    ; ...usar el buffer global de 512 bytes
+    mov esi, disk_sector_buf    
 .skip_default_w:
-    mov dx, 0x1F7
-.wait_bsy_w:
-    in al, dx
-    test al, 0x80
-    jnz .wait_bsy_w
 
-    mov eax, [ebp + 8]
-    mov esi, [ebp + 12]
+    call ata_wait_bsy           
+    jc .disk_error
+
+    mov eax, [ebp + 8]          ; LBA (Nota: No sobrescribir ESI aquí)
 
     mov dx, 0x1F6
     shr eax, 24
@@ -1476,13 +1533,11 @@ sys_disk_write_sector:
     out dx, al
 
     mov dx, 0x1F7
-    mov al, 0x30
+    mov al, 0x30                
     out dx, al
 
-.wait_drq_w:
-    in al, dx
-    test al, 0x08
-    jz .wait_drq_w
+    call ata_wait_drq           
+    jc .disk_error
 
     mov ecx, 256
     mov dx, 0x1F0
@@ -1491,22 +1546,25 @@ sys_disk_write_sector:
     out dx, ax
     add esi, 2
     loop .write
-	
-	mov dx, 0x1F7
-	mov al, 0xE7	; ATA CACHE FLUSH
-	out dx, al
+    
+    mov dx, 0x1F7
+    mov al, 0xE7                
+    out dx, al
 
-.wait_flush:	
-	in al, dx
-	test al, 0x80	; Esperar a BSY (Bit 7) sea 0
-	jnz .wait_flush
+    call ata_wait_bsy           
+    jc .disk_error
 
-    mov eax, 1
+    mov eax, 1                  
+    jmp .done
+
+.disk_error:
+    xor eax, eax                
+
+.done:
     pop esi
     pop ebx
     pop ebp
     ret
-
 
 ; PUERTOS DEDICADOS I/O
 
