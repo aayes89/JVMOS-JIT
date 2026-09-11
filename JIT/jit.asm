@@ -1361,10 +1361,87 @@ jit_op_invokestatic:
     cmp al, 'V'
     je .is_void
     
-    mov al, 0x50                
+    cmp al, 'D'
+    je .is_64bit
+    cmp al, 'J'
+    je .is_64bit
+    
+    mov al, 0x50                ; push eax (para retornos estándar de 32 bits)
+    call jit_emit_byte
+    ret
+    
+.is_64bit:
+    mov al, 0x52                ; push edx (mitad alta del 64-bit)
+    call jit_emit_byte
+    mov al, 0x50                ; push eax (mitad baja del 64-bit)
     call jit_emit_byte
     
 .is_void:
+    ret
+
+; Opcode 0xB9
+jit_op_invokeinterface:
+    movzx ebx, byte [esi]
+    shl ebx, 8
+    movzx eax, byte [esi+1]
+    or ebx, eax
+    add esi, 4
+
+    mov al, 0xB8
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+
+    mov al, 0xBA
+    call jit_emit_byte
+    mov eax, [current_class_ptr]
+    call jit_emit_dword
+
+    mov al, 0xE8
+    call jit_emit_byte
+    mov eax, jit_runtime_trampoline
+    push ebx
+    mov ebx, [jit_buffer_ptr]
+    add ebx, 4
+    sub eax, ebx
+    call jit_emit_dword
+    pop ebx
+
+    mov ecx, [cp_offsets + ebx * 4]
+    movzx edx, word [ecx + 3]
+    xchg dl, dh
+    mov ecx, [cp_offsets + edx * 4]
+    movzx edx, word [ecx + 3]
+    xchg dl, dh
+    mov ecx, [cp_offsets + edx * 4]
+    add ecx, 3
+
+.scan_desc_interface:
+    mov al, [ecx]
+    inc ecx
+    cmp al, ')'
+    jne .scan_desc_interface
+
+    mov al, [ecx]
+    cmp al, 'V'
+    je .is_void_interface
+    
+    cmp al, 'D'
+    je .is_64bit_interface
+    cmp al, 'J'
+    je .is_64bit_interface
+
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+.is_64bit_interface:
+    mov al, 0x52                ; push edx
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    
+.is_void_interface:
     ret
 
 jit_op_fconst_0:
@@ -2478,59 +2555,6 @@ jit_op_lcmp:
     call jit_emit_byte
     ret
 
-; Opcode: 0xB9
-jit_op_invokeinterface:
-    movzx ebx, byte [esi]
-    shl ebx, 8
-    movzx eax, byte [esi+1]
-    or ebx, eax
-    add esi, 4
-
-    mov al, 0xB8
-    call jit_emit_byte
-    mov eax, ebx
-    call jit_emit_dword
-
-    mov al, 0xBA
-    call jit_emit_byte
-    mov eax, [current_class_ptr]
-    call jit_emit_dword
-
-    mov al, 0xE8
-    call jit_emit_byte
-    mov eax, jit_runtime_trampoline
-    push ebx
-    mov ebx, [jit_buffer_ptr]
-    add ebx, 4
-    sub eax, ebx
-    call jit_emit_dword
-    pop ebx
-
-    mov ecx, [cp_offsets + ebx * 4]
-    movzx edx, word [ecx + 3]
-    xchg dl, dh
-    mov ecx, [cp_offsets + edx * 4]
-    movzx edx, word [ecx + 3]
-    xchg dl, dh
-    mov ecx, [cp_offsets + edx * 4]
-    add ecx, 3
-
-.scan_desc:
-    mov al, [ecx]
-    inc ecx
-    cmp al, ')'
-    jne .scan_desc
-
-    mov al, [ecx]
-    cmp al, 'V'
-    je .is_void
-
-    mov al, 0x50
-    call jit_emit_byte
-
-.is_void:
-    ret
-
 ; Opcode: 0xC5
 jit_op_multianewarray:
     add esi, 3
@@ -3611,9 +3635,9 @@ jit_op_dstore:
 
 ; Rutina auxiliar para comparaciones Float (llamada por 0x95 y 0x96)
 jit_emit_fcom_routine:
-    push eax
+    push eax        ; Guardar AL (1 o -1)
 
-    mov al, 0xD9
+    mov al, 0xD9    ; fld dword [esp+4]
     call jit_emit_byte
     mov al, 0x44
     call jit_emit_byte
@@ -3622,95 +3646,91 @@ jit_emit_fcom_routine:
     mov al, 0x04
     call jit_emit_byte
 
-    mov al, 0xD9
+    mov al, 0xD9    ; fld dword [esp]
     call jit_emit_byte
     mov al, 0x04
     call jit_emit_byte
     mov al, 0x24
     call jit_emit_byte
 
-    mov al, 0xDE                ; Corregido: DE D9 es fcompp (extrae ambos operandos de la pila FPU)
+    mov al, 0xDE    ; fcompp
     call jit_emit_byte
     mov al, 0xD9
     call jit_emit_byte
 
-    mov al, 0xDF
+    mov al, 0xDF    ; fnstsw ax
     call jit_emit_byte
     mov al, 0xE0
     call jit_emit_byte
 
-    mov al, 0x9E
+    mov al, 0x9E    ; sahf
     call jit_emit_byte
 
-    mov al, 0x83
+    mov al, 0x83    ; add esp, 8
     call jit_emit_byte
     mov al, 0xC4
     call jit_emit_byte
     mov al, 0x08
     call jit_emit_byte
 
-    pop eax
-    mov cl, al
-
-    mov al, 0x7A
+    mov al, 0x7A    ; jp .isNaN
     call jit_emit_byte
-    mov al, 0x0A
+    mov al, 0x0E    ; Offset exacto de 14 bytes
     call jit_emit_byte
 
-    mov al, 0x0F
+    ; --- Comparacion Normal (14 bytes emitidos) ---
+    mov al, 0x31    ; xor eax, eax
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+
+    mov al, 0x0F    ; seta al
     call jit_emit_byte
     mov al, 0x97
     call jit_emit_byte
     mov al, 0xC0
     call jit_emit_byte
 
-    mov al, 0x0F
+    mov al, 0x31    ; xor edx, edx
+    call jit_emit_byte
+    mov al, 0xD2
+    call jit_emit_byte
+
+    mov al, 0x0F    ; setb dl
     call jit_emit_byte
     mov al, 0x92
     call jit_emit_byte
     mov al, 0xD2
     call jit_emit_byte
 
-    mov al, 0x0F
-    call jit_emit_byte
-    mov al, 0xB6
-    call jit_emit_byte
-    mov al, 0xC0
-    call jit_emit_byte
-
-    mov al, 0x0F
-    call jit_emit_byte
-    mov al, 0xB6
-    call jit_emit_byte
-    mov al, 0xD2
-    call jit_emit_byte
-
-    mov al, 0x29
+    mov al, 0x29    ; sub eax, edx
     call jit_emit_byte
     mov al, 0xD0
     call jit_emit_byte
 
-    mov al, 0xEB
+    mov al, 0xEB    ; jmp .done
     call jit_emit_byte
-    mov al, 0x02
-    call jit_emit_byte
-
-    mov al, 0x0F
-    call jit_emit_byte
-    mov al, 0xBE
-    call jit_emit_byte
-    mov al, 0xC1
+    mov al, 0x05    ; Offset exacto de 5 bytes
     call jit_emit_byte
 
-    mov al, 0x50
+    ; --- .isNaN (5 bytes emitidos) ---
+    mov al, 0xB8    ; mov eax, imm32
+    call jit_emit_byte
+
+    pop eax         ; Recuperar 1 o -1 que se paso a la rutina
+    movsx eax, al   ; Extender signo a 32 bits para emitir constante
+    call jit_emit_dword
+
+    ; --- .done ---
+    mov al, 0x50    ; push eax
     call jit_emit_byte
     ret
 
-; Rutina auxiliar NUEVA para comparaciones Double (evita la corrupción de pila de la implementación anterior)
+; Rutina auxiliar para comparaciones Double (llamada por 0x97 y 0x98)
 jit_emit_dcom_routine:
-    push eax
+    push eax        ; Guardar AL (1 o -1)
 
-    mov al, 0xDD                ; fld qword [esp+8]
+    mov al, 0xDD    ; fld qword [esp+8]
     call jit_emit_byte
     mov al, 0x44
     call jit_emit_byte
@@ -3719,87 +3739,83 @@ jit_emit_dcom_routine:
     mov al, 0x08
     call jit_emit_byte
 
-    mov al, 0xDD                ; fld qword [esp]
+    mov al, 0xDD    ; fld qword [esp]
     call jit_emit_byte
     mov al, 0x04
     call jit_emit_byte
     mov al, 0x24
     call jit_emit_byte
 
-    mov al, 0xDE                ; fcompp
+    mov al, 0xDE    ; fcompp
     call jit_emit_byte
     mov al, 0xD9
     call jit_emit_byte
 
-    mov al, 0xDF
+    mov al, 0xDF    ; fnstsw ax
     call jit_emit_byte
     mov al, 0xE0
     call jit_emit_byte
 
-    mov al, 0x9E
+    mov al, 0x9E    ; sahf
     call jit_emit_byte
 
-    mov al, 0x83                ; add esp, 16 (Limpia los 16 bytes que ocupan los dos doubles)
+    mov al, 0x83    ; add esp, 16
     call jit_emit_byte
     mov al, 0xC4
     call jit_emit_byte
     mov al, 0x10
     call jit_emit_byte
 
-    pop eax
-    mov cl, al
-
-    mov al, 0x7A
+    mov al, 0x7A    ; jp .isNaN
     call jit_emit_byte
-    mov al, 0x0A
+    mov al, 0x0E    ; Offset exacto de 14 bytes
     call jit_emit_byte
 
-    mov al, 0x0F
+    ; --- Comparacion Normal (14 bytes emitidos) ---
+    mov al, 0x31    ; xor eax, eax
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+
+    mov al, 0x0F    ; seta al
     call jit_emit_byte
     mov al, 0x97
     call jit_emit_byte
     mov al, 0xC0
     call jit_emit_byte
 
-    mov al, 0x0F
+    mov al, 0x31    ; xor edx, edx
+    call jit_emit_byte
+    mov al, 0xD2
+    call jit_emit_byte
+
+    mov al, 0x0F    ; setb dl
     call jit_emit_byte
     mov al, 0x92
     call jit_emit_byte
     mov al, 0xD2
     call jit_emit_byte
 
-    mov al, 0x0F
-    call jit_emit_byte
-    mov al, 0xB6
-    call jit_emit_byte
-    mov al, 0xC0
-    call jit_emit_byte
-
-    mov al, 0x0F
-    call jit_emit_byte
-    mov al, 0xB6
-    call jit_emit_byte
-    mov al, 0xD2
-    call jit_emit_byte
-
-    mov al, 0x29
+    mov al, 0x29    ; sub eax, edx
     call jit_emit_byte
     mov al, 0xD0
     call jit_emit_byte
 
-    mov al, 0xEB
+    mov al, 0xEB    ; jmp .done
     call jit_emit_byte
-    mov al, 0x02
-    call jit_emit_byte
-
-    mov al, 0x0F
-    call jit_emit_byte
-    mov al, 0xBE
-    call jit_emit_byte
-    mov al, 0xC1
+    mov al, 0x05    ; Offset exacto de 5 bytes
     call jit_emit_byte
 
-    mov al, 0x50
+    ; --- .isNaN (5 bytes emitidos) ---
+    mov al, 0xB8    ; mov eax, imm32
+    call jit_emit_byte
+
+    pop eax         ; Recuperar 1 o -1 que se paso a la rutina
+    movsx eax, al   ; Extender signo a 32 bits para emitir constante
+    call jit_emit_dword
+
+    ; --- .done ---
+    mov al, 0x50    ; push eax
     call jit_emit_byte
     ret
 
