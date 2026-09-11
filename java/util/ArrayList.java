@@ -51,8 +51,8 @@ public class ArrayList<E> extends AbstractList<E> implements Serializable, Rando
 	// Constructor para colecciones
 	public ArrayList(Collection<? extends E> collection) {		
 		if (collection == null) {
-			new NullPointerException("collection == null");
-			return null;
+			//throw new NullPointerException("collection == null");			
+			System.out.println("Collection == null");			
 		}		
 
 		Object[] a = collection.toArray();
@@ -131,15 +131,10 @@ public class ArrayList<E> extends AbstractList<E> implements Serializable, Rando
 	
 	// Devuelve clon del arreglo
 	public Object clone() {
-		try {
-			ArrayList<E> result = (ArrayList<E>) super.clone();
-            result.array = Arrays.copyOf(array, size);
-            result.modCount = 0;
-            return result;
-		} catch (Exception e) {
-			throw new CloneNotSupportedException(e.getMessage());
-			//throw new AssertionError();
-		}
+		ArrayList<E> result = (ArrayList<E>) super.clone();
+		result.array = Arrays.copyOf(array, size);
+		result.modCount = 0;
+		return result;		
 	}
 	// Garantizar capacidad
 	public void ensureCapacity(int minimumCapacity) {
