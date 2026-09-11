@@ -92,6 +92,14 @@ public final class Objects {
     }
     return o;
   }
+  
+  // Verifica que el índice se encuentre dentro del rango [0, length)
+  public static int checkIndex(int index, int length) {
+    if (index < 0 || index >= length) {
+      throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + length);
+    }
+    return index;
+  }
 
   // Retorna cadena de texto equivalente del objeto sino null
   public static String toString(Object o) {
@@ -100,4 +108,5 @@ public final class Objects {
   public static String toString(Object o, String nullString) {
     return (o == null) ? nullString : o.toString();
   }
+  
 }
