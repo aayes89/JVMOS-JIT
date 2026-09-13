@@ -26,10 +26,12 @@ public class Mesh {
 
     public Vertex3D[] vertices;
     public Triangle3D[] triangles;
+	public Line3D[] lines;
 
-    public Mesh(Vertex3D[] vertices, Triangle3D[] triangles) {
+    public Mesh(Vertex3D[] vertices, Triangle3D[] triangles, Line3D[] lines) {
         this.vertices = vertices;
         this.triangles = triangles;
+		this.lines = lines;
     }
 
     public int getVertexCount() {
@@ -45,6 +47,13 @@ public class Mesh {
         }
         return triangles.length;
     }
+	
+	public int getLineCount(){
+		if(lines == null){
+			return 0;
+		}
+		return lines.length;
+	}
 
     public Vertex3D getVertex(int index) {
         return vertices[index];
@@ -53,4 +62,8 @@ public class Mesh {
     public Triangle3D getTriangle(int index) {
         return triangles[index];
     }
+	
+	public Lines3D getLine(int index){
+		return lines[index];
+	}
 }
