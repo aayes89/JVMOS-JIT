@@ -203,7 +203,8 @@ public abstract class Buffer {
     // reinicia la posición a por defecto
     public final Buffer reset() {
         if (mark == UNSET_MARK) {
-            throw new InvalidMarkException("Mark not set");
+            //throw new InvalidMarkException("Mark not set");
+			System.out.println("Mark not set");
         }
         position = mark;
         return this;
