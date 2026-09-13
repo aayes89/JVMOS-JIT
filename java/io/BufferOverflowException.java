@@ -22,6 +22,8 @@ SOFTWARE.*/
 
 package java.io;
 
+import java.lang.RuntimeException;
+
 public class BufferOverflowException extends RuntimeException {
 	// tomado de implementación original
     private static final long serialVersionUID = -5484897634319144535L;
