@@ -27,15 +27,15 @@ public final class CharArrayBuffer extends CharBuffer {
 	private final int arrayOffset;
 	private final boolean isReadOnly;
 	
+	// Constructores
     public CharArrayBuffer(int size) {
-        data = new char[size];
+		super(size, 0);
+		this.arrayOffset = 0;	
+		this.isReadOnly = false;	
+        backingArray = new char[size];
     }
     
-    public CharArrayBuffer(char[] buf) {
-        data = buf;
-    }
-	
-	CharArrayBuffer(char[] array) {
+	public CharArrayBuffer(char[] array) {
 		this(array.length, array, 0, false);
 	}
 
