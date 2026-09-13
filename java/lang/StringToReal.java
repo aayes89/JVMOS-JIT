@@ -43,14 +43,58 @@ public final class StringToReal {
         }
     }
    
-    private static double parseDblImpl(String s, int e){
-		// TODO
-        return 0.0;
+    private static double parseDblImpl(String s, int e) {
+
+		int length = s.length();
+
+		if (length == 0) {
+			return 0.0;
+		}
+
+		double result = 0.0;
+
+		for (int i = 0; i < length; i++) {
+			result = result * 10.0 + (s.charAt(i) - '0');
+		}
+
+		if (e > 0) {
+			while (e-- > 0) {
+				result *= 10.0;
+			}
+		} else {
+			while (e++ < 0) {
+				result *= 0.1;
+			}
+		}
+
+		return result;
 	}
 
-    private static float parseFltImpl(String s, int e){
-		// TODO
-        return 0.0f;
+    private static float parseFltImpl(String s, int e) {
+
+		int length = s.length();
+
+		if (length == 0) {
+			return 0.0f;
+		}
+
+		float result = 0.0f;
+
+		for (int i = 0; i < length; i++) {
+			result = result * 10.0f + (s.charAt(i) - '0');
+		}
+
+		if (e > 0) {
+			while (e-- > 0) {
+				result *= 10.0f;
+			}
+		} else {
+			while (e++ < 0) {
+				result *= 0.1f;
+			}
+		}
+
+		return result;
 	}
 
 	// lanzamiento de excepción
@@ -75,7 +119,12 @@ public final class StringToReal {
             }
         }
 
-        int end = Math.max(s.indexOf('E'), s.indexOf('e'));
+        int end = s.indexOf('E');
+		int lower = s.indexOf('e');
+		if (end == -1 || (lower != -1 && lower < end)) {
+			end = lower;
+		}
+		
         if (end != -1) {
             // hay algo despues de 'e'?
             if (end + 1 == length) {
@@ -208,89 +257,134 @@ public final class StringToReal {
     }
 
     // Parsea "+Nan", "NaN", "-Nan", "+Infinity", "Infinity", y "-Infinity", case-insensitively.
-    private static float parseName(String name, boolean isDouble) {
-        // Signo explícito?
-        boolean negative = false;
-        int i = 0;
-        int length = name.length();
-        char firstChar = name.charAt(i);
-        if (firstChar == '-') {
-            negative = true;
-            ++i;
-            --length;
-        } else if (firstChar == '+') {
-            ++i;
-            --length;
-        }
+	private static double parseNameDouble(String name) {
+		boolean negative = false;
+		int i = 0;
+		int length = name.length();
 
-        if (length == 8 && name.regionMatches(false, i, "Infinity", 0, 8)) {
-            return negative ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
-        }
-        if (length == 3 && name.regionMatches(false, i, "NaN", 0, 3)) {
-            return Float.NaN;
-        }
-        throw invalidReal(name, isDouble);
-    }
+		char c = name.charAt(0);
 
+		if (c == '-') {
+			negative = true;
+			i++;
+			length--;
+		} else if (c == '+') {
+			i++;
+			length--;
+		}
+
+		if (length == 8 && name.regionMatches(false, i, "Infinity", 0, 8)) {
+			return negative ? Double.NEGATIVE_INFINITY
+							 : Double.POSITIVE_INFINITY;
+		}
+
+		if (length == 3 && name.regionMatches(false, i, "NaN", 0, 3)) {
+			return Double.NaN;
+		}
+
+		throw invalidReal(name, true);
+	}
+	private static float parseNameFloat(String name) {
+		boolean negative = false;
+		int i = 0;
+		int length = name.length();
+
+		char c = name.charAt(0);
+
+		if (c == '-') {
+			negative = true;
+			i++;
+			length--;
+		} else if (c == '+') {
+			i++;
+			length--;
+		}
+
+		if (length == 8 && name.regionMatches(false, i, "Infinity", 0, 8)) {
+			return negative ? Float.NEGATIVE_INFINITY
+							 : Float.POSITIVE_INFINITY;
+		}
+
+		if (length == 3 && name.regionMatches(false, i, "NaN", 0, 3)) {
+			return Float.NaN;
+		}
+
+		throw invalidReal(name, false);
+	}
+	
 	// obtener el double de un texto
     public static double parseDouble(String s) {
-        s = s.trim();
-        int length = s.length();
 
-        if (length == 0) {
-            throw invalidReal(s, true);
-        }
+		s = s.trim();
 
-        // es double?
-        char last = s.charAt(length - 1);
-        if (last == 'y' || last == 'N') {
-            return parseName(s, true);
-        }
+		int length = s.length();
 
-        // Es hexadecimal?        
-        if (s.indexOf("0x") != -1 || s.indexOf("0X") != -1) {
-            return HexStringParser.parseDouble(s);
-        }
+		if (length == 0) {
+			throw invalidReal(s, true);
+		}
 
-        StringExponentPair info = initialParse(s, length, true);
-        if (info.infinity || info.zero) {
-            return info.specialValue();
-        }
-        double result = parseDblImpl(info.s, (int) info.e);
-        if (Double.doubleToRawLongBits(result) == 0xffffffffffffffffL) {
-            throw invalidReal(s, true);
-        }
-        return info.negative ? -result : result;
-    }
+		char last = s.charAt(length - 1);
+
+		if (last == 'y' || last == 'N') {
+			return parseNameDouble(s);
+		}
+
+		if (s.indexOf("0x") != -1 || s.indexOf("0X") != -1) {
+			return HexStringParser.parseDouble(s);
+		}
+
+		StringExponentPair info = initialParse(s, length, true);
+
+		if (info.infinity) {
+			return info.negative
+					? Double.NEGATIVE_INFINITY
+					: Double.POSITIVE_INFINITY;
+		}
+
+		if (info.zero) {
+			return info.negative ? -0.0 : 0.0;
+		}
+
+		double result = parseDblImpl(info.s, (int) info.e);
+
+		return info.negative ? -result : result;
+	}
     
 	// obtener el float de un texto
     public static float parseFloat(String s) {
-        s = s.trim();
-        int length = s.length();
 
-        if (length == 0) {
-            throw invalidReal(s, false);
-        }
+		s = s.trim();
 
-        // Es Float?
-        char last = s.charAt(length - 1);
-        if (last == 'y' || last == 'N') {
-            return parseName(s, false);
-        }
+		int length = s.length();
 
-        // Se puede representar como hexadecimal?
-        if (s.indexOf("0x") != -1 || s.indexOf("0X") != -1) {
-            return HexStringParser.parseFloat(s);
-        }
+		if (length == 0) {
+			throw invalidReal(s, false);
+		}
 
-        StringExponentPair info = initialParse(s, length, false);
-        if (info.infinity || info.zero) {
-            return info.specialValue();
-        }
-        float result = parseFltImpl(info.s, (int) info.e);
-        if (Float.floatToRawIntBits(result) == 0xffffffff) {
-            throw invalidReal(s, false);
-        }
-        return info.negative ? -result : result;
-    }
+		char last = s.charAt(length - 1);
+
+		if (last == 'y' || last == 'N') {
+			return parseNameFloat(s);
+		}
+
+		if (s.indexOf("0x") != -1 || s.indexOf("0X") != -1) {
+			return HexStringParser.parseFloat(s);
+		}
+
+		StringExponentPair info = initialParse(s, length, false);
+
+		if (info.infinity) {
+			return info.negative
+					? Float.NEGATIVE_INFINITY
+					: Float.POSITIVE_INFINITY;
+		}
+
+		if (info.zero) {
+			return info.negative ? -0.0f : 0.0f;
+		}
+
+		float result = parseFltImpl(info.s, (int) info.e);
+
+		return info.negative ? -result : result;
+	}
 }
