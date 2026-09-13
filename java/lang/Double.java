@@ -87,8 +87,7 @@ public final class Double extends Number implements Comparable<Double> {
 
     
     public boolean equals(Object object) {
-        return (object instanceof Double) &&
-                (doubleToLongBits(this.value) == doubleToLongBits(((Double) object).value));
+        return (object instanceof Double) && (doubleToLongBits(this.value) == doubleToLongBits(((Double) object).value));
     }
 
     public float floatValue() {
@@ -152,34 +151,32 @@ public final class Double extends Number implements Comparable<Double> {
     }
     
     public static int compare(double double1, double double2) {
-        // Non-zero, non-NaN checking.
-        if (double1 > double2) {
-            return 1;
-        }
-        if (double2 > double1) {
-            return -1;
-        }
-        if (double1 == double2 && 0.0d != double1) {
-            return 0;
-        }
 
-        // NaNs are equal to other NaNs and larger than any other double
-        if (isNaN(double1)) {
-            if (isNaN(double2)) {
-                return 0;
-            }
-            return 1;
-        } else if (isNaN(double2)) {
-            return -1;
-        }
+		if (double1 > double2) {
+			return 1;
+		}
 
-        // Deal with +0.0 and -0.0
-        long d1 = doubleToRawLongBits(double1);
-        long d2 = doubleToRawLongBits(double2);
-        // The below expression is equivalent to:
-        // (d1 == d2) ? 0 : (d1 < d2) ? -1 : 1
-        return (int) ((d1 >> 63) - (d2 >> 63));
-    }
+		if (double2 > double1) {
+			return -1;
+		}
+
+		if (double1 == double2 && 0.0d != double1) {
+			return 0;
+		}
+
+		if (isNaN(double1)) {
+			return isNaN(double2) ? 0 : 1;
+		}
+
+		if (isNaN(double2)) {
+			return -1;
+		}
+
+		long d1 = doubleToRawLongBits(double1);
+		long d2 = doubleToRawLongBits(double2);
+
+		return (int) ((d1 >> 63) - (d2 >> 63));
+	}
    
     public static Double valueOf(double d) {
         return new Double(d);
