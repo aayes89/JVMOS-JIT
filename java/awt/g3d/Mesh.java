@@ -63,7 +63,7 @@ public class Mesh {
         return triangles[index];
     }
 	
-	public Lines3D getLine(int index){
+	public Line3D getLine(int index){
 		return lines[index];
 	}
 }
