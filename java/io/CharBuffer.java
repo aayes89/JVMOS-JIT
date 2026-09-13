@@ -22,12 +22,14 @@ SOFTWARE.*/
 
 package java.io;
 
-import java.io.IOException;
+//import java.io.IOException;
+//import java.io.BufferOverflowException;
+import java.lang.IllegalArgumentException;
 import java.util.Arrays;
+import java.lang.Math;
 
 
-public abstract class CharBuffer extends Buffer implements
-        Comparable<CharBuffer>, CharSequence, Appendable, Readable {
+public abstract class CharBuffer extends Buffer implements Comparable<CharBuffer>, CharSequence, Appendable, Readable {
 
 	// Crear un Charbuffer con una capacidad dada
     public static CharBuffer allocate(int capacity) {
