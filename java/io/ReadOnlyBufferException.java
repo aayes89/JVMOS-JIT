@@ -20,6 +20,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.*/
 
+package java.io;
+
+import java.lang.UnsupportedOperationException;
+
 public class ReadOnlyBufferException extends UnsupportedOperationException {
 	// Tomado de implementeación original
     private static final long serialVersionUID = -1210063976496234090L;
