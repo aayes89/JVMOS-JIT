@@ -23,6 +23,8 @@ SOFTWARE.*/
 package java.awt.g3d;
 
 import java.awt.Color;
+import java.util.List;
+import java.util.ArrayList;
 
 public class MeshFactory {    
 
@@ -64,8 +66,8 @@ public class MeshFactory {
         t11.setColor(Color.MAGENT);    
         
         Vertex3D[] vertices = {v0, v1, v2, v3, v4, v5, v6, v7};
-        Triangle3D[] triangles = {t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11};
-        return new Mesh(vertices, triangles);
+        Triangle3D[] triangles = {t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11};		
+        return new Mesh(vertices, triangles, new Line3D[0]);
     }
 
     public static Mesh createPyramid() {
@@ -91,7 +93,7 @@ public class MeshFactory {
 
         Vertex3D[] vertices = {v0, v1, v2, v3, v4};
         Triangle3D[] triangles = {t0, t1, t2, t3, t4, t5};
-        return new Mesh(vertices, triangles);
+        return new Mesh(vertices, triangles, new Line3D[0]);
     }
     
     public static Mesh createSphere() {
@@ -165,6 +167,121 @@ public class MeshFactory {
             tIdx++;
         }
 
-        return new Mesh(vertices, triangles);
+        return new Mesh(vertices, triangles, new Line3D[0]);
+    }
+	
+	// Obtener Mesh de un arreglo de Strings
+    public static Mesh createFromOBJ(String[] objContent, float scale, int defaultColor) {
+        if (objContent == null || objContent.length == 0) {            
+            return new Mesh(new Vertex3D[0], new Triangle3D[0], new Line3D[0]); 
+        }
+
+        List<Vertex3D> vertexList = new ArrayList<>();
+        List<Triangle3D> triangleList = new ArrayList<>();
+        List<Line3D> lineList = new ArrayList<>();
+        
+        for (int i = 0; i < objContent.length; i++) {
+            String line = objContent[i].trim(); 
+
+            if (line.isEmpty() || line.startsWith("#") || line.startsWith("vt ") || line.startsWith("vn ")) {
+                continue;
+            }
+
+            // Procesar vértices
+            if (line.startsWith("v ")) {
+                String[] p = line.split(" ");
+                String[] tokens = getValidTokens(p);
+                
+                if (tokens.length >= 4) {
+                    float fx = Float.parseFloat(tokens[1]);
+                    float fy = Float.parseFloat(tokens[2]);
+                    float fz = Float.parseFloat(tokens[3]);
+                    
+                    int ix = (int) (fx * scale);
+                    int iy = (int) (fy * scale);
+                    int iz = (int) (fz * scale);
+                    
+                    vertexList.add(new Vertex3D(ix, iy, iz));
+                }
+            }
+            // Procesar caras y triangularlass
+            else if (line.startsWith("f ")) {
+                String[] p = line.split(" ");
+                String[] tokens = getValidTokens(p);
+                
+                int[] vIndices = new int[tokens.length - 1];
+                for (int j = 1; j < tokens.length; j++) {
+                    String[] f = tokens[j].split("/");
+                    vIndices[j - 1] = Integer.parseInt(f[0]) - 1; 
+                }
+                
+                for (int k = 1; k < vIndices.length - 1; k++) {
+                    Vertex3D v0 = vertexList.get(vIndices[0]);
+                    Vertex3D v1 = vertexList.get(vIndices[k]);
+                    Vertex3D v2 = vertexList.get(vIndices[k + 1]);
+                    
+                    Triangle3D tri = new Triangle3D(v0, v1, v2);
+                    tri.setColor(defaultColor);
+                    
+                    triangleList.add(tri);
+                }
+            }
+            // Procesar líneas ('l')
+            else if (line.startsWith("l ")) {
+                String[] p = line.split(" ");
+                String[] tokens = getValidTokens(p);
+                
+                // Conectar múltiples puntos de la línea en pares continuos
+                for (int k = 1; k < tokens.length - 1; k++) {
+                    int idx0 = Integer.parseInt(tokens[k].split("/")[0]) - 1;
+                    int idx1 = Integer.parseInt(tokens[k + 1].split("/")[0]) - 1;
+                    
+                    Vertex3D v0 = vertexList.get(idx0);
+                    Vertex3D v1 = vertexList.get(idx1);
+                    
+                    Line3D line3D = new Line3D(v0, v1);
+                    line3D.setColor(defaultColor);
+                    lineList.add(line3D);
+                }
+            }
+        }       
+
+        // Extracción manual de arreglos
+        Vertex3D[] finalVertices = new Vertex3D[vertexList.size()];
+        for (int i = 0; i < vertexList.size(); i++) {
+            finalVertices[i] = vertexList.get(i);
+        }
+
+        Triangle3D[] finalTriangles = new Triangle3D[triangleList.size()];
+        for (int i = 0; i < triangleList.size(); i++) {
+            finalTriangles[i] = triangleList.get(i);
+        }
+
+        // Extracción manual para líneas
+        Line3D[] finalLines = new Line3D[lineList.size()];
+        for (int i = 0; i < lineList.size(); i++) {
+            finalLines[i] = lineList.get(i);
+        }
+
+        return new Mesh(finalVertices, finalTriangles, finalLines);
+    }
+    
+    // Función de limpieza para descartar cadenas vacías generadas por dobles espacios
+    private static String[] getValidTokens(String[] raw) {
+        int count = 0;
+        for (int i = 0; i < raw.length; i++) {
+            if (!raw[i].trim().isEmpty()) {
+                count++;
+            }
+        }
+        
+        String[] valid = new String[count];
+        int idx = 0;
+        for (int i = 0; i < raw.length; i++) {
+            if (!raw[i].trim().isEmpty()) {
+                valid[idx++] = raw[i].trim();
+            }
+        }
+        return valid;
     }
 }
