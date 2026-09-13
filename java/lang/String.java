@@ -22,6 +22,8 @@ SOFTWARE.*/
 
 package java.lang;
 
+import java.util.ArrayList;
+
 public final class String implements CharSequence {
     
     private final byte[] value;
@@ -60,6 +62,46 @@ public final class String implements CharSequence {
     public String(char[] value) {
         this(value, 0, value.length);
     }
+	
+	// Devuelve un arreglo de String a partir de un patrón 
+	public String[] split(String pattern) {
+		byte[] separator = pattern.value;
+		if (separator.length == 0) {
+			return new String[] { this };
+		}
+		ArrayList<String> list = new ArrayList<String>();
+		int begin = 0;
+		for (int i = 0; i <= value.length - separator.length; ) {
+			boolean match = true;
+			for (int j = 0; j < separator.length; j++) {
+				if (value[i + j] != separator[j]) {
+					match = false;
+					break;
+				}
+			}
+
+			if (match) {
+				byte[] part = new byte[i - begin];
+				for (int j = begin; j < i; j++) {
+					part[j - begin] = value[j];
+				}
+				list.add(new String(part));
+				i += separator.length;
+				begin = i;
+			} else {
+				i++;
+			}
+		}
+
+		if (begin < value.length) {
+			byte[] part = new byte[value.length - begin];
+			for (int i = begin; i < value.length; i++) {
+				part[i - begin] = value[i];
+			}
+			list.add(new String(part));
+		}
+		return list.toArray(new String[list.size()]);
+	}
     
     @Override
     public int length() {
@@ -98,7 +140,20 @@ public final class String implements CharSequence {
         return new String(subBytes);
     }
 	
+	public boolean startsWith(String param){
+		if(param.length() > value.length){
+			return false;
+		}
 
+		for(int i=0;i<param.length();i++){
+			if(param.charAt(i) != value[i]){
+				return false;
+			}
+		}
+
+		return true;
+	}
+	
     public boolean isEmpty() {
         return length() == 0;
     }
@@ -341,6 +396,21 @@ public final class String implements CharSequence {
 
 		return chars;
 	}
+	
+	public static String copyValueOf(char[] data, int offset, int count) {
+        return new String(data, offset, count);
+    }
+	
+	public void getChars(int srcBegin, int srcEnd, char[] dst, int dstBegin) {
+		if (srcBegin < 0 || srcEnd > length() || srcBegin > srcEnd) {
+			System.out.println("StringIndexOutOfBounds");
+			return;
+		}
+		int len = srcEnd - srcBegin;
+		for (int i = 0; i < len; i++) {
+			dst[dstBegin + i] = (char) (value[srcBegin + i] & 0xFF);
+		}
+	}	
 
     public static String valueOf(long l) { return Long.toString(l); }
     public static String valueOf(float f) { return Float.toString(f); }
