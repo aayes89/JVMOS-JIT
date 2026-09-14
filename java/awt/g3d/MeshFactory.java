@@ -25,10 +25,11 @@ package java.awt.g3d;
 import java.awt.Color;
 import java.util.List;
 import java.util.ArrayList;
+import kernel.Native;
 
 public class MeshFactory {    
 
-    // --- PRIMITIVAS 3D ---
+    // Primitivas 3D
     public static Mesh createCube() {
         Vertex3D v0 = new Vertex3D(-25, -25, -25);
         Vertex3D v1 = new Vertex3D( 25, -25, -25);
@@ -176,38 +177,41 @@ public class MeshFactory {
             return new Mesh(new Vertex3D[0], new Triangle3D[0], new Line3D[0]); 
         }
 
-        List<Vertex3D> vertexList = new ArrayList<>();
-        List<Triangle3D> triangleList = new ArrayList<>();
-        List<Line3D> lineList = new ArrayList<>();
+        ArrayList<Vertex3D> vertexList = new ArrayList<>();
+        ArrayList<Triangle3D> triangleList = new ArrayList<>();
+        ArrayList<Line3D> lineList = new ArrayList<>();		
         
         for (int i = 0; i < objContent.length; i++) {
             String line = objContent[i].trim(); 
 
             if (line.isEmpty() || line.startsWith("#") || line.startsWith("vt ") || line.startsWith("vn ")) {
                 continue;
-            }
+            }		
 
-            // Procesar vértices
+            // Procesar vértices						
             if (line.startsWith("v ")) {
-                String[] p = line.split(" ");
-                String[] tokens = getValidTokens(p);
-                
+                String[] p = line.split(" ");				
+                String[] tokens = getValidTokens(p);				
+				
                 if (tokens.length >= 4) {
-                    float fx = Float.parseFloat(tokens[1]);
-                    float fy = Float.parseFloat(tokens[2]);
-                    float fz = Float.parseFloat(tokens[3]);
+					float fx = Float.parseFloat(tokens[1]);					
+					float fy = Float.parseFloat(tokens[2]);										
+					float fz = Float.parseFloat(tokens[3]);										
                     
                     int ix = (int) (fx * scale);
                     int iy = (int) (fy * scale);
                     int iz = (int) (fz * scale);
                     
                     vertexList.add(new Vertex3D(ix, iy, iz));
-                }
+					paso = true;
+                }				
             }
             // Procesar caras y triangularlass
             else if (line.startsWith("f ")) {
                 String[] p = line.split(" ");
+				Native.sys(5, 120, 50, "Paso split de f", 0);
                 String[] tokens = getValidTokens(p);
+				Native.sys(5, 400, 50, "Paso valid tokens f", 0);
                 
                 int[] vIndices = new int[tokens.length - 1];
                 for (int j = 1; j < tokens.length; j++) {
