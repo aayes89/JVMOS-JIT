@@ -1250,7 +1250,14 @@ sys_rtl8139_init:
     mov ax, [ebp + 8]
     mov [rtl8139_io_port], ax
 
+    ; Despertar la tarjeta (Power On)
     mov dx, ax
+    add dx, 0x52
+    mov al, 0x00
+    out dx, al
+
+    ; Software Reset
+    mov dx, [rtl8139_io_port]
     add dx, 0x37
     mov al, 0x10
     out dx, al
@@ -1259,41 +1266,51 @@ sys_rtl8139_init:
     test al, 0x10
     jnz .wait_rst
 
-    ; Configurar inicio del buffer de recepción (RBSTART)
+    ; Configurar inicio del buffer RX (RBSTART - 0x30)
     mov dx, [rtl8139_io_port]
     add dx, 0x30
     mov eax, rx_buffer
     out dx, eax
 
-    ; Configurar RCR para aceptar Broadcast y Physical Match (0x8F)
+    ; Configurar RCR (0x44): Aceptar Broadcast, Physical Match y Multicast (0x8F) + Wrap (bit 7 = 0)
     mov dx, [rtl8139_io_port]
     add dx, 0x44
-    mov eax, 0x8F
+    mov eax, 0x0000008F
     out dx, eax
 
-    ; Habilitar Rx y Tx
+    ; Habilitar Rx y Tx (Command Reg 0x37 = 0x0C)
     mov dx, [rtl8139_io_port]
     add dx, 0x37
     mov al, 0x0C
     out dx, al
 
-	mov eax, 1	; retornar 1 (éxito)
+    mov eax, 1
     pop ebp
     ret
+
 
 sys_rtl8139_send_packet:
     push ebp
     mov ebp, esp
     push esi
 
+    ; [ebp + 8]  -> Puntero al byte[] de Java
+    ; [ebp + 12] -> Tamaño del paquete
     mov esi, [ebp + 8]
+    
+    ; Si tu runtime pasa el objeto Java entero, salta la cabecera del array:
+    ; (8 bytes de cabecera + 4 bytes de campo .length = 12 bytes de offset)
+    add esi, 12           
+
     mov ecx, [ebp + 12]
 
+    ; Configurar puerto TSAD0 (0x20) -> Dirección física
     mov dx, [rtl8139_io_port]
     add dx, 0x20
     mov eax, esi
     out dx, eax
 
+    ; Configurar puerto TSD0 (0x10) -> Tamaño + Iniciar envío
     mov dx, [rtl8139_io_port]
     add dx, 0x10
     mov eax, ecx
@@ -1303,6 +1320,7 @@ sys_rtl8139_send_packet:
     pop ebp
     ret
 
+
 sys_net_receive_packet:
     push ebp
     mov ebp, esp
@@ -1310,56 +1328,56 @@ sys_net_receive_packet:
     push esi
     push edi
 
-    ; Chequear Command Register (0x37) bit 0 (BUFE - Buffer Empty)
+    ; Verificar bit BUFE (Buffer Empty) en 0x37
     mov dx, [rtl8139_io_port]
     add dx, 0x37
     in al, dx
     test al, 0x01
-    jnz .no_packet
+    jnz .no_packet          ; Si BUFE == 1, no hay paquetes
 
-    ; Hay paquete? Obtener puntero actual en el anillo
     mov ebx, [rtl8139_rx_ptr]
     mov esi, rx_buffer
     add esi, ebx
 
-    ; Leer longitud del paquete desde la cabecera hardware
+    ; Leer longitud del paquete desde la cabecera HW de RTL8139 (bytes 2 y 3)
     movzx ecx, word [esi + 2]
 
-    ; Copiar payload al buffer en Java (Arg C está en ebp+8 vía dispatch)
+    ; Apuntar EDI al buffer de destino en Java (+12 bytes para saltar la cabecera del array Java)
     mov edi, [ebp + 8]
-    push ecx
-    add esi, 4          ; Saltar cabecera de 4 bytes de RTL8139
-    sub ecx, 4          ; Copiar el payload puro
-    rep movsb
-    pop ecx
+    add edi, 12
 
-    ; Actualizar puntero Rx circular alineado a 4 bytes
-    add ebx, ecx
-    add ebx, 4
+    ; Guardar el tamaño original del payload (ecx - 4 bytes de CRC HW)
+    sub ecx, 4
+    push ecx               ; Guardar longitud devuelta a Java
+
+    ; Saltar 4 bytes de cabecera RTL8139 (2 status + 2 len)
+    add esi, 4
+    
+    ; Copiar datos al buffer de Java
+    rep movsb
+
+    pop eax                ; EAX contiene el tamaño exacto del payload copiado
+
+    ; Actualizar puntero Rx en anillo
+    add ebx, eax
+    add ebx, 4 + 4         ; +4 cabecera HW, +4 alineación
     add ebx, 3
-    and ebx, ~3
+    and ebx, ~3            ; Alineación a dword (4 bytes)
+    
     cmp ebx, 8192
     jl .no_wrap
     sub ebx, 8192
 .no_wrap:
     mov [rtl8139_rx_ptr], ebx
 
-    ;Notificar a la tarjeta actualizando el CAPR (0x38)
+    ; Notificar lectura a la tarjeta en CAPR (0x38)
     mov dx, [rtl8139_io_port]
     add dx, 0x38
-    mov eax, ebx
-    sub eax, 16
+    mov ebx, eax
+    sub ebx, 16
+    mov ax, bx
     out dx, ax
 
-    ; Limpiar bit Rx OK en el ISR (0x3E) para recibir más
-    mov dx, [rtl8139_io_port]
-    add dx, 0x3E
-    mov ax, 0x01
-    out dx, ax
-
-    ; Retornar tamaño del paquete a Java
-    mov eax, ecx
-    sub eax, 4
     jmp .done
 
 .no_packet:
