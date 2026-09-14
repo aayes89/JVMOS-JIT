@@ -1,4 +1,4 @@
-*MIT License
+/*MIT License
 
 Copyright (c) 2026 Allan (Slam)
 
@@ -74,10 +74,10 @@ public class DhcpClient {
                         parseOptions(rx, dhcpOffset + 240, len - (dhcpOffset + 240), mask, gw, dns1);
 
                         // Aplicar la configuración obtenida al Shell
-                        NetworkShell.setLocalIp(offeredIp);
+                        NetworkShell.setLocalIP(offeredIp);
                         if (mask[0] != 0) NetworkShell.setMask(mask);
-                        if (gw[0] != 0) NetworkShell.setGw(gw);
-                        if (dns1[0] != 0) NetworkShell.setDns1(dns1);
+                        if (gw[0] != 0) NetworkShell.setGW(gw);
+                        if (dns1[0] != 0) NetworkShell.setDNS1(dns1);
 
                         return true;
                     }
