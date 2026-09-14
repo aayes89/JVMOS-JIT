@@ -105,10 +105,67 @@ public final class Float extends Number implements Comparable<Float> {
 		return f != f;
 	}
 
-    // Obtener float de una cadena de texto
+    // Obtener float de una cadena de texto    
     public static float parseFloat(String string) {
-		return StringToReal.parseFloat(string);
-	}
+        if (string == null) {
+			return 0.0f;
+		}
+        String s = string.trim();
+        int len = s.length();
+        if (len == 0){
+			return 0.0f;
+		}
+
+        boolean negative = false;
+        int i = 0;
+        char first = s.charAt(0);
+        
+        if (first == '-') {
+            negative = true;
+            i++;
+        } else if (first == '+') {
+            i++;
+        }
+
+        // Casos especiales (Infinity, NaN)
+        char last = s.charAt(len - 1);
+        if (last == 'N' || last == 'y') {
+            if (s.indexOf("NaN") != -1) return NaN;
+            if (s.indexOf("Infinity") != -1) return negative ? NEGATIVE_INFINITY : POSITIVE_INFINITY;
+        }
+
+        float integerPart = 0.0f;
+        float fractionPart = 0.0f;
+        float fractionScale = 0.1f;
+        boolean inFraction = false;
+
+        // Parseo matemático directo sin instanciar ningún objeto
+        while (i < len) {
+            char c = s.charAt(i);
+            
+            // Ignoramos la E (notación científica) y la f final para modelos 3D convencionales
+            if (c == 'f' || c == 'F' || c == 'e' || c == 'E') {
+                break;
+            }
+            if (c == '.') {
+                inFraction = true;
+                i++;
+                continue;
+            }
+            if (c >= '0' && c <= '9') {
+                if (!inFraction) {
+                    integerPart = integerPart * 10.0f + (c - '0');
+                } else {
+                    fractionPart += (c - '0') * fractionScale;
+                    fractionScale *= 0.1f;
+                }
+            }
+            i++;
+        }
+
+        float result = integerPart + fractionPart;
+        return negative ? -result : result;
+    }
 
     @Override
     public String toString() { 
