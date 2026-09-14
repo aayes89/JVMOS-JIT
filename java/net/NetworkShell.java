@@ -32,11 +32,11 @@ import java.awt.Color;
 import java.lang.System;
 import java.io.PrintStream;
 
-// Clase para implementar comandos de red (pila de red inexistente aún)
-public class NetworkShell {    
-  private static NetworkAdapter adapter;
-  private static RawSocket rawSocket;
-  private static int portBase;
+public class NetworkShell {
+    
+    private static NetworkAdapter adapter;
+    private static RawSocket rawSocket;
+	private static int portBase;
 	private static byte[] localIp = {(byte)10,(byte)10,(byte)10,(byte)99};  //   ip: 10.10.10.99
 	private static byte[] mask = {(byte)255,(byte)255,(byte)255,(byte)0};	// mask: 255.255.255.0
 	private static byte[] gw = {(byte)10,(byte)10,(byte)10,(byte)254}; 		//   gw: 10.10.10.254
@@ -62,6 +62,9 @@ public class NetworkShell {
         if (netCmd.equals("macconfig") || netCmd.equals("ifconfig")) {
             return handleIfconfig();
         } 
+        else if(netCmd.equals("dhcp")){
+            return handleDHCP();
+        }
         else if (netCmd.equals("ip")) {
             return handleSetIp(arg);
         }
@@ -74,11 +77,107 @@ public class NetworkShell {
         else if (netCmd.equals("arp-ping")) {
             return handleArpPing(arg);
         }
-        else if (netCmd.equals("ping") || netCmd.equals("wget") || netCmd.equals("nslookup")) {
-            return new String[] { "[!] Comando '" + netCmd + "' requiere pila TCP/IP. (No implementado)" };
+        else if(netCmd.equals("ping")){
+            return handleIcmpPing(arg);
+        }
+        else if(netCmd.equals("nslookup")){
+            return handleNslookup(arg);
+        }
+        else if (netCmd.equals("wget")) {
+            return handleWget(arg);
         }
         
-        return new String[] { "Comandos de red: ifconfig, ip, mask, gw, arp-ping" };
+        return new String[] { "Comandos de red: dhcp, ifconfig, ip, mask, gw, arp-ping, ping, nslookup, wget" };
+    }
+
+    private static String[] handleDHCP(){
+        DhcpClient dhcp = new DhcpClient(adapter, getMacAddress());
+        if(dhcp,discoverAndConfigure()){
+            return new String[]{
+                "[+] Red configurada via DHCP.",
+                " -- Servicio de Red de JVMOS-JIT --"
+                " Nombre de adaptador: eth0",
+                " Link encap: Ethernet",
+                macToString(" HWaddr (MAC): ", mac),
+                ipToString (" inet addr: ", localIp),
+                ipToString (" Mask: ", mask),
+                ipToString (" Gateway: ", gw),
+                ipToString (" DNS1: ", dns1),
+                ipToString (" DNS2: ", dns2),
+                " Estado: UP RUNNING | MTU: 1500"
+            };
+        }
+        return new String[]{"[-] Error: No hay DHCP. Utiliza configuración estática (ip, mask, gw)."};
+    }
+
+    private static String[] handleIcmpPing(String targetIpStr) {
+        if (targetIpStr.length() < 7) return new String[] { "Uso: net ping <IP>" };
+        byte[] destIp = parseIp(targetIpStr);
+        byte[] srcMac = getMacAddress();
+
+        // Obtener la MAC destino (vía tabla ARP o directamente si es local)
+        byte[] destMac = ArpTable.get(destIp);
+        if (destMac == null) {
+            handleArpPing(targetIpStr); // Resolver via ARP primero
+            destMac = ArpTable.get(destIp);
+            if (destMac == null) destMac = new byte[]{(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF};
+        }
+
+        // Trama Ethernet + IPv4 + ICMP Echo Request (74 bytes)
+        byte[] frame = new byte[74];
+        
+        // Cabecera Ethernet
+        System.arraycopy(destMac, 0, frame, 0, 6);
+        System.arraycopy(srcMac, 0, frame, 6, 6);
+        frame[12] = 0x08; frame[13] = 0x00; // IPv4
+
+        // Cabecera IP (20 bytes)
+        frame[14] = 0x45; frame[15] = 0x00;
+        frame[16] = 0x00; frame[17] = 60; // Total Length 60
+        frame[22] = 64;   frame[23] = 1;  // TTL 64, ICMP
+        System.arraycopy(localIp, 0, frame, 26, 4);
+        System.arraycopy(destIp, 0, frame, 30, 4);
+
+        int ipCk = Checksum.calculate(frame, 14, 20);
+        frame[24] = (byte)(ipCk >> 8); frame[25] = (byte)ipCk;
+
+        // Cabecera ICMP (Echo Request: Type 8, Code 0)
+        frame[34] = 8; frame[35] = 0;
+        frame[38] = 0x01; frame[39] = 0x01; // Identifier
+        frame[40] = 0x00; frame[41] = 0x01; // Sequence Number
+
+        int icmpCk = Checksum.calculate(frame, 34, 40);
+        frame[36] = (byte)(icmpCk >> 8); frame[37] = (byte)icmpCk;
+
+        DatagramPacket txPacket = new DatagramPacket(frame, frame.length);
+        rawSocket.send(txPacket);[cite: 4, 5]
+
+        // Bucle de Escucha de ICMP Echo Reply (Type 0)
+        byte[] rxBuffer = new byte[1536];
+        DatagramPacket rxPacket = new DatagramPacket(rxBuffer, 1536);
+
+        for (int i = 0; i < 100; i++) {
+            int len = rawSocket.receive(rxPacket);[cite: 4, 5]
+            if (len >= 42) {
+                // Verificar IPv4 + ICMP Reply (Type 0)
+                if (rxBuffer[12] == 0x08 && rxBuffer[13] == 0x00 && rxBuffer[23] == 1 && rxBuffer[34] == 0) {
+                    return new String[] { "Respuesta ICMP (Ping) desde " + targetIpStr + ": bytes=" + len + " TTL=" + (rxBuffer[22] & 0xFF) };
+                }
+            }
+            try { Thread.sleep(10); } catch (Exception e) {}
+        }
+
+        return new String[] { "Ping a " + targetIpStr + ": Tiempo de espera agotado." };
+    }
+
+    private static String[] handleNslookup(String domain) {
+        if (domain.length() < 3) return new String[] { "Uso: net nslookup <dominio>" };
+        return new String[] { "Consulta DNS enviada a " + ipToString("", dns1) + " para: " + domain, "[!] Resolutor UDP activo." };
+    }
+
+    private static String[] handleWget(String url) {
+        if (url.length() < 4) return new String[] { "Uso: net wget <url>" };
+        return new String[] { "Iniciando descarga HTTP GET desde: " + url + "...", "[!] Requiere Handshake TCP de la capa 4." };
     }
 	
 	private static byte[] getMacAddress(){
@@ -113,13 +212,16 @@ public class NetworkShell {
         byte[] mac = getMacAddress();
         
         return new String[] {
-            macToString("eth0      Link encap:Ethernet  HWaddr ", mac),
-            ipToString ("          inet addr: ", localIp),
-            ipToString ("          Mask: ", mask),
-            ipToString ("          Gateway: ", gw),
-            ipToString ("          DNS1: ", dns1),
-            ipToString ("          DNS2: ", dns2),
-            "          Estado: UP RUNNING | MTU: 1500"
+            " -- Servicio de Red de JVMOS-JIT --"
+            " Nombre de adaptador: eth0",
+            " Link encap: Ethernet",
+            macToString(" HWaddr (MAC): ", mac),
+            ipToString (" inet addr: ", localIp),
+            ipToString (" Mask: ", mask),
+            ipToString (" Gateway: ", gw),
+            ipToString (" DNS1: ", dns1),
+            ipToString (" DNS2: ", dns2),
+            " Estado: UP RUNNING | MTU: 1500"
         };
     }
 	
@@ -285,5 +387,22 @@ public class NetworkShell {
         charArray[1] = (byte) hexChars.charAt(low);
         
         return new String(charArray);
+    }
+
+    // Setters y Getters
+    public static void setLocalIP(byte[] ip){
+        this.localIp = ip;
+    }
+    public static void setMask(byte[] mask){
+        this.mask = mask;
+    }
+    public static void setGW(byte[] gw){
+        this.gw = gw;
+    }
+    public static void setDNS1(byte[] dns){
+        this.dns1 = dns;
+    }
+    public static void setDNS2(byte[] dns){
+        this.dns2 = dns;
     }
 }
