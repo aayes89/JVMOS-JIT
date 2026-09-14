@@ -26,10 +26,16 @@ public class Line3D {
     public Vertex3D v1;
     public int color;
 
+	public Line3D(){
+		this.v0 = new Vertex3D();
+		this.v1 = new Vertex3D();
+		this.color = Color.WHITE;
+	}
+
     public Line3D(Vertex3D v0, Vertex3D v1) {
         this.v0 = v0;
         this.v1 = v1;
-    }
+	}
     
     public Vertex3D getV0() {
 		return v0; 
