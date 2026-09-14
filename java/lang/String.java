@@ -63,45 +63,51 @@ public final class String implements CharSequence {
         this(value, 0, value.length);
     }
 	
-	// Devuelve un arreglo de String a partir de un patrón 
-	public String[] split(String pattern) {
-		byte[] separator = pattern.value;
-		if (separator.length == 0) {
-			return new String[] { this };
-		}
-		ArrayList<String> list = new ArrayList<String>();
-		int begin = 0;
-		for (int i = 0; i <= value.length - separator.length; ) {
-			boolean match = true;
-			for (int j = 0; j < separator.length; j++) {
-				if (value[i + j] != separator[j]) {
-					match = false;
-					break;
-				}
-			}
+	// Devuelve un String[] a partir de un patrón que separa los elementos 
+    public String[] split(String pattern) {
+        byte[] separator = pattern.getBytes();
+        if (separator.length == 0) {
+            return new String[] { this };
+        }
+        ArrayList<String> list = new ArrayList<String>();
+        int begin = 0;
+        for (int i = 0; i <= value.length - separator.length; ) {
+            boolean match = true;
+            for (int j = 0; j < separator.length; j++) {
+                if (value[i + j] != separator[j]) {
+                    match = false;
+                    break;
+                }
+            }
 
-			if (match) {
-				byte[] part = new byte[i - begin];
-				for (int j = begin; j < i; j++) {
-					part[j - begin] = value[j];
-				}
-				list.add(new String(part));
-				i += separator.length;
-				begin = i;
-			} else {
-				i++;
-			}
-		}
+            if (match) {
+                byte[] part = new byte[i - begin];
+                for (int j = begin; j < i; j++) {
+                    part[j - begin] = value[j];
+                }
+                list.add(new String(part));
+                i += separator.length;
+                begin = i;
+            } else {
+                i++;
+            }
+        }
 
-		if (begin < value.length) {
-			byte[] part = new byte[value.length - begin];
-			for (int i = begin; i < value.length; i++) {
-				part[i - begin] = value[i];
-			}
-			list.add(new String(part));
-		}
-		return list.toArray(new String[list.size()]);
-	}
+        if (begin < value.length) {
+            byte[] part = new byte[value.length - begin];
+            for (int i = begin; i < value.length; i++) {
+                part[i - begin] = value[i];
+            }
+            list.add(new String(part));
+        }
+        
+        // Extracción manual
+        String[] result = new String[list.size()];
+        for (int k = 0; k < list.size(); k++) {
+            result[k] = list.get(k);
+        }
+        return result;
+    }
     
     @Override
     public int length() {
@@ -218,14 +224,31 @@ public final class String implements CharSequence {
         return index;
     }
 
-    // comprobar si una cadena coincide con otra dada
-    public boolean regionMatches(boolean condition, int index, String type, int arg, int length){
-        // type = "+Nan", "NaN", "-Nan", "+Infinity", "Infinity", y "-Infinity"
-        boolean result = false;
-        if(arg == 0 && value.length == length){
-            result = true;
+    // comprobar si una cadena coincide con otra dada en una región específica    
+    public boolean regionMatches(boolean condition, int index, String type, int arg, int length) {
+        // Prevención de desbordamiento (StringIndexOutOfBounds)
+        if (index < 0 || arg < 0 || (index + length) > this.length() || (arg + length) > type.length()) {
+            return false;
         }
-        return result;
+        for (int i = 0; i < length; i++) {
+            char c1 = this.charAt(index + i);
+            char c2 = type.charAt(arg + i);
+
+            if (c1 != c2) {
+                if (condition) {
+                    // Validación de mayúsculas/minúsculas si condition es true
+                    if (Character.toUpperCase(c1) != Character.toUpperCase(c2) &&
+                        Character.toLowerCase(c1) != Character.toLowerCase(c2)) {
+                        return false;
+                    }
+                } else {
+                    // Si condition es false y los caracteres difieren, falla
+                    return false;
+                }
+            }
+        }
+        
+        return true;
     }
 
     // Elimina los espacios en blanco y caracteres de control al principio y al final
