@@ -71,19 +71,14 @@ public final class StringToReal {
 	}
 
     private static float parseFltImpl(String s, int e) {
-
 		int length = s.length();
-
 		if (length == 0) {
 			return 0.0f;
 		}
-
 		float result = 0.0f;
-
 		for (int i = 0; i < length; i++) {
 			result = result * 10.0f + (s.charAt(i) - '0');
 		}
-
 		if (e > 0) {
 			while (e-- > 0) {
 				result *= 10.0f;
@@ -301,8 +296,7 @@ public final class StringToReal {
 		}
 
 		if (length == 8 && name.regionMatches(false, i, "Infinity", 0, 8)) {
-			return negative ? Float.NEGATIVE_INFINITY
-							 : Float.POSITIVE_INFINITY;
+			return negative ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
 		}
 
 		if (length == 3 && name.regionMatches(false, i, "NaN", 0, 3)) {
@@ -314,17 +308,12 @@ public final class StringToReal {
 	
 	// obtener el double de un texto
     public static double parseDouble(String s) {
-
 		s = s.trim();
-
 		int length = s.length();
-
 		if (length == 0) {
 			throw invalidReal(s, true);
 		}
-
 		char last = s.charAt(length - 1);
-
 		if (last == 'y' || last == 'N') {
 			return parseNameDouble(s);
 		}
@@ -352,39 +341,33 @@ public final class StringToReal {
     
 	// obtener el float de un texto
     public static float parseFloat(String s) {
-
-		s = s.trim();
-
-		int length = s.length();
-
-		if (length == 0) {
-			throw invalidReal(s, false);
+		if(s == null || s.length() == 0){
+			return 0.0f;
 		}
-
+		
+		s = s.trim();
+		int length = s.length();
+		if (length == 0) {
+			//throw invalidReal(s, false);
+			return 0.0f;
+		}
+		
+		// Manejar casos especiales simples (Infinity, NaN)
 		char last = s.charAt(length - 1);
-
 		if (last == 'y' || last == 'N') {
 			return parseNameFloat(s);
 		}
-
 		if (s.indexOf("0x") != -1 || s.indexOf("0X") != -1) {
 			return HexStringParser.parseFloat(s);
 		}
-
 		StringExponentPair info = initialParse(s, length, false);
-
 		if (info.infinity) {
-			return info.negative
-					? Float.NEGATIVE_INFINITY
-					: Float.POSITIVE_INFINITY;
+			return info.negative ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
 		}
-
 		if (info.zero) {
 			return info.negative ? -0.0f : 0.0f;
 		}
-
 		float result = parseFltImpl(info.s, (int) info.e);
-
 		return info.negative ? -result : result;
 	}
 }
