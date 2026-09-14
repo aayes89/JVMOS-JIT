@@ -202,17 +202,13 @@ public class MeshFactory {
                     int iy = (int) (fy * scale);
                     int iz = (int) (fz * scale);
                     
-                    vertexList.add(new Vertex3D(ix, iy, iz));
-					paso = true;
+                    vertexList.add(new Vertex3D(ix, iy, iz));					
                 }				
             }
             // Procesar caras y triangularlass
             else if (line.startsWith("f ")) {
-                String[] p = line.split(" ");
-				Native.sys(5, 120, 50, "Paso split de f", 0);
-                String[] tokens = getValidTokens(p);
-				Native.sys(5, 400, 50, "Paso valid tokens f", 0);
-                
+                String[] p = line.split(" ");				
+                String[] tokens = getValidTokens(p);                
                 int[] vIndices = new int[tokens.length - 1];
                 for (int j = 1; j < tokens.length; j++) {
                     String[] f = tokens[j].split("/");
