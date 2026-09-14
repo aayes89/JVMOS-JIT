@@ -42,6 +42,7 @@ public class NetworkShell {
 	private static byte[] gw = {(byte)10,(byte)10,(byte)10,(byte)254}; 		//   gw: 10.10.10.254
 	private static byte[] dns1 = {(byte)8,(byte)8,(byte)8,(byte)8}; 		// dns1: 8.8.8.8 google
 	private static byte[] dns2 = {(byte)1,(byte)1,(byte)1,(byte)1}; 		// dns2: 1.1.1.1 one.one.one.one
+    private static byte[] mac = new byte[6];
     
     // Inicializa los subsistemas de red
     public static void init(int ioPortBase) {
@@ -91,11 +92,12 @@ public class NetworkShell {
     }
 
     private static String[] handleDHCP(){
-        DhcpClient dhcp = new DhcpClient(adapter, getMacAddress());
-        if(dhcp,discoverAndConfigure()){
+        mac = getMacAddress();
+        DhcpClient dhcp = new DhcpClient(adapter, mac);
+        if(dhcp.discoverAndConfigure()){
             return new String[]{
                 "[+] Red configurada via DHCP.",
-                " -- Servicio de Red de JVMOS-JIT --"
+                " -- Servicio de Red de JVMOS-JIT --",
                 " Nombre de adaptador: eth0",
                 " Link encap: Ethernet",
                 macToString(" HWaddr (MAC): ", mac),
@@ -113,7 +115,7 @@ public class NetworkShell {
     private static String[] handleIcmpPing(String targetIpStr) {
         if (targetIpStr.length() < 7) return new String[] { "Uso: net ping <IP>" };
         byte[] destIp = parseIp(targetIpStr);
-        byte[] srcMac = getMacAddress();
+        mac = getMacAddress();
 
         // Obtener la MAC destino (vía tabla ARP o directamente si es local)
         byte[] destMac = ArpTable.get(destIp);
@@ -128,7 +130,7 @@ public class NetworkShell {
         
         // Cabecera Ethernet
         System.arraycopy(destMac, 0, frame, 0, 6);
-        System.arraycopy(srcMac, 0, frame, 6, 6);
+        System.arraycopy(mac, 0, frame, 6, 6);
         frame[12] = 0x08; frame[13] = 0x00; // IPv4
 
         // Cabecera IP (20 bytes)
@@ -150,14 +152,14 @@ public class NetworkShell {
         frame[36] = (byte)(icmpCk >> 8); frame[37] = (byte)icmpCk;
 
         DatagramPacket txPacket = new DatagramPacket(frame, frame.length);
-        rawSocket.send(txPacket);[cite: 4, 5]
+        rawSocket.send(txPacket);
 
         // Bucle de Escucha de ICMP Echo Reply (Type 0)
         byte[] rxBuffer = new byte[1536];
         DatagramPacket rxPacket = new DatagramPacket(rxBuffer, 1536);
 
         for (int i = 0; i < 100; i++) {
-            int len = rawSocket.receive(rxPacket);[cite: 4, 5]
+            int len = rawSocket.receive(rxPacket);
             if (len >= 42) {
                 // Verificar IPv4 + ICMP Reply (Type 0)
                 if (rxBuffer[12] == 0x08 && rxBuffer[13] == 0x00 && rxBuffer[23] == 1 && rxBuffer[34] == 0) {
@@ -209,10 +211,10 @@ public class NetworkShell {
     }
 
 	private static String[] handleIfconfig() {
-        byte[] mac = getMacAddress();
+        mac = getMacAddress();
         
         return new String[] {
-            " -- Servicio de Red de JVMOS-JIT --"
+            " -- Servicio de Red de JVMOS-JIT --",
             " Nombre de adaptador: eth0",
             " Link encap: Ethernet",
             macToString(" HWaddr (MAC): ", mac),
@@ -391,18 +393,18 @@ public class NetworkShell {
 
     // Setters y Getters
     public static void setLocalIP(byte[] ip){
-        this.localIp = ip;
+        localIp = ip;
     }
     public static void setMask(byte[] mask){
-        this.mask = mask;
+        mask = mask;
     }
     public static void setGW(byte[] gw){
-        this.gw = gw;
+        gw = gw;
     }
     public static void setDNS1(byte[] dns){
-        this.dns1 = dns;
+        dns1 = dns;
     }
     public static void setDNS2(byte[] dns){
-        this.dns2 = dns;
+        dns2 = dns;
     }
 }
