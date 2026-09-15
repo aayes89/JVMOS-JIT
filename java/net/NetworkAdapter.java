@@ -60,7 +60,7 @@ public class NetworkAdapter {
     }
 
     // Transmite un paquete usando el arreglo de bytes del DatagramPacket
-    public void send(DatagramPacket packet) {
+    public void send_old(DatagramPacket packet) {
         if (!initialized || packet == null) return;
         
         // Syscall 24: Enviar paquete de Red
@@ -68,13 +68,53 @@ public class NetworkAdapter {
     }
 
     // Recibe un paquete en el buffer del DatagramPacket
-    public int receive(DatagramPacket packet) {
+    public int receive_old(DatagramPacket packet) {
         if (!initialized || packet == null) return -1;
         
         // Syscall 25: Recibir paquete de Red
         int bytesRead = Native.sys(Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
         
         if (bytesRead > 0) {
+            packet.setLength(bytesRead);
+        }
+        return bytesRead;
+    }
+
+    // Transmite un paquete usando memoria física directa
+    public void send(DatagramPacket packet) {
+        if (!initialized || packet == null) return;
+        
+        // Marca de los 32MB (Seguro, lejos del Kernel)
+        int txAddr = 0x02000000; 
+        byte[] data = packet.getData();
+        int len = packet.getLength();
+        
+        // Escribir el paquete byte por byte en la RAM física (Syscall 26)
+        for(int i = 0; i < len; i++) {
+            Native.sys(26, txAddr + i, data[i], 0, 0); 
+        }
+        
+        // Syscall 24: Enviar indicando la dirección física
+        Native.sys(Native.SYS_RTL8139_SEND, 0, len, txAddr, 0);
+    }
+
+    // Recibe un paquete hacia memoria física directa
+    public int receive(DatagramPacket packet) {
+        if (!initialized || packet == null){ 
+            return -1;
+        }
+        // Marca de los 32MB + 8KB
+        int rxAddr = 0x02002000; 
+        
+        // Syscall 25: Recibir indicando la dirección física
+        int bytesRead = Native.sys(Native.SYS_NET_RECEIVE, 0, packet.getLength(), rxAddr, 0);
+        
+        if (bytesRead > 0) {
+            byte[] data = packet.getData();
+            // Rescatar los bytes de la memoria física hacia nuestro arreglo Java (Syscall 27)
+            for(int i = 0; i < bytesRead; i++) {
+                data[i] = (byte) Native.sys(27, rxAddr + i, 0, 0, 0);
+            }
             packet.setLength(bytesRead);
         }
         return bytesRead;
