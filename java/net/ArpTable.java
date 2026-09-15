@@ -27,34 +27,34 @@ import java.lang.System;
 // Caché IP -> MAC, con resolución dinámica para enviar paquetes unicast.
 public class ArpTable {
     private static final int MAX_ENTRIES = 16;
-    private static byte[][] ips = new byte[MAX_ENTRIES][4];
-    private static byte[][] macs = new byte[MAX_ENTRIES][6];
+    private static byte[] ips = new byte[MAX_ENTRIES * 4];
+    private static byte[] macs = new byte[MAX_ENTRIES * 6];
     private static int count = 0;
 
     public static synchronized void put(byte[] ip, byte[] mac) {
         for (int i = 0; i < count; i++) {
-            if (equalsIp(ips[i], ip)) {
-                System.arraycopy(mac, 0, macs[i], 0, 6);
+            int off = i * 4;
+            if (ips[off] == ip[0] && ips[off+1] == ip[1] && ips[off+2] == ip[2] && ips[off+3] == ip[3]) {
+                System.arraycopy(mac, 0, macs, i * 6, 6);
                 return;
             }
         }
         if (count < MAX_ENTRIES) {
-            System.arraycopy(ip, 0, ips[count], 0, 4);
-            System.arraycopy(mac, 0, macs[count], 0, 6);
+            System.arraycopy(ip, 0, ips, count * 4, 4);
+            System.arraycopy(mac, 0, macs, count * 6, 6);
             count++;
         }
     }
 
     public static synchronized byte[] get(byte[] ip) {
         for (int i = 0; i < count; i++) {
-            if (equalsIp(ips[i], ip)) {
-                return macs[i];
+            int off = i * 4;
+            if (ips[off] == ip[0] && ips[off+1] == ip[1] && ips[off+2] == ip[2] && ips[off+3] == ip[3]) {
+                byte[] mac = new byte[6];
+                System.arraycopy(macs, i * 6, mac, 0, 6);
+                return mac;
             }
         }
-        return null; // Si no existe en la caché
-    }
-
-    private static boolean equalsIp(byte[] a, byte[] b) {
-        return a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3];
+        return null;
     }
 }
