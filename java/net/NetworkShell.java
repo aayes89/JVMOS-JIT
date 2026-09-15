@@ -228,17 +228,23 @@ public class NetworkShell {
         DatagramPacket txPacket = new DatagramPacket(frame, frame.length);
         rawSocket.send(txPacket);
 
-        // 4. Recepción (Con reseteo de longitud)
+        // Recepción (Con reseteo de longitud)
         byte[] rxBuffer = new byte[1536];
         DatagramPacket rxPacket = new DatagramPacket(rxBuffer, 1536);
 
         for (int i = 0; i < 100; i++) {
-            // [NUEVO] Restaurar siempre el tamaño MÁXIMO antes de intentar leer
             rxPacket.setLength(1536); 
-
             int len = rawSocket.receive(rxPacket);
+            
             if (len >= 42) {
-                if (rxBuffer[12] == 0x08 && rxBuffer[13] == 0x00 && rxBuffer[23] == 1 && rxBuffer[34] == 0) {
+                // Calcular el inicio exacto del ICMP basado en la longitud de la cabecera IP
+                int ipHdrLen = (rxBuffer[14] & 0x0F) * 4;
+                int icmpOffset = 14 + ipHdrLen;
+                
+                // Aplicar & 0xFF a todas las validaciones
+                if ((rxBuffer[12] & 0xFF) == 0x08 && (rxBuffer[13] & 0xFF) == 0x00 && 
+                    (rxBuffer[23] & 0xFF) == 1 && (rxBuffer[icmpOffset] & 0xFF) == 0) {
+                    
                     return new String[] { "Respuesta de " + targetIpStr + ": bytes=" + len + " TTL=" + (rxBuffer[22] & 0xFF) };
                 }
             }
