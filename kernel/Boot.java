@@ -26,6 +26,7 @@ import java.io.DiskIO;
 import java.io.FileSystem;
 import java.io.File;
 import java.io.PrintStream;
+import java.net.NetworkShell;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.g3d.Renderer3D;
@@ -39,9 +40,10 @@ import java.awt.Toolkit;
 import java.util.Calendar;
 import java.lang.Thread;
 import java.lang.Math;
+import kernel.Native;
+import java.io.IOException;
 
-public class Boot {
-     
+public class Boot {    	
     // ==========================================
     // SISTEMA DE ARCHIVOS Y NAVEGACIÓN EN ÁRBOL
     // ==========================================
@@ -66,17 +68,39 @@ public class Boot {
     private static int cursorY = 80;
 
     public static void main(String[] args) {
-        java.lang.System.out = new PrintStream();
+		//Native.sys(1, 0x0000FF00, 0, 0, 0); // verde
+		Native.sys(5, 20, 20, "INICIANDO JVMOS-JIT...", 0);	
+		//Native.sys(12,1000,0,0,0); // sleep 3s
+		//Native.sys(17, 0, 0, 0, 0); // exit
+
+		java.lang.System.out = new PrintStream();
         System.out.println("[Boot] Inicializando subsistemas Micro-RT de JVMOS-JIT...");
-        
-        g = new Graphics2D();
+		g = new Graphics2D();
+		
         portapapeles = new Portapapeles();
+
+        // inicializar Teclado
+        initKeyboard();				
+
+        // inicializar BMFS (Sistema de archivos)
+        initFS();    				
         
-        initKeyboard();
-        initFS();        
+        // Inicializar redes        
+		int ioBase = NetworkShell.detectRtl8139IoPort(); // ioBase de RTL8139
         
+        String hexVal = Integer.toHexString(ioBase);
+        g.drawString("RTL8139 detectada en puerto I/O: 0x" + hexVal, 20,40);
+        System.out.println("RTL8139 detectada en puerto I/O: 0x" + hexVal);
+
+        NetworkShell.init(ioBase);  
+        //Native.sys(12,10000,0,0,0); // sleep 10s
+        //Native.sys(17, 0, 0, 0, 0); // exit 	
+        
+        g.drawString("[GRAPHICS] Inicializando subsistema grafico...",20,50);
         System.out.println("[GRAPHICS] Inicializando subsistema grafico...");
+        g.drawString("[HARDWARE] Inicializando controladores I/O...",20,60);
         System.out.println("[HARDWARE] Inicializando controladores I/O...");
+        g.drawString("[JVMOS-JIT] Iniciando entorno interactivo...",20,70);
         System.out.println("[JVMOS-JIT] Iniciando entorno interactivo...");
         
         dramaticBIOS();
@@ -105,9 +129,10 @@ public class Boot {
                     cmdLen = 0;
 
                     if (cursorY > 700) { 
-						clearScreen(); 
-						cursorY = 40; 
-					}
+                        // Syscall 28: Mover VRAM hacia arriba 25 píxeles (la altura de tus líneas)
+                        Native.sys(Native.SYS_SCROLL_UP, 25, 0, 0, 0); 
+                        cursorY -= 25; // El cursor retrocede en Y para quedarse en la misma línea visual
+                    }
                     drawPrompt();
                     
                 } else if (asciiChar == 8) { // BACKSPACE
@@ -150,6 +175,7 @@ public class Boot {
         lbaStack[0] = currentDirLba;
         lbaDepth = 0;
         currentDirPath = "/";
+        System.out.println("Sistema de Archivos BMFS inicializado!");
     }
 
     public static void processCommand(int cmdLen, int[] cmdBuffer) {
@@ -212,7 +238,11 @@ public class Boot {
                         
                         g.drawInt(f.length(), 350, cursorY);                        
                         cursorY += 25;
-                        if (cursorY > 700) { clearScreen(); cursorY = 40; }
+                        if (cursorY > 700) { 
+                            // Syscall 28: Mover VRAM hacia arriba 25 píxeles (la altura de tus líneas)
+                            Native.sys(Native.SYS_SCROLL_UP, 25, 0, 0, 0); 
+                            cursorY -= 25; // El cursor retrocede en Y para quedarse en la misma línea visual
+                        }
                     }
                 }
             }
@@ -441,7 +471,7 @@ public class Boot {
         else if (cmd.equals("clear") || cmd.equals("cls")) { 
 			clearScreen(); 
 			cursorY = 40; 
-		}
+		}		
         else if (cmd.equals("help")) { 
 			printHelp(); 
 		}
@@ -450,7 +480,32 @@ public class Boot {
 		}
 		else if(cmd.equals("reboot")){
 			reboot();
-		}	
+		}
+		else if (cmd.equals("net")) {
+            String netCmd = "";
+            String netArg = "";
+            int space = arg.indexOf(' ');
+            
+            if (space == -1) {
+                netCmd = arg;
+            } else {
+                // Separador manual de argumentos usando getBytes y arraycopy
+                byte[] argBytes = arg.getBytes();
+                byte[] cmdB = new byte[space];
+                java.lang.System.arraycopy(argBytes, 0, cmdB, 0, space);
+                netCmd = new String(cmdB);
+                
+                byte[] argB = new byte[argBytes.length - space - 1];
+                java.lang.System.arraycopy(argBytes, space + 1, argB, 0, argB.length);
+                netArg = new String(argB);
+            }
+            
+            String[] lineas = NetworkShell.execute(netCmd, netArg);
+            g.setColor(Color.WHITE);
+            for (int i = 0; i < lineas.length; i++) {
+                printLine(lineas[i]);
+            }
+        }
         else if (!cmd.equals("")) {
             g.setColor(Color.RED);
             g.drawString("Comando no reconocido: ", 20, cursorY);
@@ -466,9 +521,10 @@ public class Boot {
     private static void printLine(String text) {
         g.drawString(text, 20, cursorY);
         cursorY += 25;
-        if (cursorY > 700) {
-            clearScreen();
-            cursorY = 40;
+        if (cursorY > 700) { 
+            // Syscall 28: Mover VRAM hacia arriba 25 píxeles (la altura de tus líneas)
+            Native.sys(Native.SYS_SCROLL_UP, 25, 0, 0, 0); 
+            cursorY -= 25; // El cursor retrocede en Y para quedarse en la misma línea visual
         }
     }
     
@@ -497,6 +553,7 @@ public class Boot {
         printLine("  paste      : Pega desde la RAM");
         printLine("  run / java : Ejecuta .class");
         printLine("  format     : Formatea la particion actual");
+		printLine("  net        : Herramientas de red (ej. net ifconfig)");
         printLine("  cls / clear: Limpia pantalla");
         printLine("  date       : Muestra fecha");
         printLine("  time       : Muestra hora");
@@ -574,6 +631,7 @@ public class Boot {
             if (Native.sys(Native.SYS_READ_KEYBOARD, 0, 0, 0, 0) == 27) break;
         }
     }
+	
 	public static void runCube2D() {
 		clearScreen();
 		g.setColor(0x0000FFFF);
@@ -739,6 +797,7 @@ public class Boot {
 			}
 		}
 	}
+	
 	public static void runCubeMesh3D() {
         Renderer3D renderer = new Renderer3D(g, 1024, 768);
 		
@@ -778,7 +837,7 @@ public class Boot {
             matrix.multiply(rotZ);
 
             // Renderizar la geometría final combinada
-            renderer.render_old(cube, matrix);
+            renderer.render(cube, matrix, 200, 385, 100);
             
             // Avanzar rotaciones a distintas velocidades para un efecto más natural
             angleX = (angleX + 1) % 360;
@@ -844,16 +903,17 @@ public class Boot {
 		g.fillRect(0, 0, 1024, 768);
 	}
     public static void initKeyboard() {
+        System.out.println("Lectura de Teclado inicializada!");
 		Native.sys(Native.SYS_SET_KBD_LAYOUT, 1, 0, 0, 0);
 	}
 
     public static void dramaticBIOS() {
         clearScreen(); 
-		try { 
+		/*try { 
 			Thread.sleep(250);
 		} catch(Exception e) {
 			// System.err.println(e.getMessage());			
-		}
+		}*/
         g.setColor(Color.GREEN); 
 		g.drawString("JVMOS BIOS [v2.5]", 20, 25); 
 		g.drawString("=============================================", 20, 45);
@@ -872,7 +932,7 @@ public class Boot {
 		g.drawString("=============================================", 20, 45);
 		g.drawString("SISTEMA LISTO. Iniciando Shell interactivo...", 20, 205);
         try { 
-			Thread.sleep(1000);
+			Thread.sleep(2000);
 		} catch(Exception e) {
 			// System.err.println(e.getMessage());			
 		} 
@@ -888,10 +948,11 @@ public class Boot {
     }
 
     public static void shutdown() {
+		clearScreen();
         g.setColor(Color.RED);
 		g.drawString("SISTEMA APAGADO. CERRANDO EN 2s...", 380, 360);
         try { 
-			Thread.sleep(1500);
+			Thread.sleep(2000);
 		} catch(Exception e){
 			// System.err.println(e.getMessage); 
 		} 
