@@ -47,6 +47,7 @@ global sys_serial_puts
 global sys_serial_print_java
 
 ; --- PCI ---
+global sys_pci_write_config
 global sys_pci_read_config
 
 ; --- Entrada (por IRQ + FIFO) ---
@@ -102,6 +103,7 @@ global sys_wait_io
 extern g_framebuffer
 extern g_pitch
 extern draw_char_vram
+extern jit_flush_icache
 
 ; SECCIÓN BSS (MEMORIA NO INICIALIZADA)
 section .bss
@@ -133,6 +135,7 @@ rx_buffer           resb 8192 + 16
 
 ; SECCIÓN TEXT (CÓDIGO EJECUTABLE)
 section .text
+
 ; INICIALIZACIÓN DE HARDWARE CENTRALIZADA
 sys_hardware_init:
     cli
@@ -509,7 +512,6 @@ sys_get_ticks:
 
 
 ; Suspender ejecución por N milisegundos (Latencia ultra-baja)
-
 sys_sleep:
     push ebp
     mov ebp, esp
@@ -531,13 +533,13 @@ sys_sleep:
     jmp .wait
 
 .done:
+	call jit_flush_icache
     pop ebx
     pop ebp
     ret
 
 
 ; Asignador de Memoria Kernel (Heap Allocator - Alineado a 4 bytes)
-
 sys_kalloc:
     push ebp
     mov ebp, esp
@@ -553,6 +555,8 @@ sys_kalloc:
     mov eax, 0x00400000
 
 .set_start:
+	add eax, 15
+	and eax, ~15
     mov [heap_curr_ptr], eax
 
 .do_alloc:
@@ -562,10 +566,9 @@ sys_kalloc:
     test ecx, ecx
     jz .done_alloc
 
-    add ecx, 3
-    jc .fail
-
-    and ecx, ~3
+    add ecx, 15
+    jc .fail	
+    and ecx, 0xFFFFFFF0
 
     mov ebx, eax
     add ebx, ecx
@@ -681,28 +684,80 @@ sys_exit:
 
 
 ; BUS PCI
+sys_pci_write_config:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push edx
+
+    ; EAX = bus (arg_a)
+    mov eax, [ebp + 8]    
+    and eax, 0xFF
+    shl eax, 16
+
+    ; EBX = slot (arg_b)
+    mov ebx, [ebp + 12]   
+    and ebx, 0xFF
+    shl ebx, 11
+    or eax, ebx
+
+    ; Función siempre 0 (Ignoramos arg_c como func para ahorrar argumentos)
+    
+    ; EBX = offset (arg_c)
+    mov ebx, [ebp + 16]   
+    and ebx, 0xFC
+    or eax, ebx
+
+    or eax, 0x80000000    ; Habilitar Bit 31 (Enable)
+
+    ; Apuntar al registro CONFIG_ADDRESS
+    mov dx, 0xCF8
+    out dx, eax
+
+    ; Escribir el valor en CONFIG_DATA
+    mov eax, [ebp + 20]   ; value (arg_d)
+    mov dx, 0xCFC
+    out dx, eax
+
+    pop edx
+    pop ebx
+    pop ebp
+    ret
 
 sys_pci_read_config:
     push ebp
     mov ebp, esp
 	push ebx
+    push edx
+
     mov eax, [ebp + 8]          ; bus
+    and eax, 0xFF
     shl eax, 16
+
     mov ebx, [ebp + 12]         ; slot
+    and ebx, 0xFF
     shl ebx, 11
     or eax, ebx
+
     mov ebx, [ebp + 16]         ; func
+    and ebx, 0xFF
     shl ebx, 8
     or eax, ebx
+
     mov ebx, [ebp + 20]         ; offset
     and ebx, 0xFC
     or eax, ebx
-    or eax, 0x80000000
-    mov dx, 0xCF8
+
+    or eax, 0x80000000          ; Habilitar Bit 31
+
+    mov dx, 0xCF8               ; Escribir dirección en CONFIG_ADDRESS
     out dx, eax
-    mov dx, 0xCFC
+
+    mov dx, 0xCFC               ; Leer resultado en CONFIG_DATA
     in eax, dx
-	pop ebx
+
+	pop edx                     ; Restaurar registros
+    pop ebx
     pop ebp
     ret
 
@@ -1326,26 +1381,37 @@ sys_rtl8139_init:
 sys_rtl8139_send_packet:
     push ebp
     mov ebp, esp
+    push ebx
     push esi
 
     mov esi, [ebp + 8]  ; Dirección base
     mov ecx, [ebp + 12] ; longitud enviada
 
+    mov ebx, [rtl8139_tx_ptr]
+
     ; Configurar puerto TSAD0 (0x20) -> Dirección física
     ; Apuntar DMA al búfer físico
-    mov dx, [rtl8139_io_port]
-    add dx, 0x20
+    movzx edx, word [rtl8139_io_port]
+    add edx, 0x20
+    lea edx, [edx + ebx * 4]
     mov eax, esi
     out dx, eax
 
     ; Configurar puerto TSD0 (0x10) -> Tamaño + Iniciar envío
-    mov dx, [rtl8139_io_port]
-    add dx, 0x10
+    movzx edx,  word[rtl8139_io_port]
+    add edx, 0x10
+    lea edx, [edx + ebx * 4]
     mov eax, ecx        ; Copia solo la longitud (bits 0-12)
     and eax, 0x0FFF     ; limpiar estados superiores
     out dx, eax
 
+    ; Rotar el puntero
+    inc ebx
+    and ebx, 3
+    mov [rtl8139_tx_ptr], ebx
+
     pop esi
+    pop ebx
     pop ebp
     ret
 
@@ -1371,9 +1437,8 @@ sys_net_receive_packet:
     ; Leer longitud del paquete desde la cabecera HW de RTL8139 (bytes 2 y 3)
     movzx ecx, word [esi + 2]
 
-    ; Apuntar EDI al buffer de destino en Java (+12 bytes para saltar la cabecera del array Java)
+    ; Apuntar EDI al buffer de destino (Memoria Física Pura)
     mov edi, [ebp + 8]
-    ;add edi, 12
 
     ; Guardar el tamaño original del payload (ecx - 4 bytes de CRC HW)
     sub ecx, 4
@@ -1382,14 +1447,14 @@ sys_net_receive_packet:
     ; Saltar 4 bytes de cabecera RTL8139 (2 status + 2 len)
     add esi, 4
     
-    ; Copiar datos al buffer de Java
+    ; Copiar datos a la memoria física (0x02002000)
     rep movsb
 
     pop eax                ; EAX contiene el tamaño exacto del payload copiado
 
     ; Actualizar puntero Rx en anillo
     add ebx, eax
-    add ebx, 8         ; +4 cabecera HW, +4 alineación
+    add ebx, 8             ; +4 cabecera HW, +4 CRC
     add ebx, 3
     and ebx, ~3            ; Alineación a dword (4 bytes)
     
@@ -1403,7 +1468,7 @@ sys_net_receive_packet:
     mov dx,  [rtl8139_io_port]
     add dx,  0x38
     mov eax, ebx
-    sub ebx, 16
+    sub eax, 16            ; Restar a EAX
     out dx, ax
 
     ; Limpiar bit RxOK en el ISR (0x3E) para permitir nuevos paquetes
@@ -1618,6 +1683,7 @@ sys_disk_write_sector:
     pop ebp
     ret
 
+
 ; PUERTOS DEDICADOS I/O
 
 sys_inb:
@@ -1674,6 +1740,8 @@ section .data
 align 16
 
 rtl8139_rx_ptr		dd 0
+rtl8139_tx_ptr      dd 0
+
 idtr:
     idtr_limit      dw 2047
     idtr_base       dd idt_entries
