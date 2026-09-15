@@ -72,7 +72,7 @@ section .text
     extern current_class_ptr
 
     extern sys_arg_id, sys_arg_a, sys_arg_b, sys_arg_c, sys_arg_d           
-    extern draw_char_vram, sys_draw_string, sys_serial_puts, sys_serial_putc, sys_serial_print_java
+    extern draw_char_vram, sys_draw_string, sys_serial_puts, sys_serial_putc, sys_serial_print_java, sys_scroll_vram
     extern current_color
     extern sys_read_keyboard_scancode, sys_set_keyboard_layout, sys_read_mouse
     extern sys_draw_rect, sys_fill_rect, sys_draw_line, sys_get_pixel, sys_draw_pixel
@@ -343,6 +343,8 @@ sys_native_dispatch:
     je .sys_mem_write_byte
     cmp eax, 27
     je .sys_mem_read_byte
+	cmp eax,28
+    je .sys_scroll_vram
     cmp eax, 30 
     je .sys_exec_jit
 
@@ -546,6 +548,12 @@ sys_native_dispatch:
     xor ebx, ebx
     mov bl, byte [eax]
     mov eax, ebx
+    jmp .done
+
+.sys_scroll_vram:
+    push dword [sys_arg_a]  ; Píxeles a desplazar
+    call sys_scroll_vram
+    add esp, 4
     jmp .done
 
 .sys_exec_jit:
