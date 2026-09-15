@@ -61,7 +61,8 @@ section .text
     global jit_runtime_trampoline
     global jit_emit_byte
     global jit_emit_dword
-    global jit_buffer_ptr
+    global jit_buffer_ptr	
+	global jit_flush_icache
 
     global sys_native_dispatch
     extern resolve_and_compile_java_method
@@ -77,7 +78,7 @@ section .text
     extern sys_read_keyboard_scancode, sys_set_keyboard_layout, sys_read_mouse
     extern sys_draw_rect, sys_fill_rect, sys_draw_line, sys_get_pixel, sys_draw_pixel
     extern sys_beep, sys_nosound, sys_get_free_mem, sys_get_ram_size
-    extern sys_pci_read_config, sys_disk_read_sector, sys_disk_write_sector
+    extern sys_pci_write_config, sys_pci_read_config, sys_disk_read_sector, sys_disk_write_sector
     extern sys_rtl8139_init, sys_rtl8139_send_packet, sys_net_receive_packet
     extern sys_inb, sys_outb, sys_inw, sys_outw, sys_indw, sys_outdw, sys_get_ticks
     extern sys_get_time, sys_sleep, sys_exit
@@ -278,6 +279,9 @@ jit_emit_epilogue:
     call jit_emit_byte
     ret
 
+; PENDIENTE (Prioridad ALTA):
+; Actualmente están como llegaron al mundo pero,
+; tengo que ordenar los valores para que tengan un sentido correcto
 sys_native_dispatch:
     push ebp
     mov ebp, esp
@@ -343,8 +347,10 @@ sys_native_dispatch:
     je .sys_mem_write_byte
     cmp eax, 27
     je .sys_mem_read_byte
-	cmp eax,28
+    cmp eax, 28
     je .sys_scroll_vram
+    cmp eax, 29
+    je .sys_pci_write
     cmp eax, 30 
     je .sys_exec_jit
 
@@ -500,6 +506,15 @@ sys_native_dispatch:
     xor eax, eax
     jmp .done   
 
+.sys_pci_write:
+    push dword [sys_arg_d]  ; Valor a escribir
+    push dword [sys_arg_c]  ; Offset
+    push dword [sys_arg_b]  ; Slot
+    push dword [sys_arg_a]  ; Bus
+    call sys_pci_write_config
+    add esp, 16
+    jmp .done
+
 .sys_pci_read:
     push dword [sys_arg_d]
     push dword [sys_arg_c]
@@ -516,7 +531,7 @@ sys_native_dispatch:
     jmp .done
 
 .sys_rtl8139_init:
-    push dword [sys_arg_a]
+    push dword [sys_arg_a]  ; Puerto I/O
     call sys_rtl8139_init
     add esp, 4
     jmp .done
@@ -1049,7 +1064,7 @@ jit_op_getfield:
     inc esi
     shl eax, 8
     or eax, ebx
-
+	; offset simple en 4 palabras
     mov ecx, eax
     shl ecx, 2
     add ecx, 8
@@ -2566,49 +2581,60 @@ jit_op_lcmp:
 ; Opcode: 0xC5
 jit_op_multianewarray:
     add esi, 3
+	jmp alloc_array
 
-    mov al, 0x5B
+alloc_array:
+    mov al, 0x5B                ; pop ebx (length)
     call jit_emit_byte
     
-    mov al, 0x89
+    mov al, 0x89                ; mov eax, ebx
     call jit_emit_byte
     mov al, 0xD8
     call jit_emit_byte
     
-    mov al, 0xC1
+    mov al, 0xC1                ; shl eax, 2 (length * 4 bytes)
     call jit_emit_byte
     mov al, 0xE0
     call jit_emit_byte
     mov al, 0x02
     call jit_emit_byte
     
-    mov al, 0x83
+    mov al, 0x83                ; add eax, 4 (+4 bytes para guardar el length)
     call jit_emit_byte
     mov al, 0xC0
     call jit_emit_byte
     mov al, 0x04
     call jit_emit_byte
     
-    mov al, 0x8B
+    ; Empujar el tamaño total (eax) como argumento para sys_kalloc
+    mov al, 0x50                ; push eax
     call jit_emit_byte
-    mov al, 0x0D
+
+    ; Llamar al asignador de memoria del kernel (evitando el heap_ptr manual)
+    mov al, 0xE8                ; call rel32
     call jit_emit_byte
-    mov eax, heap_ptr
+    mov eax, sys_kalloc
+    mov edx, [jit_buffer_ptr]
+    add edx, 4
+    sub eax, edx
     call jit_emit_dword
+
+    ; Limpiar argumento de la pila (add esp, 4)
+    mov al, 0x83                
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
     
-    mov al, 0x89
+    ; Guardar el 'length' (ebx) en el primer bloque del nuevo arreglo [eax]
+    mov al, 0x89                ; mov [eax], ebx
     call jit_emit_byte
-    mov al, 0x19
+    mov al, 0x18
     call jit_emit_byte
     
-    mov al, 0x01
-    call jit_emit_byte
-    mov al, 0x05
-    call jit_emit_byte
-    mov eax, heap_ptr
-    call jit_emit_dword
-    
-    mov al, 0x51
+    ; Empujar la referencia del arreglo a la pila Java
+    mov al, 0x50                ; push eax
     call jit_emit_byte
     ret
     
@@ -3533,51 +3559,7 @@ jit_op_return:
 
 jit_op_newarray:
     inc esi                     ; Saltar byte <atype>
-    
-    mov al, 0x5B                ; pop ebx
-    call jit_emit_byte
-    
-    mov al, 0x89                ; mov eax, ebx
-    call jit_emit_byte
-    mov al, 0xD8
-    call jit_emit_byte
-    
-    mov al, 0xC1                ; shl eax, 2
-    call jit_emit_byte
-    mov al, 0xE0
-    call jit_emit_byte
-    mov al, 0x02
-    call jit_emit_byte
-    
-    mov al, 0x83                ; add eax, 4
-    call jit_emit_byte
-    mov al, 0xC0
-    call jit_emit_byte
-    mov al, 0x04
-    call jit_emit_byte
-    
-    mov al, 0x8B                ; mov ecx, [heap_ptr]
-    call jit_emit_byte
-    mov al, 0x0D
-    call jit_emit_byte
-    mov eax, heap_ptr
-    call jit_emit_dword
-    
-    mov al, 0x89                ; mov [ecx], ebx
-    call jit_emit_byte
-    mov al, 0x19
-    call jit_emit_byte
-    
-    mov al, 0x01                ; add [heap_ptr], eax
-    call jit_emit_byte
-    mov al, 0x05
-    call jit_emit_byte
-    mov eax, heap_ptr
-    call jit_emit_dword
-    
-    mov al, 0x51                ; push ecx
-    call jit_emit_byte
-    ret
+	jmp alloc_array   
 
 ; Opcodes: 0x16 (lload) y 0x18 (dload)
 jit_op_lload:
@@ -3974,7 +3956,7 @@ jit_op_ifgt:
 
 jit_op_anewarray:
     add esi, 2
-    jmp jit_op_newarray
+    jmp alloc_array
 
 jit_op_fneg:                    
     mov al, 0x58                ; pop eax
@@ -4637,6 +4619,21 @@ jit_execute_method:
     pop ebp
     ret
 
+jit_flush_icache:
+    push eax
+    push ebx
+    push ecx
+    push edx
+    
+    xor eax, eax
+    cpuid                   ; Barrera de serialización x86
+    
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+	
 section .rodata
 align 4
 
