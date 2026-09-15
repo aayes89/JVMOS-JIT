@@ -69,9 +69,11 @@ public class Graphics2D {//extends Graphics{
     public void drawString(String text, int x, int y) {
         if (text != null) {
 			// Syscall 5: Imprimir cadena texto en modo gráfico
-            Native.sys(Native.SYS_DRAW_STRING, x, y, text, 0);
+            //Native.sys(Native.SYS_DRAW_STRING, x, y, text, 0);
+			// Hasta corregir syscall 5, esta versión trabaja bien y mejor.
+            drawText(text, x, y);
         }
-    }   
+    } 
 	
 	// Método especializado para imprimir Strings creados dinámicamente en RAM
     public void drawText(String text, int x, int y) {
