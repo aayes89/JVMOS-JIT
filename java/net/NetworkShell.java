@@ -50,9 +50,9 @@ public class NetworkShell {
         portBase = ioPortBase;
         
         // Inicialización manual 
-        localIp = new byte[]{(byte)10,(byte)10,(byte)10,(byte)99};  //   ip: 10.10.10.99
+        localIp = new byte[]{(byte)10,(byte)0,(byte)2,(byte)99};    //   ip: 10.0.2.99
         mask = new byte[]{(byte)255,(byte)255,(byte)255,(byte)0};   // mask: 255.255.255.0
-        gw = new byte[]{(byte)10,(byte)10,(byte)10,(byte)254};      //   gw: 10.10.10.254
+        gw = new byte[]{(byte)10,(byte)0,(byte)2,(byte)1};          //   gw: 10.0.2.1
         dns1 = new byte[]{(byte)8,(byte)8,(byte)8,(byte)8};         // dns1: 8.8.8.8 google
         dns2 = new byte[]{(byte)1,(byte)1,(byte)1,(byte)1};         // dns2: 1.1.1.1 one.one.one.one
 
@@ -68,6 +68,7 @@ public class NetworkShell {
     public static int detectRtl8139IoPort() {
         for (int bus = 0; bus < 8; bus++) {
             for (int slot = 0; slot < 32; slot++) {
+                // syscall 21: SYS_PCI_READ - Leer config de PCI
                 int id = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, 0x00);
                 
                 if (id != 0xFFFFFFFF && id != 0) {
@@ -89,6 +90,15 @@ public class NetworkShell {
                         System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId);
                                        
                     if (vendorId == 0x10EC && deviceId == 0x8139) {
+                        // Leer Command Register (Offset 0x04)
+                        int cmd = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, 0x04);
+                        
+                        // Activar Bit 2 (Bus Master) y Bit 0 (I/O Space)
+                        cmd |= 0x0005; 
+                        
+                        // Syscall 29: SYS_PCI_WRITE - Escribir la configuración de vuelta
+                        Native.sys(Native.SYS_PCI_WRITE, bus, slot, 0x04, cmd);
+
                         for (int barOffset = 0x10; barOffset <= 0x24; barOffset += 4) {
                             int bar = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, barOffset);
                             if ((bar & 0x1) == 1) {
