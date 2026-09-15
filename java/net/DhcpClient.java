@@ -54,51 +54,56 @@ public class DhcpClient {
                 adapter.send(packet);
             }
 
+            rxPacket.setLength(1536);
             int len = adapter.receive(rxPacket);
-            if (len > 240) {
-                if ((rx[12] == 0x08 && rx[13] == 0x00) && rx[23] == 17) { 
             
-                // Enmascarar con 0xFF para evadir el bug de casteo de bytes negativos del JIT
-                for (int j = 42; j < len - 4; j++) {
-                    if ((rx[j] & 0xFF) == 0x63 && (rx[j+1] & 0xFF) == 0x82 && (rx[j+2] & 0xFF) == 0x53 && (rx[j+3] & 0xFF) == 0x63) {
+            if (len > 240) {
+                // Verificar IPv4 y UDP de forma segura
+                if ((rx[12] & 0xFF) == 0x08 && (rx[13] & 0xFF) == 0x00 && (rx[23] & 0xFF) == 17) { 
+                    int udpOffset = 14 + ((rx[14] & 0x0F) * 4);
+                    
+                    // Asegurar que es una respuesta del servidor DHCP (Puerto Origen 67)
+                    if ((rx[udpOffset] & 0xFF) == 0x00 && (rx[udpOffset + 1] & 0xFF) == 67) {
                         
-                        int dhcpOffset = j - 236; 
-                        
-                        byte[] offeredIp = new byte[4];
-                        System.arraycopy(rx, dhcpOffset + 16, offeredIp, 0, 4);
+                        // Escáner dinámico buscando la Magic Cookie (inmune a desplazamientos)
+                        for (int j = udpOffset + 8; j < len - 4; j++) {
+                            if ((rx[j] & 0xFF) == 0x63 && (rx[j+1] & 0xFF) == 0x82 && 
+                                (rx[j+2] & 0xFF) == 0x53 && (rx[j+3] & 0xFF) == 0x63) {
+                                
+                                int dhcpOffset = j - 236; 
+                                byte[] offeredIp = new byte[4];
+                                System.arraycopy(rx, dhcpOffset + 16, offeredIp, 0, 4);
 
-                        byte[] dnsTmp = new byte[4]; 
-                        byte[] gwTmp = new byte[4];
-                        byte[] maskTmp = new byte[4];
+                                byte[] dnsTmp = new byte[4]; 
+                                byte[] gwTmp = new byte[4];
+                                byte[] maskTmp = new byte[4];
 
-                        int k = j + 4; 
-                        while (k < len) {
-                            byte code = rx[k];
-                            if (code == (byte)255) break; 
-                            if (code == 0) { k++; continue; } 
-                            
-                            if (k + 1 >= len) break; 
-                            int optLen = rx[k + 1] & 0xFF;
-                            if (k + 2 + optLen > len) break; 
+                                int k = j + 4; 
+                                while (k < len) {
+                                    int code = rx[k] & 0xFF; 
+                                    if (code == 255) break; 
+                                    if (code == 0) { k++; continue; } 
+                                    
+                                    if (k + 1 >= len) break; 
+                                    int optLen = rx[k + 1] & 0xFF; 
+                                    if (k + 2 + optLen > len) break; 
 
-                            if (code == 1 && optLen == 4) System.arraycopy(rx, k + 2, maskTmp, 0, 4);
-                            else if (code == 3 && optLen >= 4) System.arraycopy(rx, k + 2, gwTmp, 0, 4);
-                            else if (code == 6 && optLen >= 4) System.arraycopy(rx, k + 2, dnsTmp, 0, 4);
-                            
-                            k += 2 + optLen;
+                                    if (code == 1 && optLen == 4) System.arraycopy(rx, k + 2, maskTmp, 0, 4);
+                                    else if (code == 3 && optLen >= 4) System.arraycopy(rx, k + 2, gwTmp, 0, 4);
+                                    else if (code == 6 && optLen >= 4) System.arraycopy(rx, k + 2, dnsTmp, 0, 4);
+                                    k += 2 + optLen;
+                                }
+
+                                NetworkShell.setLocalIP(offeredIp);
+                                if (maskTmp[0] != 0) NetworkShell.setMask(maskTmp);
+                                if (gwTmp[0] != 0) NetworkShell.setGW(gwTmp);
+                                if (dnsTmp[0] != 0) NetworkShell.setDNS1(dnsTmp);
+                                return true;
+                            }
                         }
-
-                        NetworkShell.setLocalIP(offeredIp);
-                        if (maskTmp[0] != 0) NetworkShell.setMask(maskTmp);
-                        if (gwTmp[0] != 0) NetworkShell.setGW(gwTmp);
-                        if (dnsTmp[0] != 0) NetworkShell.setDNS1(dnsTmp);
-
-                        return true;
                     }
                 }
-                }
             }
-            rxPacket.setLength(1536);
             try { Thread.sleep(50); } catch (Exception e) {}
         }
         return false;
@@ -106,49 +111,36 @@ public class DhcpClient {
 
     // Construir paquete DHCP (extraido y adaptado de implementación oficial)
     private void buildDhcpPacket(byte[] f, byte msgType) {
-        // Cabecera Ethernet  
-        // MAC destino (Broadcast - 255.255.255.255)
         for (int i = 0; i < 6; i++) f[i] = (byte) 0xFF;
-
-        // MAC origen
         System.arraycopy(mac, 0, f, 6, 6);
-
-        // IPv4
-        f[12] = 0x08; 
-        f[13] = 0x00; 
-
-        // Cabecera IP
-        f[14] = 0x45; f[15] = 0x00; // Version 4, IHL 5
-        f[16] = 0x01; f[17] = 0x48; // Total (328 bytes)
-        f[22] = 64;   f[23] = 17;   // TTL 64, Protocolo UDP
-        for (int i = 26; i < 30; i++) f[i] = 0; // Src 0.0.0.0
-        for (int i = 30; i < 34; i++) f[i] = (byte) 0xFF; // Dst 255.255.255.255
+        f[12] = 0x08; f[13] = 0x00; 
+        f[14] = 0x45; f[15] = 0x00; 
+        f[16] = 0x01; f[17] = 0x48; 
+        f[22] = 64;   f[23] = 17;   
+        for (int i = 26; i < 30; i++) f[i] = 0; 
+        for (int i = 30; i < 34; i++) f[i] = (byte) 0xFF; 
         
         int ipCk = Checksum.calculate(f, 14, 20);
         f[24] = (byte)(ipCk >> 8); f[25] = (byte)ipCk;
 
-        // Cabecera UDP (68 -> 67)
-        f[34] = 0x00; f[35] = 68; // Src Puerto 68
-        f[36] = 0x00; f[37] = 67; // Dst Puerto 67
-        f[38] = 0x01; f[39] = 0x34; // Longitud 308
+        f[34] = 0x00; f[35] = 68; 
+        f[36] = 0x00; f[37] = 67; 
+        f[38] = 0x01; f[39] = 0x34; 
 
-        // Carga DHCP (Offset 42)
         int d = 42;
-        f[d] = 1; f[d+1] = 1; f[d+2] = 6; // BOOTREQUEST, Ethernet, HW Len 6
+        f[d] = 1; f[d+1] = 1; f[d+2] = 6; 
         f[d+4] = (byte)(xid >> 24); f[d+5] = (byte)(xid >> 16);
         f[d+6] = (byte)(xid >> 8);  f[d+7] = (byte)xid;
         
-        System.arraycopy(mac, 0, f, d + 28, 6); // MAC del cliente
+        // Flag de Broadcast (0x8000)
+        f[d+10] = (byte) 0x80; f[d+11] = 0x00;
+        
+        System.arraycopy(mac, 0, f, d + 28, 6); 
 
-        // Magic Cookie (0x63825363)
         int opt = d + 236;
         f[opt++] = 0x63; f[opt++] = (byte)0x82; f[opt++] = 0x53; f[opt++] = 0x63;
-
-        // Opcion 53: Tipo de mensaje DHCP 
         f[opt++] = 53; f[opt++] = 1; f[opt++] = msgType;
-        // Opcion 55: Lista de parámetros de petición (Subnet Mask, Router, DNS)
         f[opt++] = 55; f[opt++] = 3; f[opt++] = 1; f[opt++] = 3; f[opt++] = 6;
-        // Opcion 255: End
         f[opt] = (byte) 255;
     }
 
