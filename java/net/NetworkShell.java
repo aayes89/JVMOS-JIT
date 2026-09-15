@@ -31,27 +31,76 @@ import java.awt.Graphics2D;
 import java.awt.Color;
 import java.lang.System;
 import java.io.PrintStream;
+import kernel.Native;
 
 public class NetworkShell {
     
     private static NetworkAdapter adapter;
     private static RawSocket rawSocket;
 	private static int portBase;
-	private static byte[] localIp = {(byte)10,(byte)10,(byte)10,(byte)99};  //   ip: 10.10.10.99
-	private static byte[] mask = {(byte)255,(byte)255,(byte)255,(byte)0};	// mask: 255.255.255.0
-	private static byte[] gw = {(byte)10,(byte)10,(byte)10,(byte)254}; 		//   gw: 10.10.10.254
-	private static byte[] dns1 = {(byte)8,(byte)8,(byte)8,(byte)8}; 		// dns1: 8.8.8.8 google
-	private static byte[] dns2 = {(byte)1,(byte)1,(byte)1,(byte)1}; 		// dns2: 1.1.1.1 one.one.one.one
+	private static byte[] localIp;             // IP Local
+	private static byte[] mask;	               // Mascara de red
+	private static byte[] gw; 		           // Gateway
+	private static byte[] dns1; 		       // DNS primario
+	private static byte[] dns2; 		       // DNS secundario (opcional)
     private static byte[] mac = new byte[6];
     
     // Inicializa los subsistemas de red
     public static void init(int ioPortBase) {
-		portBase = ioPortBase;
-        // Inicializa el adaptador RTL8139 por defecto
+        portBase = ioPortBase;
+        
+        // Inicialización manual 
+        localIp = new byte[]{(byte)10,(byte)10,(byte)10,(byte)99};  //   ip: 10.10.10.99
+        mask = new byte[]{(byte)255,(byte)255,(byte)255,(byte)0};   // mask: 255.255.255.0
+        gw = new byte[]{(byte)10,(byte)10,(byte)10,(byte)254};      //   gw: 10.10.10.254
+        dns1 = new byte[]{(byte)8,(byte)8,(byte)8,(byte)8};         // dns1: 8.8.8.8 google
+        dns2 = new byte[]{(byte)1,(byte)1,(byte)1,(byte)1};         // dns2: 1.1.1.1 one.one.one.one
+
+
+        // Inicializando el adaptador RTL8139
         adapter = new NetworkAdapter(NetworkAdapter.TYPE_RTL8139, ioPortBase);
         adapter.init();
         
-        rawSocket = new RawSocket(ioPortBase);
+        rawSocket = new RawSocket(); 
+    }
+
+    // Detectar el puerto base de la tarjet RTL8139 en QEMU
+    public static int detectRtl8139IoPort() {
+        for (int bus = 0; bus < 8; bus++) {
+            for (int slot = 0; slot < 32; slot++) {
+                int id = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, 0x00);
+                
+                if (id != 0xFFFFFFFF && id != 0) {
+                    int vendorId = id & 0xFFFF;
+                    int deviceId = (id >>> 16) & 0xFFFF;
+                    
+                    String vendorIdHex = Integer.toHexString(vendorId);
+                    String deviceIdHex = Integer.toHexString(deviceId);
+
+                    if(deviceIdHex.equals("1237"))
+                        System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Intel 440FX (Natoma)");
+                    else if(deviceIdHex.equals("7000"))
+                        System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Intel PIIX3 ISA Bridge");
+                    else if(deviceIdHex.equals("1111"))
+                        System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => QEMU Virtual Video Controller (VGA)");
+                    else if(deviceIdHex.equals("8139"))
+                        System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Realtek RTL8139");
+                    else
+                        System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId);
+                                       
+                    if (vendorId == 0x10EC && deviceId == 0x8139) {
+                        for (int barOffset = 0x10; barOffset <= 0x24; barOffset += 4) {
+                            int bar = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, barOffset);
+                            if ((bar & 0x1) == 1) {
+                                return bar & ~0x3;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println("[!] RTL8139 no detectada por PCI. Forzando puerto I/O: 0xC000");
+        return 0xC000; // Fallback seguro
     }
 
     // Procesa los comandos delegados desde Boot.java
@@ -91,6 +140,7 @@ public class NetworkShell {
         return new String[] { "Comandos de red: dhcp, ifconfig, ip, mask, gw, arp-ping, ping, nslookup, wget" };
     }
 
+    // Obtención de configuración de red vía servicio DHCP si estuviera disponible
     private static String[] handleDHCP(){
         mac = getMacAddress();
         DhcpClient dhcp = new DhcpClient(adapter, mac);
@@ -109,9 +159,10 @@ public class NetworkShell {
                 " Estado: UP RUNNING | MTU: 1500"
             };
         }
-        return new String[]{"[-] Error: No hay DHCP. Utiliza configuración estática (ip, mask, gw)."};
+        return new String[]{"[-] Error: No hay DHCP. Utiliza las funciones (ip, mask, gw) para modo manual."};
     }
 
+    // Implementación del comando PING adaptado a JVMOS-JIT
     private static String[] handleIcmpPing(String targetIpStr) {
         if (targetIpStr.length() < 7) return new String[] { "Uso: net ping <IP>" };
         byte[] destIp = parseIp(targetIpStr);
@@ -172,17 +223,24 @@ public class NetworkShell {
         return new String[] { "Ping a " + targetIpStr + ": Tiempo de espera agotado." };
     }
 
+    // TODO - Réplica de comando para consultar dirección en internet
     private static String[] handleNslookup(String domain) {
-        if (domain.length() < 3) return new String[] { "Uso: net nslookup <dominio>" };
+        if (domain.length() < 3) {
+            return new String[] { "Uso: net nslookup <dominio>" };
+        }
         return new String[] { "Consulta DNS enviada a " + ipToString("", dns1) + " para: " + domain, "[!] Resolutor UDP activo." };
     }
 
+    // TODO - réplica de comando en Linux para descargar
     private static String[] handleWget(String url) {
-        if (url.length() < 4) return new String[] { "Uso: net wget <url>" };
+        if (url.length() < 4) {
+            return new String[] { "Uso: net wget <url>" };
+        }
         return new String[] { "Iniciando descarga HTTP GET desde: " + url + "...", "[!] Requiere Handshake TCP de la capa 4." };
     }
 	
-	private static byte[] getMacAddress(){
+    // Obtiene la MAC de la tarjeta de red (funciona en QEMU)
+	private static byte[] getMacAddress(){ 
 		byte[] mac = new byte[16];
 		for(int i=0;i<6;i++){
 			mac[i] = (byte) Runtime.inb(portBase + i);
@@ -190,6 +248,7 @@ public class NetworkShell {
 		return mac;
 	}
 	
+    // Obtiene la IP de una cadena de texto y la convierte a arreglo de bytes
 	private static byte[] parseIp(String ipString){
 		byte[] ip = new byte[4];
 		int part = 0;
@@ -210,6 +269,7 @@ public class NetworkShell {
         return ip;
     }
 
+    // equivalente a ifconfig de una interfaz activa en Linux
 	private static String[] handleIfconfig() {
         mac = getMacAddress();
         
@@ -227,24 +287,28 @@ public class NetworkShell {
         };
     }
 	
+    // Establecer la IP manualmente
 	private static String[] handleSetIp(String arg) {
         if (arg.length() < 7) return new String[] { "Uso: net ip <direccion_ip>" };
         localIp = parseIp(arg);
         return new String[] { ipToString("inet addr: ",localIp) };
     }
 
+    // Establecer la Máscara de red manualmente
     private static String[] handleSetMask(String arg) {
         if (arg.length() < 7) return new String[] { "Uso: net mask <mascara>" };
         mask = parseIp(arg);
         return new String[] { ipToString("Mask: ",mask) };
     }
 
+    // Establecer el Gateway manualmente
     private static String[] handleSetGw(String arg) {
         if (arg.length() < 7) return new String[] { "Uso: net gw <puerta_enlace>" };
         gw = parseIp(arg);
         return new String[] {ipToString("Gateway: ",gw) };
     }
 	
+    // Hacer PING vía ARP
     private static String[] handleArpPing(String targetIp) {
         if (targetIp.length() < 1) {
             return new String[] { "Uso: net arp-ping <IP>" };
@@ -323,62 +387,29 @@ public class NetworkShell {
 		};       
 	}
 	
-	// Construye un String seguro: "Prefijo: 192.168.1.99"
+	// Construye el String de manera segura evitando el operador '+'
     private static String ipToString(String prefix, byte[] ip) {
-        byte[] buf = new byte[64];
-        byte[] pref = prefix.getBytes();
-        int pos = 0;
-        
-        for(int i = 0; i < pref.length; i++) {
-            buf[pos++] = pref[i];
-        }
-        
-        for (int i = 0; i < 4; i++) {
-            int val = ip[i] & 0xFF;
-            if (val >= 100) {
-                buf[pos++] = (byte) ('0' + (val / 100));
-                buf[pos++] = (byte) ('0' + ((val / 10) % 10));
-                buf[pos++] = (byte) ('0' + (val % 10));
-            } else if (val >= 10) {
-                buf[pos++] = (byte) ('0' + (val / 10));
-                buf[pos++] = (byte) ('0' + (val % 10));
-            } else {
-                buf[pos++] = (byte) ('0' + val);
-            }
-            if (i < 3) buf[pos++] = '.';
-        }
-        
-        byte[] result = new byte[pos];
-        System.arraycopy(buf, 0, result, 0, pos);
-		System.out.println(new String(result));
-        return new String(result);
+        StringBuilder sb = new StringBuilder(prefix);
+        sb.append(ip[0] & 0xFF).append('.');
+        sb.append(ip[1] & 0xFF).append('.');
+        sb.append(ip[2] & 0xFF).append('.');
+        sb.append(ip[3] & 0xFF);
+        return sb.toString();
     }
 
-    // Construye un String seguro: "Prefijo: 00:11:22:33:44:55"
+    // Convierte MAC a cadena de texto formato => ##:##:##:##:##:##
     private static String macToString(String prefix, byte[] mac) {
-        byte[] buf = new byte[64];
-        byte[] pref = prefix.getBytes();
-        int pos = 0;
-        
-        for(int i = 0; i < pref.length; i++) {
-            buf[pos++] = pref[i];
-        }
-        
         String hex = "0123456789ABCDEF";
+        StringBuilder sb = new StringBuilder(prefix);
         for (int i = 0; i < 6; i++) {
             int val = mac[i] & 0xFF;
-            buf[pos++] = (byte) hex.charAt(val >>> 4);
-            buf[pos++] = (byte) hex.charAt(val & 0x0F);
-            if (i < 5) buf[pos++] = ':';
+            sb.append(hex.charAt(val >>> 4)).append(hex.charAt(val & 0x0F));
+            if (i < 5) sb.append(':');
         }
-        
-        byte[] result = new byte[pos];
-        System.arraycopy(buf, 0, result, 0, pos);
-		System.out.println(new String(result));
-        return new String(result);
+        return sb.toString();
     }
 	
-    // Convertidor a Hexadecimal
+    // Convierte un entero a su valor hexadecimal
     private static String toHex(int b) {
         String hexChars = "0123456789ABCDEF";
         int high = (b & 0xF0) >> 4;
@@ -393,18 +424,18 @@ public class NetworkShell {
 
     // Setters y Getters
     public static void setLocalIP(byte[] ip){
-        localIp = ip;
+        NetworkShell.localIp = ip;
     }
     public static void setMask(byte[] mask){
-        mask = mask;
+        NetworkShell.mask = mask;
     }
     public static void setGW(byte[] gw){
-        gw = gw;
+        NetworkShell.gw = gw;
     }
     public static void setDNS1(byte[] dns){
-        dns1 = dns;
+        NetworkShell.dns1 = dns;
     }
     public static void setDNS2(byte[] dns){
-        dns2 = dns;
+        NetworkShell.dns2 = dns;
     }
 }
