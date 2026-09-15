@@ -354,15 +354,31 @@ public final class IntegralToString {
     }
 
     public static String intToHexString(int i, boolean upperCase, int minWidth) {
-        int bufLen = 8;
-        char[] buf = new char[bufLen];
-        int cursor = bufLen;
-        char[] digits = upperCase ? UPPER_CASE_DIGITS : DIGITS;
-        do { buf[--cursor] = digits[i & 0xf]; } while ((i >>>= 4) != 0 || (bufLen - cursor < minWidth));
+        StringBuilder sb = new StringBuilder(8);
+        String digits = upperCase ? "0123456789ABCDEF" : "0123456789abcdef";
         
-        byte[] resultBytes = new byte[bufLen - cursor];
-        for(int j=0; j<(bufLen - cursor); j++) resultBytes[j] = (byte)buf[cursor + j];
-        return new String(resultBytes);
+        // Calcular cuántos dígitos hexadecimales reales ocupa el número
+        int temp = i;
+        int actualDigits = 0;
+        if (temp == 0) {
+            actualDigits = 1;
+        } else {
+            while (temp != 0) {
+                actualDigits++;
+                temp >>>= 4; // Desplazamiento lógico (sin signo)
+            }
+        }
+
+        // Determinar el ancho total (el mayor entre los dígitos reales y el padding mínimo)
+        int totalWidth = actualDigits > minWidth ? actualDigits : minWidth;
+
+        // Extraer y añadir los caracteres de izquierda a derecha
+        for (int j = totalWidth - 1; j >= 0; j--) {
+            int shift = j * 4;
+            int nibble = (i >>> shift) & 0xF;
+            sb.append(digits.charAt(nibble));
+        }
+        return sb.toString();
     }
 
     public static String longToHexString(long v) {
