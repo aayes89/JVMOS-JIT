@@ -24,21 +24,35 @@ package java.net;
 
 import java.lang.System;
 
-// Caché IP -> MAC, con resolución dinámica para enviar paquetes unicast.
+// Caché IP -> MAC (Memoria aplanada a 1D para máxima compatibilidad JIT)
 public class ArpTable {
     private static final int MAX_ENTRIES = 16;
+    
+    // Almacenamos todo de forma contigua: 16 * 4 = 64 bytes para IPs
     private static byte[] ips = new byte[MAX_ENTRIES * 4];
+    // 16 * 6 = 96 bytes para MACs
     private static byte[] macs = new byte[MAX_ENTRIES * 6];
+    
     private static int count = 0;
 
     public static synchronized void put(byte[] ip, byte[] mac) {
+        if (ip == null || mac == null) return;
+
+        // Buscar si la IP ya existe en la caché
         for (int i = 0; i < count; i++) {
-            int off = i * 4;
-            if (ips[off] == ip[0] && ips[off+1] == ip[1] && ips[off+2] == ip[2] && ips[off+3] == ip[3]) {
+            int ipOffset = i * 4;
+            if (ips[ipOffset] == ip[0] && 
+                ips[ipOffset + 1] == ip[1] && 
+                ips[ipOffset + 2] == ip[2] && 
+                ips[ipOffset + 3] == ip[3]) {
+                
+                // Si existe, actualizamos su MAC (offset = i * 6)
                 System.arraycopy(mac, 0, macs, i * 6, 6);
                 return;
             }
         }
+        
+        // Si no existe y hay espacio, la añadimos al final
         if (count < MAX_ENTRIES) {
             System.arraycopy(ip, 0, ips, count * 4, 4);
             System.arraycopy(mac, 0, macs, count * 6, 6);
@@ -47,14 +61,23 @@ public class ArpTable {
     }
 
     public static synchronized byte[] get(byte[] ip) {
+        if (ip == null) return null;
+
         for (int i = 0; i < count; i++) {
-            int off = i * 4;
-            if (ips[off] == ip[0] && ips[off+1] == ip[1] && ips[off+2] == ip[2] && ips[off+3] == ip[3]) {
-                byte[] mac = new byte[6];
-                System.arraycopy(macs, i * 6, mac, 0, 6);
-                return mac;
+            int ipOffset = i * 4;
+            
+            // Comparamos byte a byte usando el offset
+            if (ips[ipOffset] == ip[0] && 
+                ips[ipOffset + 1] == ip[1] && 
+                ips[ipOffset + 2] == ip[2] && 
+                ips[ipOffset + 3] == ip[3]) {
+                
+                // Si coincide, extraemos la MAC correspondiente
+                byte[] foundMac = new byte[6];
+                System.arraycopy(macs, i * 6, foundMac, 0, 6);
+                return foundMac;
             }
         }
-        return null;
+        return null; // Si no existe en la caché
     }
 }
