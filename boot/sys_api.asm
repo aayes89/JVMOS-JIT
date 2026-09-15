@@ -71,6 +71,7 @@ global sys_draw_polygon
 global sys_fill_polygon
 global sys_draw_string
 global current_color
+global sys_scroll_vram
 
 ; --- Disco ATA IDE LBA28 ---
 global sys_disk_read_sector
@@ -1142,6 +1143,39 @@ sys_draw_string:
     pop ebp
     ret
 
+; DESPLAZAMIENTO DE PANTALLA (SCROLL)
+sys_scroll_vram:
+    push ebp
+    mov ebp, esp
+    pusha
+
+    ; [ebp + 8] = Cantidad de píxeles a desplazar hacia arriba (ej. 25)
+    mov eax, [ebp + 8]
+    imul eax, [g_pitch]         ; eax = offset en bytes a desplazar
+
+    mov edi, [g_framebuffer]    ; Destino: Inicio de la pantalla
+    mov esi, [g_framebuffer]
+    add esi, eax                ; Origen: Pantalla desplazada
+
+    ; Calcular cuántos dwords (4 bytes) mover: ((768 * pitch) - offset) / 4
+    mov ecx, 768
+    imul ecx, [g_pitch]
+    sub ecx, eax
+    shr ecx, 2                  ; Dividir entre 4 para 'rep movsd'
+
+    cld                         ; Dirección de copia hacia adelante
+    rep movsd                   ; Copiar la memoria de video hacia arriba
+
+    ; Limpiar la franja inferior con color negro
+    ; EDI ya quedó apuntando a la zona libre al finalizar el rep movsd
+    mov ecx, eax
+    shr ecx, 2                  ; Convertir offset a dwords
+    xor eax, eax                ; Color Negro (0x00000000)
+    rep stosd                   ; Rellenar
+
+    popa
+    pop ebp
+    ret
 
 ; CMOS RELOJ REAL (RTC)
 
