@@ -23,7 +23,7 @@ SOFTWARE.*/
 package kernel;
 
 public class Native {
-	// Nota:
+	// PRIORIDAD ALTA - Nota:
 	// Tengo que organizar esta tabla para que exista un orden
 	// cada elemento fue añadido a medida que se fueron creando 
 
@@ -57,7 +57,7 @@ public class Native {
 	public static final int SYS_MEM_WRITE_BYTE   = 26; // Escribir un byte en una direccion fisica
     public static final int SYS_MEM_READ_BYTE    = 27; // Leer un byte de una direccion fisica	
     public static final int SYS_SCROLL_UP        = 28; // Hacer scrool up en pantalla
-	// valor 29 reservado por ahora
+	public static final int SYS_PCI_WRITE        = 29; // Escribir espacio de config PCI
 	public static final int SYS_EXEC    		 = 30; // Ejecutar un .class
 
 
