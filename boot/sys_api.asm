@@ -1328,17 +1328,11 @@ sys_rtl8139_send_packet:
     mov ebp, esp
     push esi
 
-    ; [ebp + 8]  -> Puntero al byte[] de Java
-    ; [ebp + 12] -> Tamaño del paquete
-    mov esi, [ebp + 8]
-    
-    ; Si tu runtime pasa el objeto Java entero, salta la cabecera del array:
-    ; (8 bytes de cabecera + 4 bytes de campo .length = 12 bytes de offset)
-    add esi, 12           
-
-    mov ecx, [ebp + 12]
+    mov esi, [ebp + 8]  ; Dirección base
+    mov ecx, [ebp + 12] ; longitud enviada
 
     ; Configurar puerto TSAD0 (0x20) -> Dirección física
+    ; Apuntar DMA al búfer físico
     mov dx, [rtl8139_io_port]
     add dx, 0x20
     mov eax, esi
@@ -1347,7 +1341,8 @@ sys_rtl8139_send_packet:
     ; Configurar puerto TSD0 (0x10) -> Tamaño + Iniciar envío
     mov dx, [rtl8139_io_port]
     add dx, 0x10
-    mov eax, ecx
+    mov eax, ecx        ; Copia solo la longitud (bits 0-12)
+    and eax, 0x0FFF     ; limpiar estados superiores
     out dx, eax
 
     pop esi
@@ -1378,7 +1373,7 @@ sys_net_receive_packet:
 
     ; Apuntar EDI al buffer de destino en Java (+12 bytes para saltar la cabecera del array Java)
     mov edi, [ebp + 8]
-    add edi, 12
+    ;add edi, 12
 
     ; Guardar el tamaño original del payload (ecx - 4 bytes de CRC HW)
     sub ecx, 4
@@ -1394,7 +1389,7 @@ sys_net_receive_packet:
 
     ; Actualizar puntero Rx en anillo
     add ebx, eax
-    add ebx, 4 + 4         ; +4 cabecera HW, +4 alineación
+    add ebx, 8         ; +4 cabecera HW, +4 alineación
     add ebx, 3
     and ebx, ~3            ; Alineación a dword (4 bytes)
     
@@ -1405,11 +1400,16 @@ sys_net_receive_packet:
     mov [rtl8139_rx_ptr], ebx
 
     ; Notificar lectura a la tarjeta en CAPR (0x38)
-    mov dx, [rtl8139_io_port]
-    add dx, 0x38
-    mov ebx, eax
+    mov dx,  [rtl8139_io_port]
+    add dx,  0x38
+    mov eax, ebx
     sub ebx, 16
-    mov ax, bx
+    out dx, ax
+
+    ; Limpiar bit RxOK en el ISR (0x3E) para permitir nuevos paquetes
+    mov dx, [rtl8139_io_port]
+    add dx, 0x3E
+    mov ax, 0x05                 ; Limpiar RxOK (0x01) y RxErr (0x04)
     out dx, ax
 
     jmp .done
