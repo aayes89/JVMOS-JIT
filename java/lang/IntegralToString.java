@@ -356,10 +356,11 @@ public final class IntegralToString {
     public static String intToHexString(int i, boolean upperCase, int minWidth) {
         StringBuilder sb = new StringBuilder(8);
         String digits = upperCase ? "0123456789ABCDEF" : "0123456789abcdef";
-        
+
         // Calcular cuántos dígitos hexadecimales reales ocupa el número
         int temp = i;
         int actualDigits = 0;
+        
         if (temp == 0) {
             actualDigits = 1;
         } else {
@@ -378,6 +379,7 @@ public final class IntegralToString {
             int nibble = (i >>> shift) & 0xF;
             sb.append(digits.charAt(nibble));
         }
+
         return sb.toString();
     }
 
