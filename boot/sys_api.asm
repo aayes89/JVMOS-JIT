@@ -1378,34 +1378,36 @@ sys_rtl8139_init:
     ret
 
 
+; TRANSMISIÓN
 sys_rtl8139_send_packet:
     push ebp
     mov ebp, esp
     push ebx
     push esi
 
-    mov esi, [ebp + 8]  ; Dirección base
-    mov ecx, [ebp + 12] ; longitud enviada
+    mov esi, [ebp + 8]   ; Puntero al byte[] de Java
+    add esi, 4           ; Saltar los 4 bytes de longitud del JIT
+    
+    mov ecx, [ebp + 12]  ; Longitud enviada
 
     mov ebx, [rtl8139_tx_ptr]
 
-    ; Configurar puerto TSAD0 (0x20) -> Dirección física
-    ; Apuntar DMA al búfer físico
+    ; Apuntar DMA a los datos puros
     movzx edx, word [rtl8139_io_port]
     add edx, 0x20
     lea edx, [edx + ebx * 4]
     mov eax, esi
     out dx, eax
 
-    ; Configurar puerto TSD0 (0x10) -> Tamaño + Iniciar envío
-    movzx edx,  word[rtl8139_io_port]
+    ; Iniciar envío
+    movzx edx, word [rtl8139_io_port]
     add edx, 0x10
     lea edx, [edx + ebx * 4]
-    mov eax, ecx        ; Copia solo la longitud (bits 0-12)
-    and eax, 0x0FFF     ; limpiar estados superiores
+    mov eax, ecx
+    and eax, 0x0FFF
     out dx, eax
 
-    ; Rotar el puntero
+    ; Rotar descriptores
     inc ebx
     and ebx, 3
     mov [rtl8139_tx_ptr], ebx
@@ -1415,7 +1417,7 @@ sys_rtl8139_send_packet:
     pop ebp
     ret
 
-
+; RECEPCIÓN
 sys_net_receive_packet:
     push ebp
     mov ebp, esp
@@ -1423,58 +1425,52 @@ sys_net_receive_packet:
     push esi
     push edi
 
-    ; Verificar bit BUFE (Buffer Empty) en 0x37
+    ; Chequear buffer
     mov dx, [rtl8139_io_port]
     add dx, 0x37
     in al, dx
     test al, 0x01
-    jnz .no_packet          ; Si BUFE == 1, no hay paquetes
+    jnz .no_packet
 
     mov ebx, [rtl8139_rx_ptr]
     mov esi, rx_buffer
     add esi, ebx
 
-    ; Leer longitud del paquete desde la cabecera HW de RTL8139 (bytes 2 y 3)
     movzx ecx, word [esi + 2]
 
-    ; Apuntar EDI al buffer de destino (Memoria Física Pura)
-    mov edi, [ebp + 8]
+    mov edi, [ebp + 8]   ; Puntero al byte[] destino en Java
+    add edi, 4           ; Escribir justo después de la longitud
 
-    ; Guardar el tamaño original del payload (ecx - 4 bytes de CRC HW)
-    sub ecx, 4
-    push ecx               ; Guardar longitud devuelta a Java
-
-    ; Saltar 4 bytes de cabecera RTL8139 (2 status + 2 len)
-    add esi, 4
+    sub ecx, 4           ; Quitar CRC
+    push ecx
+    add esi, 4           ; Saltar cabecera HW
     
-    ; Copiar datos a la memoria física (0x02002000)
-    rep movsb
+    cld                  ; Asegurar dirección de copia hacia adelante
+    rep movsb            ; Copiar a la RAM de Java
+    pop eax
 
-    pop eax                ; EAX contiene el tamaño exacto del payload copiado
-
-    ; Actualizar puntero Rx en anillo
+    ; Actualizar anillo RX
     add ebx, eax
-    add ebx, 8             ; +4 cabecera HW, +4 CRC
+    add ebx, 8
     add ebx, 3
-    and ebx, ~3            ; Alineación a dword (4 bytes)
-    
+    and ebx, ~3
     cmp ebx, 8192
     jl .no_wrap
     sub ebx, 8192
 .no_wrap:
     mov [rtl8139_rx_ptr], ebx
 
-    ; Notificar lectura a la tarjeta en CAPR (0x38)
-    mov dx,  [rtl8139_io_port]
-    add dx,  0x38
+    ; Notificar al router HW
+    mov dx, [rtl8139_io_port]
+    add dx, 0x38
     mov eax, ebx
-    sub eax, 16            ; Restar a EAX
+    sub eax, 16
     out dx, ax
 
-    ; Limpiar bit RxOK en el ISR (0x3E) para permitir nuevos paquetes
+    ; Limpiar interrupciones
     mov dx, [rtl8139_io_port]
     add dx, 0x3E
-    mov ax, 0x05                 ; Limpiar RxOK (0x01) y RxErr (0x04)
+    mov ax, 0x05
     out dx, ax
 
     jmp .done
