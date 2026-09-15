@@ -31,39 +31,16 @@ public class RawSocket {
     public RawSocket() {
         initialized = true;
     }
-
-    // Enviar usando memoria física directa (Evita corrupción del Object Header)
+    // Enviar datagrama
     public void send(DatagramPacket packet) {
         if (!initialized || packet == null) return;
-        
-        int txAddr = 0x02000000; // Escribir en los 32MB de la RAM (Lejos del Kernel)
-        byte[] data = packet.getData();
-        int len = packet.getLength();
-        
-        // Bajar los datos del Objeto Java a la RAM Física (Syscall 26)
-        for(int i = 0; i < len; i++) {
-            kernel.Native.sys(26, txAddr + i, data[i], 0, 0); 
-        }
-        
-        // Transmitir enviando la dirección cruda, no el Objeto
-        kernel.Native.sys(kernel.Native.SYS_RTL8139_SEND, 0, len, txAddr, 0);
+        kernel.Native.sys(kernel.Native.SYS_RTL8139_SEND, 0, packet.getLength(), packet.getData(), 0);
     }
-
-    // Recibir desde la memoria física directa
+    // Recibir datagrama
     public int receive(DatagramPacket packet) {
         if (!initialized || packet == null) return -1;
-        
-        int rxAddr = 0x02002000; // Leer en los 32MB + 8KB
-        
-        // Recibir la trama en la RAM Física directamente
-        int bytesRead = kernel.Native.sys(kernel.Native.SYS_NET_RECEIVE, 0, packet.getLength(), rxAddr, 0);
-        
+        int bytesRead = kernel.Native.sys(kernel.Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
         if (bytesRead > 0) {
-            byte[] data = packet.getData();
-            // Rescatar los bytes hacia Java de forma segura (Syscall 27)
-            for(int i = 0; i < bytesRead; i++) {
-                data[i] = (byte) kernel.Native.sys(27, rxAddr + i, 0, 0, 0);
-            }
             packet.setLength(bytesRead);
         }
         return bytesRead;
