@@ -34,7 +34,12 @@ public class PrintStream {
         if (s == null) {
             s = "null";
         }
-        Native.sys(Native.SYS_SERIAL_PUTS, 0, 0, s, 0); 
+        //Native.sys(Native.SYS_SERIAL_PUTS, 0, 0, s, 0); 
+        // test
+        // impresión caracter a caracter, PUTS sólo está imprimiendo cadenas limpias
+        for(int i=0;i<s.length();i++){
+            Native.sys(Native.SYS_SERIAL_PUTC,s.charAt(i),0,0,0);
+        }
     }
     
     public void println(String s) {
