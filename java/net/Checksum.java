@@ -26,22 +26,17 @@ package java.net;
 public class Checksum {
     public static int calculate(byte[] data, int offset, int length) {
         int sum = 0;
-        int i = offset;
-        
-        while (length > 1) {
-            sum += ((data[i] & 0xFF) << 8) | (data[i + 1] & 0xFF);
-            i += 2;
-            length -= 2;
+        for (int i = 0; i < length; i += 2) {
+            int b1 = data[offset + i] & 0xFF;
+            int b2 = (i + 1 < length) ? (data[offset + i + 1] & 0xFF) : 0;
+            // Usar suma aritmética (+) en lugar de OR (|) para evitar bugs del JIT
+            sum += (b1 << 8) + b2; 
         }
         
-        if (length > 0) {
-            sum += (data[i] & 0xFF) << 8;
-        }
-        
-        while ((sum >> 16) > 0) {
+        while (sum > 0xFFFF) {
             sum = (sum & 0xFFFF) + (sum >> 16);
         }
         
-        return ~sum & 0xFFFF;
+        return (~sum) & 0xFFFF;
     }
 }
