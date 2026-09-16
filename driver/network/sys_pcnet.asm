@@ -43,14 +43,10 @@ PCNET_RDP      equ 0x10
 PCNET_RAP      equ 0x14
 PCNET_RESET    equ 0x18
 PCNET_BDP      equ 0x1C
-
 ; CSR
-;CSR0           equ 0
 CSR0_STOP      equ 0x0004
-
 ; BCR
-;BCR18          equ 18
-BCR18_DWIO     equ 0x0080
+;BCR18_DWIO     equ 0x0080
 
 ; Inicializa la tarjeta PCnet
 sys_pcnet_init:
@@ -58,7 +54,7 @@ sys_pcnet_init:
     mov ebp, esp
 	push ebx
 
-    mov eax, [ebp + 8]			; Puerto I/O base
+    mov eax, [ebp + 8]			; Argumento: Puerto I/O base
     mov [pcnet_io_port], eax
 	mov dword [pcnet_rx_idx], 0
 	mov dword [pcnet_tx_idx], 0
@@ -74,7 +70,7 @@ sys_pcnet_init:
 	xor eax, eax
 	out dx, eax
 	
-    ; Cambiar SWSTYLE a 2 estructuras de 32bits en RAM con BCR20
+    ; Cambiar SWSTYLE a 2 a través de BCR20
     mov edx, [pcnet_io_port]
     add edx, PCNET_RAP
 	mov eax, 20
@@ -93,8 +89,10 @@ sys_pcnet_init:
     mov ebx, ecx
     shl ebx, 4
     add ebx, pcnet_rx_ring
-    mov [ebx], eax                   ; Buffer addr
-    mov dword [ebx + 4], 0x8000FA00  ; OWN (0x8000) | ONES (0xF) | BCNT (-1536)
+    mov [ebx], eax               ; Buffer addr
+	; OWN (0x8000) | ONES (0xF) | BCNT (-1536) = 0x8000FA00
+    mov word [ebx + 4], 0xFA00  ; BCNT = -1536
+	mov word [ebx + 6], 0x8000	; OWN = 1 (bit 15 del word alto)
     mov dword [ebx + 8], 0
     inc ecx
     cmp ecx, 4
@@ -108,23 +106,24 @@ sys_pcnet_init:
     mov ebx, ecx
     shl ebx, 4
     add ebx, pcnet_tx_ring
-    mov [ebx], eax                   ; Buffer addr
-    mov dword [ebx + 4], 0           ; No OWN aún
+    mov [ebx], eax              ; Buffer addr
+    mov word [ebx + 4], 0       ; BCNT
+	mov word [ebx + 6], 0		; OWN = 0
     mov dword [ebx + 8], 0
     inc ecx
     cmp ecx, 4
     jl .init_tx_loop
 
     ; Llenar Init Block
-    mov word [pcnet_init_block], 0x0000      ; Mode
-    mov word [pcnet_init_block + 2], 0x2020  ; RLEN=2 (4 desc), TLEN=2 (4 desc)
+	; RLEN (20-23), TLEN (28-31)
+    mov dword [pcnet_init_block], 0x20200000
     
     ; Leer MAC de APROM y guardar en Init Block
     mov edx, [pcnet_io_port]
     in eax, dx
     mov [pcnet_init_block + 4], eax
     add edx, 4
-    in eax, dx
+    in eax, dx				
     mov [pcnet_init_block + 8], ax
     
     mov dword [pcnet_init_block + 12], 0     ; Filtro Multicast bajo
@@ -174,7 +173,7 @@ sys_pcnet_init:
     jmp .done
 
 .start_mac:
-    mov eax, 0x0102          ; Limpiar IDON y enviar STRT (Bit 1)
+    mov eax, 0x0002          ; Enviar STRT (Bit 1) sin IDON
     out dx, eax
     mov eax, 1               ; Éxito
 
@@ -208,16 +207,18 @@ sys_pcnet_send_packet:
     rep movsb
     pop ecx
 
-    ; Preparar Status: OWN(bit 31), STP(bit 25), ENP(bit 24), ONES(bits 12-15) y BCNT
+    ; Preparar Status: BCNT (bits 0-11), ONES (bits 12-15) y Status Word
     mov eax, ecx
     neg eax
     and eax, 0x0FFF
-    or eax, 0x8300F000
+	or eax, 0xF000		; BCNT + ONES
+    ;or eax, 0x8300F000
     
     mov edi, ebx
     shl edi, 4
     add edi, pcnet_tx_ring
-    mov [edi + 4], eax       ; Entregar a la tarjeta
+    mov word [edi + 4], ax       ; Escribir BCNT
+	mov word [edi + 6], 0x8300   ; Escribir OWN, STP y END
 
     ; Rotar puntero
     inc ebx
@@ -232,7 +233,7 @@ sys_pcnet_send_packet:
 
     mov edx, [pcnet_io_port]
     add edx, PCNET_RDP
-    mov eax, 0x000A          ; TDMD + STRT
+    mov eax, 0x0008          ; Enviar TDMD sin STRT 
     out dx, eax
 
     pop edi
@@ -257,15 +258,20 @@ sys_net_receive_packet_pcnet:
     shl esi, 4
     add esi, pcnet_rx_ring
     
-    mov eax, [esi + 4]
-    test eax, 0x80000000
+    mov ax, [esi + 6]
+    test eax, 0x8000
     jnz .no_packet           ; Si OWN = 1, la tarjeta aún procesa
-
+		
     ; Extraer longitud (Word 2) y quitar 4 bytes del HW CRC
     mov ecx, [esi + 8]
     and ecx, 0x0FFF
-    sub ecx, 4
-    push ecx
+    
+	cmp ecx, 4
+	jb .bad_packet
+	sub ecx, 4			; Quitar CRC HW
+	
+	cmp ecx, 1536
+	ja .bad_packet	
 
     ; Copiar a Java
     mov eax, 1536
@@ -283,8 +289,9 @@ sys_net_receive_packet_pcnet:
     mov esi, ebx
     shl esi, 4
     add esi, pcnet_rx_ring
-    mov dword [esi + 4], 0x8000FA00  ; OWN(1) + ONES(F) + BCNT(-1536)
-    mov dword [esi + 8], 0           ; Resetear Msg Byte Count
+    mov word [esi + 4], 0xFA00  ; BCNT = -1536
+	mov word [esi + 6], 0x8000	; OWN = 1
+    mov dword [esi + 8], 0      ; Resetear Msg Byte Count
 
     ; Rotar puntero
     inc ebx
@@ -305,6 +312,14 @@ sys_net_receive_packet_pcnet:
     pop eax                  ; Retornar tamaño del paquete en EAX
     jmp .done
 
+.bad_packet:
+	mov word [esi + 4], 0xFA00
+	mov word [esi + 6], 0x8000
+	mov dword [esi + 8], 0
+	inc ebx
+	and ebx, 3
+	mov [pcnet_rx_idx], ebx
+	
 .no_packet:
     xor eax, eax
 
