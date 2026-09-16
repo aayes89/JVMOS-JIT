@@ -30,11 +30,20 @@ pcnet_io_port:	resd 1
 pcnet_rx_idx:	resd 1
 pcnet_tx_idx:	resd 1
 
+; Forzar alineación
 align 16
 pcnet_init_block: resb 28	       ; bloque de inicialización 32-bit (28 bytes)
+
+align 16
 pcnet_rx_ring:    resb 16 * 4      ; 4 descriptores Rx (64 bytes)
+
+align 16
 pcnet_tx_ring:    resb 16 * 4      ; 4 descriptores Tx (64 bytes)
+
+align 16
 pcnet_rx_buffers: resb 1536 * 4    ; Buffers Rx (6 KB)
+
+align 16
 pcnet_tx_buffers: resb 1536 * 4    ; Buffers Tx (6 KB)
 
 section .text
@@ -213,12 +222,15 @@ sys_pcnet_send_packet:
     and eax, 0x0FFF
 	or eax, 0xF000		; BCNT + ONES
     ;or eax, 0x8300F000
-    
+    ; Empaquetar todo en EAX
+	and eax, 0x0000FFFF
+	or eax, 0x83000000	; OWN, STP y ENP
+	
     mov edi, ebx
     shl edi, 4
     add edi, pcnet_tx_ring
-    mov word [edi + 4], ax       ; Escribir BCNT
-	mov word [edi + 6], 0x8300   ; Escribir OWN, STP y END
+    mov dword [edi + 4], eax     ; Escribir BCNT, OWN, STP y END
+	;mov word [edi + 6], 0x8300   ; Escribir OWN, STP y END
 
     ; Rotar puntero
     inc ebx
@@ -258,7 +270,7 @@ sys_net_receive_packet_pcnet:
     shl esi, 4
     add esi, pcnet_rx_ring
     
-    mov ax, [esi + 6]
+    movzx eax, word [esi + 6]
     test eax, 0x8000
     jnz .no_packet           ; Si OWN = 1, la tarjeta aún procesa
 		
@@ -282,6 +294,7 @@ sys_net_receive_packet_pcnet:
     mov edi, [ebp + 8]
     add edi, 4               ; Evadir Java Header
     
+	push ecx				 ; Guardar tamaño real
     cld
     rep movsb
 
