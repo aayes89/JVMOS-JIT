@@ -30,6 +30,7 @@ global current_class_ptr
 global pc_ptr
 global cp_end_ptr
 global methods_ptr
+global sys_exec_jit
 
 global sys_arg_id
 global sys_arg_a
@@ -53,6 +54,7 @@ extern jit_emit_byte
 extern jit_emit_dword
 extern jit_buffer_ptr
 
+
 section .text
 
 global resolve_and_compile_java_method
@@ -61,6 +63,14 @@ bootjvm_start:
     push ebp 
     mov ebp, esp
     call sys_hardware_init
+
+    ; --- INICIO DE PROBE PCI PARA RED ---
+    push msg_pci_searching
+    call sys_serial_puts
+    add esp, 4
+
+    call check_rtl8139_pci
+    ; ------------------------------------
 	
     mov ebx, [ebp+8]
     
@@ -742,6 +752,87 @@ resolve_and_compile_java_method:
     pop ebp
     ret
 
+; Ejecución de .class para compilar y ejecutar un byte[]
+sys_exec_jit:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push esi
+    push edi
+
+    ; Extraer Parámetro 1 (Puntero al arreglo byte[] con el .class) desde la pila
+    mov ebx, [ebp + 8]          
+    test ebx, ebx
+    jz .exec_failed
+
+    ; Apuntar al inicio real del bytecode (saltar los 4 bytes de longitud del array)
+    mov esi, ebx
+    add esi, 4                  
+
+    ; Validar Magic Number
+    mov eax, [esi]
+    bswap eax
+    cmp eax, 0xCAFEBABE
+    jne .exec_failed
+
+    ; Guardar el contexto del Kernel (Boot.class)
+    mov edi, [current_class_ptr]
+    push edi                    ; Lo resguardamos en la pila nativa
+
+    ; Inyectar la nueva clase en el motor global del JIT
+    mov [current_class_ptr], esi
+    call parse_constant_pool
+    jc .restore_and_fail        
+    call parse_class_structure
+
+    ; Buscar el método 'main' ([Ljava/lang/String;)V
+    push dword 22                   ; Longitud del descriptor
+    push dword main_desc_str        ; Puntero al descriptor
+    push dword 4                    ; Longitud del nombre ("main")
+    push dword main_name_str        ; Puntero al nombre
+    call find_method_bytecode
+    add esp, 16                     ; Limpiar los 4 argumentos de la pila
+
+    test eax, eax
+    jz .restore_and_fail            ; Si el ejecutable no tiene main, abortar
+
+    ; Compilar el método encontrado a código nativo x86
+    mov esi, eax
+    mov ecx, [esi - 4]
+    bswap ecx
+    call jit_compile_method
+
+    ; Ejecutar el nuevo programa Java
+    push dword 0                    ; args = null
+    call eax                        ; Ejecuta el main de AppTest
+    ;add esp, 4
+
+    ; Retorno exitoso
+    mov eax, 1                      
+    jmp .restore_and_done
+
+.restore_and_fail:
+    mov eax, 0                      ; Retornar false (Fallo en parseo o main ausente)
+
+.restore_and_done:
+    ; Devolver el motor del JIT a Boot.class
+    pop edi                         ; Recuperamos el puntero de Boot.class
+    mov [current_class_ptr], edi
+    call parse_constant_pool
+    call parse_class_structure      ; Reconstruir el entorno del Kernel
+    jmp .done
+
+.exec_failed:
+    mov eax, 0
+
+.done:
+    pop edi
+    pop esi
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
+	
 ; Buscador en Módulos GRUB
 find_class_in_grub:
     push ebp
@@ -772,10 +863,45 @@ find_class_in_grub:
     push esi
     mov edi, [ebp + 12]         ; Target String de Java
     mov ecx, [ebp + 8]          ; Target String Length
-    repe cmpsb
-    pop esi
-    je .found
 
+.compare_loop:
+    test ecx, ecx
+    jz .matched                 ; Si ecx llega a 0, coinciden los primeros N caracteres
+    
+    mov al, [esi]
+    mov ah, [edi]
+    
+    ; Normalizar backslash de Windows (\) a forward slash (/)
+    cmp al, '\'
+    jne .check_match
+    mov al, '/'
+    
+.check_match:
+    cmp al, ah
+    jne .mismatch               
+    inc esi
+    inc edi
+    dec ecx
+    jmp .compare_loop
+
+.matched:
+    ; ESI apunta al caracter inmediatamente posterior a la coincidencia.
+    ; Para que sea válido, debe ser el '.' de ".class" o el fin de cadena (0).
+    mov al, [esi]
+    cmp al, '.'                 
+    je .found_valid
+    cmp al, 0                   
+    je .found_valid
+    
+    ; Falso positivo (Ej. encontró "String" pero era "StringBuilder")
+    jmp .mismatch
+
+.found_valid:
+    pop esi
+    jmp .found
+    
+.mismatch:
+    pop esi
     inc esi
     jmp .scan_char
 
@@ -900,10 +1026,129 @@ fatal_halt:
     call sys_hlt    
     jmp .loop
 
+; ====================================================================
+; check_rtl8139_pci: Escanea PCI Bus 0 (slots 0-31), detecta la RTL8139
+; e imprime el puerto I/O base mapeado en BAR0 por puerto serial.
+; ====================================================================
+check_rtl8139_pci:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push ecx
+    push edx
+    push esi
+
+    xor ebx, ebx                ; EBX = Slot (0 a 31)
+
+.pci_scan_loop:
+    cmp ebx, 32
+    jge .pci_not_found
+
+    ; 1. Leer Offset 0x00 (VendorID / DeviceID)
+    ; Estructura CONFIG_ADDRESS: [Bit 31: Enable] [Bits 23-16: Bus] [Bits 15-11: Slot] [Bits 10-8: Func] [Bits 7-2: Offset]
+    mov eax, ebx
+    shl eax, 11                 ; Shift slot a bits 15-11
+    or eax, 0x80000000          ; Enable Bit 31 (Bus = 0, Func = 0, Offset = 0x00)
+
+    mov dx, 0xCF8
+    out dx, eax
+    mov dx, 0xCFC
+    in eax, dx                  ; EAX contiene (DeviceID << 16) | VendorID
+
+    ; 2. Verificar si coincide con Realtek RTL8139 (Vendor: 0x10EC, Device: 0x8139)
+    cmp eax, 0x813910EC
+    je .pci_found_device
+
+    inc ebx
+    jmp .pci_scan_loop
+
+.pci_found_device:
+    ; 3. Leer Offset 0x10 (BAR0 - Base Address Register 0)
+    mov eax, ebx
+    shl eax, 11
+    or eax, 0x80000010          ; Offset 0x10
+    mov dx, 0xCF8
+    out dx, eax
+    mov dx, 0xCFC
+    in eax, dx                  ; EAX contiene el BAR0
+
+    ; 4. Limpiar bits de control del I/O Port (Bits 0 y 1)
+    and eax, 0xFFFC
+    mov esi, eax                ; Guardar el puerto E/S en ESI
+
+    ; 5. Imprimir mensaje de éxito
+    push msg_pci_found
+    call sys_serial_puts
+    add esp, 4
+
+    ; Imprimir el valor Hexadecimal del puerto E/S
+    mov eax, esi
+    call print_hex_16
+
+    push msg_newline
+    call sys_serial_puts
+    add esp, 4
+
+    jmp .pci_done
+
+.pci_not_found:
+    push msg_pci_not_found
+    call sys_serial_puts
+    add esp, 4
+
+.pci_done:
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
+
+
+; --- Imprime un entero de 16 bits en Hexadecimal a través de sys_serial_puts ---
+print_hex_16:
+    push ebp
+    mov ebp, esp
+    sub esp, 8                  ; Buffer local para la cadena ("0000\0")
+    push ebx
+    push ecx
+    push edx
+
+    mov edx, eax                ; Guardar valor original
+    mov ecx, 4                  ; 4 dígitos Hex
+    lea ebx, [ebp - 5]
+    mov byte [ebp - 1], 0       ; Null terminator
+
+.hex_loop:
+    dec ebx
+    mov eax, edx
+    and eax, 0x0F
+    cmp al, 9
+    jbe .is_digit
+    add al, 7
+.is_digit:
+    add al, '0'
+    mov [ebx], al
+    shr edx, 4
+    loop .hex_loop
+
+    push ebx
+    call sys_serial_puts
+    add esp, 4
+
+    pop edx
+    pop ecx
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
+
 section .rodata
+
 boot_class_str:        db "kernel/Boot", 0
 main_name_str:         db "main", 0
-main_desc_str: db "([Ljava/lang/String;)V", 0
+main_desc_str: 		   db "([Ljava/lang/String;)V", 0
 msg_dbg_start:         db 13, 10, "[BootJVM] Iniciando JVM Kernel [Modo JIT]...", 13, 10, 0
 msg_dbg_magic_ok:      db "[BootJVM] Número mágico 'CAFEBABE' verificado. Archivo Java-bytecode válido", 13, 10, 0
 msg_dbg_cp_ok:         db "[BootJVM] Constant Pool parseado correctamente", 13, 10, 0
@@ -916,6 +1161,12 @@ msg_err_format:        db 13, 10, "[BootJVM Panico] Constant Pool corrupta", 13,
 msg_err_noboot:        db 13, 10, "[BootJVM Panico] Modulo Boot.class no encontrado en GRUB!", 13, 10, 0
 msg_err_nomain:        db 13, 10, "[BootJVM Panico] Método 'main' no encontrado", 13, 10, 0
 msg_err_resolve:       db 13, 10, "[BootJVM Panico] Error: Metodo no encontrado en la clase", 13, 10, 0
+
+; Mensajes de estado PCI para RTL8139
+msg_pci_searching: db "[PCI Probe] Escaneando Bus PCI en busca de RTL8139...", 13, 10, 0
+msg_pci_found:     db "[PCI Probe] Tarjeta RTL8139 detectada en I/O Port: 0x", 0
+msg_pci_not_found: db "[PCI Probe] ERROR: No se encontro tarjeta de red RTL8139 en el bus PCI!", 13, 10, 0
+msg_newline:       db 13, 10, 0
 
 section .data
 sys_arg_id:        dd 0
