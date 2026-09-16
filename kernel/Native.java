@@ -59,6 +59,9 @@ public class Native {
     public static final int SYS_SCROLL_UP        = 28; // Hacer scrool up en pantalla
 	public static final int SYS_PCI_WRITE        = 29; // Escribir espacio de config PCI
 	public static final int SYS_EXEC    		 = 30; // Ejecutar un .class
+	public static final int SYS_PCNET_INIT		 = 31; // Inicializar Tarjeta de Red PCnet
+	public static final int SYS_PCNET_SEND		 = 32; // Enviar paquete con tarjeta de red PCnet
+	public static final int SYS_PCNET_RECEIVE	 = 33; // Recibir paquete con tarjeta de red PCnet
 
 
     // FIRMAS NATIVAS
