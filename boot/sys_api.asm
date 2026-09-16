@@ -90,6 +90,12 @@ global sys_rtl8139_init
 global sys_rtl8139_send_packet
 global sys_net_receive_packet
 
+; --- PCnet Driver ---
+%include "driver/network/sys_pcnet.asm"
+global sys_pcnet_init
+global sys_pcnet_send_packet
+global sys_net_receive_packet_pcnet
+
 ; --- Puertos I/O ---
 global sys_inb
 global sys_outb
