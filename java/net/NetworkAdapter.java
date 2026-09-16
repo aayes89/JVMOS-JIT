@@ -60,7 +60,7 @@ public class NetworkAdapter {
     }
 
     // Transmite un paquete usando el arreglo de bytes del DatagramPacket
-    public void send_old(DatagramPacket packet) {
+    public void send(DatagramPacket packet) {
         if (!initialized || packet == null) return;
         
         // Syscall 24: Enviar paquete de Red
@@ -68,26 +68,12 @@ public class NetworkAdapter {
     }
 
     // Recibe un paquete en el buffer del DatagramPacket
-    public int receive_old(DatagramPacket packet) {
+    public int receive(DatagramPacket packet) {
         if (!initialized || packet == null) return -1;
         
         // Syscall 25: Recibir paquete de Red
         int bytesRead = Native.sys(Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
         
-        if (bytesRead > 0) {
-            packet.setLength(bytesRead);
-        }
-        return bytesRead;
-    }
-
-    public void send(DatagramPacket packet) {
-        if (!initialized || packet == null) return;
-        kernel.Native.sys(kernel.Native.SYS_RTL8139_SEND, 0, packet.getLength(), packet.getData(), 0);
-    }
-
-    public int receive(DatagramPacket packet) {
-        if (!initialized || packet == null) return -1;
-        int bytesRead = kernel.Native.sys(kernel.Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
         if (bytesRead > 0) {
             packet.setLength(bytesRead);
         }
