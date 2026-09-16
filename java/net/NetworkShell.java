@@ -37,7 +37,8 @@ public class NetworkShell {
     
     private static NetworkAdapter adapter;
     private static RawSocket rawSocket;
-	private static int portBase;
+	private static int portBase;			   // Puerto ioBase
+	private static int type;				   // Tipo de Tarjeta
 	private static byte[] localIp;             // IP Local
 	private static byte[] mask;	               // Mascara de red
 	private static byte[] gw; 		           // Gateway
@@ -46,8 +47,8 @@ public class NetworkShell {
     private static byte[] mac = new byte[6];
     
     // Inicializa los subsistemas de red
-    public static void init(int ioPortBase) {
-        portBase = ioPortBase;
+    public static void init(Graphics2D g) {
+        portBase = detectNetworkCardIoPort(g);
         
         // Inicialización manual 
         localIp = new byte[]{(byte)10,(byte)0,(byte)2,(byte)15};    //   ip: 10.0.2.15
@@ -56,16 +57,22 @@ public class NetworkShell {
         dns1 = new byte[]{(byte)8,(byte)8,(byte)8,(byte)8};         // dns1: 8.8.8.8 google
         dns2 = new byte[]{(byte)1,(byte)1,(byte)1,(byte)1};         // dns2: 1.1.1.1 one.one.one.one
 
-
-        // Inicializando el adaptador RTL8139
-        adapter = new NetworkAdapter(NetworkAdapter.TYPE_RTL8139, ioPortBase);
-        adapter.init();
+		if(type == NetworkAdapter.TYPE_RTL8139){	// RTL8139 = 1
+			// Inicializando el adaptador RTL8139
+			adapter = new NetworkAdapter(NetworkAdapter.TYPE_RTL8139, portBase);
+			adapter.init();
+		}else if(type == NetworkAdapter.TYPE_PCNET){	// PCnet = 5
+			// Inicializando el adaptador PCnet
+			adapter = new NetworkAdapter(NetworkAdapter.TYPE_PCNET, portBase);
+			adapter.init();			
+		}
         
         rawSocket = new RawSocket(); 
     }
 
-    // Detectar el puerto base de la tarjet RTL8139 en QEMU
-    public static int detectRtl8139IoPort() {
+    // Detectar el puerto base de la tarjet de red (RTL8139 en QEMU y PCnet en VBox)
+    public static int detectNetworkCardIoPort(Graphics2D g) {
+		int posy = 40;
         for (int bus = 0; bus < 8; bus++) {
             for (int slot = 0; slot < 32; slot++) {
                 // syscall 21: SYS_PCI_READ - Leer config de PCI
@@ -78,18 +85,61 @@ public class NetworkShell {
                     String vendorIdHex = Integer.toHexString(vendorId);
                     String deviceIdHex = Integer.toHexString(deviceId);
 
-                    if(deviceIdHex.equals("1237"))
-                        System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Intel 440FX (Natoma)");
-                    else if(deviceIdHex.equals("7000"))
-                        System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Intel PIIX3 ISA Bridge");
-                    else if(deviceIdHex.equals("1111"))
+                    if(deviceIdHex.equals("1111")){
                         System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => QEMU Virtual Video Controller (VGA)");
-                    else if(deviceIdHex.equals("8139"))
+						g.drawString("[+] Adaptador QEMU Virtual Video Controller encontrado",20,posy);
+						posy+=10;
+					}
+                    else if(vendorId == 0x10EC && deviceId == 0x8139){
                         System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Realtek RTL8139");
-                    else
+						type = NetworkAdapter.TYPE_RTL8139;
+						g.drawString("[+] Adaptador RTL8139 encontrado",20,posy);						
+						posy+=10;
+					}
+                    else if(vendorId == 0x1022 && deviceId == 0x2000){
+                        System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => AMD PCnet-FAST III");
+						type = NetworkAdapter.TYPE_PCNET;
+						g.drawString("[+] Adaptador PCnet encontrado",20,posy);						
+						posy+=10;
+					}
+					else if(vendorId == 0x8086){ // INTEL
+						if(deviceId == 0x7000){
+							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Intel PIIX3 ISA Bridge");
+							g.drawString("[+] Adaptador Intel PIIX3 ISA Bridge encontrado",20,posy);
+							posy+=10;							
+						}else if(deviceId == 0x1237){
+							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Intel 440FX (Natoma)");
+							g.drawString("[+] Adaptador Intel 440FX encontrado",20,posy);
+							posy+=10;							
+						}else if(deviceId == 0x100e){
+							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Intel PRO/1000");
+							type = NetworkAdapter.TYPE_E1000;
+							g.drawString("[+] Adaptador Intel PRO/1000 encontrado",20,posy);						
+							posy+=10;
+						}else{
+							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Intel PRO/1000");				
+							g.drawString("[+] Adaptador Intel encontrado",20,posy);						
+							posy+=10;
+						}
+					}
+					else if(vendorId == 0x106B){ // Apple
+						System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => Intel PRO/1000");
+						g.drawString("[+] Adaptador Apple encontrado",20,posy);						
+						posy+=10;						
+					}
+					else if(vendorId == 0x15DA && deviceId == 0x1029){
+                        System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId + " => VMware");
+						g.drawString("[+] Adaptador VMware encontrado",20,posy);						
+						posy+=10;
+					}
+                    else {
                         System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceId);
+						g.drawString("Adaptador 0x"+vendorIdHex+" Device 0x"+deviceId+" encontrado",20,posy);
+						posy+=10;
+					}
                                        
-                    if (vendorId == 0x10EC && deviceId == 0x8139) {
+                    // Si hay Realtek (QEMU) o AMD (VirtualBox)
+                    if ((vendorId == 0x10EC && deviceId == 0x8139) || (vendorId == 0x1022 && deviceId == 0x2000)) {
                         // Leer Command Register (Offset 0x04)
                         int cmd = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, 0x04);
                         
@@ -101,6 +151,7 @@ public class NetworkShell {
 
                         for (int barOffset = 0x10; barOffset <= 0x24; barOffset += 4) {
                             int bar = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, barOffset);
+                            // Verificar si es un puerto I/O (Bit 0 debe ser 1)
                             if ((bar & 0x1) == 1) {
                                 return bar & ~0x3;
                             }
@@ -109,8 +160,8 @@ public class NetworkShell {
                 }
             }
         }
-        System.out.println("[!] RTL8139 no detectada por PCI. Forzando puerto I/O: 0xC000");
-        return 0xC000; // Fallback seguro
+        System.out.println("[!] Tarjeta de red compatible no detectada por PCI. Forzando puerto I/O: 0xC000");
+        return 0xC000; // Fallback 
     }
 
     // Procesa los comandos delegados desde Boot.java
@@ -178,24 +229,20 @@ public class NetworkShell {
         byte[] destIp = parseIp(targetIpStr);
         mac = getMacAddress();
 
-        // Determinar el "Next Hop" (Próximo Salto)
         byte[] nextHopIp = destIp;
         boolean sameSubnet = true;
-        for(int i=0; i<4; i++) {
+        for(int i = 0; i < 4; i++) {
             if ((destIp[i] & mask[i]) != (localIp[i] & mask[i])) sameSubnet = false;
         }
-        
-        // Si es una IP externa (ej. 1.1.1.1), se lo enviamos a la Puerta de Enlace (Gateway)
         if (!sameSubnet) {
             nextHopIp = gw;
         }
 
-        // Obtener la MAC del salto (Gateway o IP local)
         byte[] destMac = ArpTable.get(nextHopIp);
         if (destMac == null) {
             String nextHopStr = (nextHopIp[0]&0xFF) + "." + (nextHopIp[1]&0xFF) + "." + 
                                 (nextHopIp[2]&0xFF) + "." + (nextHopIp[3]&0xFF);
-            handleArpPing(nextHopStr); // Resolver MAC silenciosamente
+            handleArpPing(nextHopStr); 
             
             destMac = ArpTable.get(nextHopIp);
             if (destMac == null) {
@@ -203,14 +250,20 @@ public class NetworkShell {
             }
         }
 
-        // Crear trama Ethernet
         byte[] frame = new byte[74];
+        // Limpiar memoria residual de la RAM
+        for (int i = 0; i < frame.length; i++) frame[i] = 0;
+
         System.arraycopy(destMac, 0, frame, 0, 6);
         System.arraycopy(mac, 0, frame, 6, 6);
         frame[12] = 0x08; frame[13] = 0x00; 
 
         frame[14] = 0x45; frame[15] = 0x00;
         frame[16] = 0x00; frame[17] = 60; 
+        
+        frame[18] = 0x12; frame[19] = 0x34; // ID IP 
+        frame[20] = 0x00; frame[21] = 0x00; // Asegurar Flags limpios
+        
         frame[22] = 64;   frame[23] = 1;  
         System.arraycopy(localIp, 0, frame, 26, 4);
         System.arraycopy(destIp, 0, frame, 30, 4);
@@ -219,7 +272,7 @@ public class NetworkShell {
         frame[24] = (byte)(ipCk >> 8); frame[25] = (byte)ipCk;
 
         frame[34] = 8; frame[35] = 0;
-        frame[38] = 0x01; frame[39] = 0x01; 
+        frame[38] = 0x0A; frame[39] = 0x0B; 
         frame[40] = 0x00; frame[41] = 0x01; 
 
         int icmpCk = Checksum.calculate(frame, 34, 40);
@@ -228,31 +281,34 @@ public class NetworkShell {
         DatagramPacket txPacket = new DatagramPacket(frame, frame.length);
         rawSocket.send(txPacket);
 
-        // Recepción (Con reseteo de longitud)
         byte[] rxBuffer = new byte[1536];
         DatagramPacket rxPacket = new DatagramPacket(rxBuffer, 1536);
 
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 150; i++) { // Timeout de 1.5s
             rxPacket.setLength(1536); 
             int len = rawSocket.receive(rxPacket);
             
             if (len >= 42) {
-                // Calcular el inicio exacto del ICMP basado en la longitud de la cabecera IP
                 int ipHdrLen = (rxBuffer[14] & 0x0F) * 4;
                 int icmpOffset = 14 + ipHdrLen;
-                
-                // Aplicar & 0xFF a todas las validaciones
+                // Si es IPv4, ICMP y Echo Reply
                 if ((rxBuffer[12] & 0xFF) == 0x08 && (rxBuffer[13] & 0xFF) == 0x00 && 
                     (rxBuffer[23] & 0xFF) == 1 && (rxBuffer[icmpOffset] & 0xFF) == 0) {
-                    
-                    return new String[] { "Respuesta de " + targetIpStr + ": bytes=" + len + " TTL=" + (rxBuffer[22] & 0xFF) };
+					// Verificamos IP del PING
+                    if ((rxBuffer[26] & 0xFF) == (destIp[0] & 0xFF) && 
+                        (rxBuffer[27] & 0xFF) == (destIp[1] & 0xFF) && 
+                        (rxBuffer[28] & 0xFF) == (destIp[2] & 0xFF) && 
+                        (rxBuffer[29] & 0xFF) == (destIp[3] & 0xFF)) {
+                        
+                        return new String[] { "Respuesta de " + targetIpStr + ": bytes=" + len + " TTL=" + (rxBuffer[22] & 0xFF) };
+                    }
                 }
             }
             try { Thread.sleep(10); } catch (Exception e) {}
         }
         return new String[] { "Ping a " + targetIpStr + ": Tiempo de espera agotado." };
     }
-
+	
     // TODO - Réplica de comando para consultar dirección en internet
     private static String[] handleNslookup(String domain) {
         if (domain.length() < 3) {
