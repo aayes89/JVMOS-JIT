@@ -121,7 +121,8 @@ run: $(OS_ISO)
 	qemu-system-i386 -cdrom $(OS_ISO) -drive file=disk.img,format=raw,if=ide,index=0 -m 128M -serial stdio -netdev user,id=net0 -device rtl8139,netdev=net0 -rtc base=localtime -machine pcspk-audiodev=snd0 -audiodev alsa,id=snd0
 
 run-mac: $(OS_ISO)
-	qemu-system-i386 -cdrom $(OS_ISO) -boot d -m 128M -serial stdio -rtc base=localtime
+	qemu-system-i386 -cdrom $(OS_ISO) -boot d -m 128M -serial stdio -rtc base=localtime -netdev vmnet-shared,id=net0 -device rtl8139,netdev=net0 -object filter-dump,id=f1,netdev=net0,file=red.pcap
+# qemu-system-i386 -cdrom $(OS_ISO) -boot d -m 128M -serial stdio -rtc base=localtime
     
 clean:
 	@$(CLEAN_CMD)
