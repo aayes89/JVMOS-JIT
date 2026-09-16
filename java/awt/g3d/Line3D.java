@@ -21,6 +21,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.*/
 package java.awt.g3d;
 
+import java.awt.Color;
+
 public class Line3D {
     public Vertex3D v0;
     public Vertex3D v1;
