@@ -29,6 +29,8 @@ public class NetworkAdapter {
 	public static final int TYPE_RTL8139 = 1;
 	public static final int TYPE_E1000 = 2;
 	public static final int TYPE_VIRTIO = 3;
+	public static final int TYPE_INTEL_PRO = 4;
+	public static final int TYPE_PCNET = 5;
 	
     private int modelType;
     private int ioPortBase;
@@ -43,18 +45,26 @@ public class NetworkAdapter {
 
     // Inicializa la tarjeta según la especificación del modelo
     public boolean init() {
+		int status = -1;
         if (modelType == TYPE_RTL8139) {            
 			// Inicializar Tarjeta de Red
 			// Syscall 23:  arg_a = Puerto I/O (SYS_RTL8139_INIT)			
-            int status = Native.sys(Native.SYS_RTL8139_INIT, ioPortBase, 0, 0, 0);
+            status = Native.sys(Native.SYS_RTL8139_INIT, ioPortBase, 0, 0, 0);
             initialized = (status == 1);
             return initialized;
         }
         // Soporte a futuras tarjetas
-		else if(modelType == TYPE_E1000){
+		else if(modelType == TYPE_INTEL_PRO){
+			// Intel PRO (familia)
+		}else if(modelType == TYPE_E1000){
 			// E1000			
 		}else if(modelType == TYPE_VIRTIO){		
 			// Virtio
+		}else if(modelType == TYPE_PCNET){
+			// PCnet
+			status = Native.sys(Native.SYS_PCNET_INIT, ioPortBase, 0, 0, 0);
+            initialized = (status == 1);
+            return initialized;
 		}
         return false; 
     }
@@ -63,16 +73,41 @@ public class NetworkAdapter {
     public void send(DatagramPacket packet) {
         if (!initialized || packet == null) return;
         
-        // Syscall 24: Enviar paquete de Red
-        Native.sys(Native.SYS_RTL8139_SEND, 0, packet.getLength(), packet.getData(), 0);
+        // Syscall 24, 31: Enviar paquete de Red
+		if(modelType == TYPE_RTL8139)
+			Native.sys(Native.SYS_RTL8139_SEND, 0, packet.getLength(), packet.getData(), 0);
+		else if(modelType == TYPE_PCNET){			
+			Native.sys(Native.SYS_PCNET_SEND, 0, packet.getLength(), packet.getData(), 0);
+		}
+		else if(modelType == TYPE_E1000){
+			// TODO
+			System.out.println("Enviando paquete imaginario via E1000");
+		}
+		else if(modelType == TYPE_VIRTIO){
+			// TODO
+			System.out.println("Enviando paquete imaginario via Virtio");
+		}
     }
 
     // Recibe un paquete en el buffer del DatagramPacket
     public int receive(DatagramPacket packet) {
         if (!initialized || packet == null) return -1;
-        
-        // Syscall 25: Recibir paquete de Red
-        int bytesRead = Native.sys(Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
+		int bytesRead = 0;	
+		
+        // Syscall 25, 33: Recibir paquete de Red
+		if(modelType == TYPE_RTL8139)
+			bytesRead = Native.sys(Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
+		else if(modelType == TYPE_PCNET){
+			bytesRead = Native.sys(Native.SYS_PCNET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);			
+		}
+		else if(modelType == TYPE_E1000){
+			// TODO
+			System.out.println("Recibiendo paquete imaginario via E1000");
+		}
+		else if(modelType == TYPE_VIRTIO){
+			// TODO
+			System.out.println("Recibiendo paquete imaginario via Virtio");
+		}
         
         if (bytesRead > 0) {
             packet.setLength(bytesRead);
