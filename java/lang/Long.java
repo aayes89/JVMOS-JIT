@@ -22,285 +22,394 @@ SOFTWARE.*/
 
 package java.lang;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.regex.Splitter;
+public final class Long extends Number implements Comparable<Long> {
 
+    private static final long serialVersionUID = 4290774380558885855L;
 
-final class HexStringParser {
-	
-	// declaraciones estáticas útiles y regexs
-
-    private static final int DOUBLE_EXPONENT_WIDTH = 11;
-
-    private static final int DOUBLE_MANTISSA_WIDTH = 52;
-
-    private static final int FLOAT_EXPONENT_WIDTH = 8;
-
-    private static final int FLOAT_MANTISSA_WIDTH = 23;
-
-    private static final int HEX_RADIX = 16;
-
-    private static final int MAX_SIGNIFICANT_LENGTH = 15;
-
-    private static final String HEX_SIGNIFICANT = "0[xX](\\p{XDigit}+\\.?|\\p{XDigit}*\\.\\p{XDigit}+)";
-
-    private static final String BINARY_EXPONENT = "[pP]([+-]?\\d+)";
-
-    private static final String FLOAT_TYPE_SUFFIX = "[fFdD]?";
-
-    private static final String HEX_PATTERN = "[\\x00-\\x20]*([+-]?)" + HEX_SIGNIFICANT
-            + BINARY_EXPONENT + FLOAT_TYPE_SUFFIX + "[\\x00-\\x20]*";
-
-    private static final Pattern PATTERN = Pattern.compile(HEX_PATTERN);
-
-    private final int EXPONENT_WIDTH;
-
-    private final int MANTISSA_WIDTH;
-
-    private final long EXPONENT_BASE;
-
-    private final long MAX_EXPONENT;
-
-    private final long MIN_EXPONENT;
-
-    private final long MANTISSA_MASK;
-
-    private long sign;
-
-    private long exponent;
-
-    private long mantissa;
-
-    private String abandonedNumber="";
-
-    private Splitter splitter;
-
-	// Constructor
-    public HexStringParser(int exponentWidth, int mantissaWidth) {
-        this.EXPONENT_WIDTH = exponentWidth;
-        this.MANTISSA_WIDTH = mantissaWidth;
-
-        this.EXPONENT_BASE = ~(-1L << (exponentWidth - 1));
-        this.MAX_EXPONENT = ~(-1L << exponentWidth);
-        this.MIN_EXPONENT = -(MANTISSA_WIDTH + 1);
-        this.MANTISSA_MASK = ~(-1L << mantissaWidth);
-    }
-
-    // Parsear la cadena de texto hexadecimal a un double
-    public static double parseDouble(String hexString) {
-        HexStringParser parser = new HexStringParser(DOUBLE_EXPONENT_WIDTH, DOUBLE_MANTISSA_WIDTH);
-        long result = parser.parse(hexString, true);
-        return Double.longBitsToDouble(result);
-    }
-
-    // Parsear la cadena de texto hexadecimal a float
-    public static float parseFloat(String hexString) {
-        HexStringParser parser = new HexStringParser(FLOAT_EXPONENT_WIDTH, FLOAT_MANTISSA_WIDTH);
-        int result = (int) parser.parse(hexString, false);
-        return Float.intBitsToFloat(result);
-    }
-	
-	// función de ayuda para el parseo
-    private long parse(String hexString, boolean isDouble) {
-        Matcher matcher = PATTERN.matcher(hexString);
-        if (!matcher.matches()) {
-            throw new NumberFormatException("Invalid hex " + (isDouble ? "double" : "float")+ ":" +
-                    hexString);
-        }
-
-        String signStr = matcher.group(1);
-        String significantStr = matcher.group(2);
-        String exponentStr = matcher.group(3);
-
-        parseHexSign(signStr);
-        parseExponent(exponentStr);
-        parseMantissa(significantStr);
-
-        sign <<= (MANTISSA_WIDTH + EXPONENT_WIDTH);
-        exponent <<= MANTISSA_WIDTH;
-        return sign | exponent | mantissa;
-    }
-
-    // Parsear el campo de signo.
-    private void parseHexSign(String signStr) {
-        this.sign = signStr.equals("-") ? 1 : 0;
-    }
-
-    // Parsear el campo del exponente
-    private void parseExponent(String exponentStr) {
-        char leadingChar = exponentStr.charAt(0);
-        int expSign = (leadingChar == '-' ? -1 : 1);
-        if (!Character.isDigit(leadingChar)) {
-            exponentStr = exponentStr.substring(1);
-        }
-
-        try {
-            exponent = expSign * Long.parseLong(exponentStr);
-            checkedAddExponent(EXPONENT_BASE);
-        } catch (NumberFormatException e) {
-            exponent = expSign * Long.MAX_VALUE;
-        }
-    }
-
-    // Parsear la mantisa 
-    private void parseMantissa(String significantStr) {
-        Splitter splitter = new Splitter();
-        String[] strings = splitter.split(PATTERN, "\\.", significantStr, significantStr.length());
-        String strIntegerPart = strings[0];
-        String strDecimalPart = strings.length > 1 ? strings[1] : "";
-
-        String significand = getNormalizedSignificand(strIntegerPart,strDecimalPart);
-        if (significand.equals("0")) {
-            setZero();
-            return;
-        }
-
-        int offset = getOffset(strIntegerPart, strDecimalPart);
-        checkedAddExponent(offset);
-
-        if (exponent >= MAX_EXPONENT) {
-            setInfinite();
-            return;
-        }
-
-        if (exponent <= MIN_EXPONENT) {
-            setZero();
-            return;
-        }
-
-        if (significand.length() > MAX_SIGNIFICANT_LENGTH) {
-            abandonedNumber = significand.substring(MAX_SIGNIFICANT_LENGTH);
-            significand = significand.substring(0, MAX_SIGNIFICANT_LENGTH);
-        }
-
-        mantissa = Long.parseLong(significand, HEX_RADIX);
-
-        if (exponent >= 1) {
-            processNormalNumber();
-        } else{
-            processSubNormalNumber();
-        }
-
-    }
-
-    private void setInfinite() {
-        exponent = MAX_EXPONENT;
-        mantissa = 0;
-    }
-
-    private void setZero() {
-        exponent = 0;
-        mantissa = 0;
-    }
-
-    // Establece la variable de exponente en Long.MAX_VALUE o -Long.MAX_VALUE 
-	// si se produce desbordamiento (overflow) o subdesbordamiento (underflow).
-    private void checkedAddExponent(long offset) {
-        long result = exponent + offset;
-        int expSign = Long.signum(exponent);
-        if (expSign * Long.signum(offset) > 0 && expSign * Long.signum(result) < 0) {
-            exponent = expSign * Long.MAX_VALUE;
-        } else {
-            exponent = result;
-        }
-    }
-
-    private void processNormalNumber(){
-        int desiredWidth = MANTISSA_WIDTH + 2;
-        fitMantissaInDesiredWidth(desiredWidth);
-        round();
-        mantissa = mantissa & MANTISSA_MASK;
-    }
-
-    private void processSubNormalNumber(){
-        int desiredWidth = MANTISSA_WIDTH + 1;
-        desiredWidth += (int)exponent;//lends bit from mantissa to exponent
-        exponent = 0;
-        fitMantissaInDesiredWidth(desiredWidth);
-        round();
-        mantissa = mantissa & MANTISSA_MASK;
-    }
-
-    // Ajustar el tamaño de la mantisa para analisar
-    private void fitMantissaInDesiredWidth(int desiredWidth){
-        int bitLength = countBitsLength(mantissa);
-        if (bitLength > desiredWidth) {
-            discardTrailingBits(bitLength - desiredWidth);
-        } else {
-            mantissa <<= (desiredWidth - bitLength);
-        }
-    }
-
-    // Almacena los bits descartados en abandonedNumber.
-    private void discardTrailingBits(long num) {
-        long mask = ~(-1L << num);
-        abandonedNumber += (mantissa & mask);
-        mantissa >>= num;
-    }
-
-    /* 
-	 * El valor se redondea al alza o a la baja hacia el resultado de precisión infinita más cercano. 
-	 * Si el valor se encuentra exactamente a medio camino entre dos resultados de precisión infinita,
-	 * entonces debe redondearse al alza hacia el resultado de precisión infinita par más cercano.
-	 */
-    private void round() {
-        String result = abandonedNumber.replaceAll("0+", "");
-        boolean moreThanZero = (result.length() > 0 ? true : false);
-
-        int lastDiscardedBit = (int) (mantissa & 1L);
-        mantissa >>= 1;
-        int tailBitInMantissa = (int) (mantissa & 1L);
-
-        if (lastDiscardedBit == 1 && (moreThanZero || tailBitInMantissa == 1)) {
-            int oldLength = countBitsLength(mantissa);
-            mantissa += 1L;
-            int newLength = countBitsLength(mantissa);
-
-            //Rounds up to exponent when whole bits of mantissa are one-bits.
-            if (oldLength >= MANTISSA_WIDTH && newLength > oldLength) {
-                checkedAddExponent(1);
-            }
-        }
-    }
-
-    // Devuelve el significando normalizado tras eliminar los ceros iniciales.
-    private String getNormalizedSignificand(String strIntegerPart, String strDecimalPart) {
-        String significand = strIntegerPart + strDecimalPart;
-        significand = significand.replaceFirst("^0+", "");
-        if (significand.length() == 0) {
-            significand = "0";
-        }
-        return significand;
-    }
-
-    /*
-     * Calcular el desplazamiento entre el número normalizado y el no normalizado. 
-	 * En una representación normalizada, el significando se representa mediante los
-	 * caracteres "0x1." seguidos de la representación hexadecimal en minúsculas
-	 * del resto del significando como una fracción.
+    /**
+     * The value which the receiver represents.
      */
-    private int getOffset(String strIntegerPart, String strDecimalPart) {
-        strIntegerPart = strIntegerPart.replaceFirst("^0+", "");
+    private final long value;
 
-        //If the Integer part is a nonzero number.
-        if (strIntegerPart.length() != 0) {
-            String leadingNumber = strIntegerPart.substring(0, 1);
-            return (strIntegerPart.length() - 1) * 4 + countBitsLength(Long.parseLong(leadingNumber,HEX_RADIX)) - 1;
+    /**
+     * Constant for the maximum {@code long} value, 2<sup>63</sup>-1.
+     */
+    public static final long MAX_VALUE = 0x7FFFFFFFFFFFFFFFL;
+
+    public static final long MIN_VALUE = 0x8000000000000000L;
+
+    @SuppressWarnings("unchecked")
+    public static final Class<Long> TYPE
+            = (Class<Long>) long[].class.getComponentType();
+    // Note: Long.TYPE can't be set to "long.class", since *that* is
+    // defined to be "java.lang.Long.TYPE";
+    
+    public static final int SIZE = 64;
+    
+    public Long(long value) {
+        this.value = value;
+    }
+
+  
+    public Long(String string) throws NumberFormatException {
+        this(parseLong(string));
+    }
+
+    public byte byteValue() {
+        return (byte) value;
+    }
+
+    public int compareTo(Long object) {
+        return compare(value, object.value);
+    }
+
+   
+    public static int compare(long lhs, long rhs) {
+        return lhs < rhs ? -1 : (lhs == rhs ? 0 : 1);
+    }
+
+    private static NumberFormatException invalidLong(String s) {
+        throw new NumberFormatException("Invalid long: \"" + s + "\"");
+    }
+
+   
+    public static Long decode(String string) throws NumberFormatException {
+		int length = string.length();
+		if (length == 0) {
+			throw invalidLong(string);
+		}
+		int i = 0;
+		char firstDigit = string.charAt(i);
+		boolean negative = firstDigit == '-';
+		if (negative || firstDigit == '+') {
+			if (length == 1) {
+				throw invalidLong(string);
+			}
+			firstDigit = string.charAt(++i);
+		}
+
+		int base = 10;
+		if (firstDigit == '0') {
+			if (++i == length) {
+				return valueOf(0L);
+			}
+			firstDigit = string.charAt(i);
+			if (firstDigit == 'x' || firstDigit == 'X') {
+				if (++i == length) {
+					throw invalidLong(string);
+				}
+				base = 16;
+			} else {
+				base = 8;
+			}
+		} else if (firstDigit == '#') {
+			if (++i == length) {
+				throw invalidLong(string);
+			}
+			base = 16;
+		}
+		return valueOf(parse(string, i, base, negative));
+	}
+
+    public double doubleValue() {
+        return value;
+    }
+
+    
+    public boolean equals(Object o) {
+        return (o instanceof Long) && (((Long) o).value == value);
+    }
+
+    public float floatValue() {
+        return value;
+    }
+   
+    public static Long getLong(String string) {
+        if (string == null || string.length() == 0) {
+            return null;
         }
+        String prop = System.getProperty(string);
+        if (prop == null) {
+            return null;
+        }
+        try {
+            return decode(prop);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
 
-        //If the Integer part is a zero number.
-        int i;
-        for (i = 0; i < strDecimalPart.length() && strDecimalPart.charAt(i) == '0'; i++);
-        if (i == strDecimalPart.length()) {
+   
+    public static Long getLong(String string, long defaultValue) {
+        if (string == null || string.length() == 0) {
+            return valueOf(defaultValue);
+        }
+        String prop = System.getProperty(string);
+        if (prop == null) {
+            return valueOf(defaultValue);
+        }
+        try {
+            return decode(prop);
+        } catch (NumberFormatException ex) {
+            return valueOf(defaultValue);
+        }
+    }
+
+   
+    public static Long getLong(String string, Long defaultValue) {
+        if (string == null || string.length() == 0) {
+            return defaultValue;
+        }
+        String prop = System.getProperty(string);
+        if (prop == null) {
+            return defaultValue;
+        }
+        try {
+            return decode(prop);
+        } catch (NumberFormatException ex) {
+            return defaultValue;
+        }
+    }
+
+    
+    public int hashCode() {
+        return (int) (value ^ (value >>> 32));
+    }
+
+    public int intValue() {
+        return (int) value;
+    }
+
+   
+    public long longValue() {
+        return value;
+    }
+
+    
+    public static long parseLong(String string) throws NumberFormatException {
+        return parseLong(string, 10);
+    }
+    
+    public static long parseLong(String string, int radix) {
+
+		if (radix < Character.MIN_RADIX || radix > Character.MAX_RADIX) {
+			throw new NumberFormatException("Invalid radix: " + radix);
+		}
+
+		if (string == null || string.length() == 0) {
+			throw invalidLong(string);
+		}
+
+		char firstChar = string.charAt(0);
+
+		int firstDigitIndex = (firstChar == '-' || firstChar == '+') ? 1 : 0;
+		if (firstDigitIndex == string.length()) {
+			throw invalidLong(string);
+		}
+
+		return parse(string,firstDigitIndex,radix,firstChar == '-');
+	}
+
+    private static long parse(String string, int offset, int radix, boolean negative) {
+		long max = Long.MIN_VALUE / radix;
+		long result = 0;
+		int length = string.length();
+
+		while (offset < length) {
+			int digit = Character.digit(string.charAt(offset++), radix);
+			if (digit == -1) {
+				throw invalidLong(string);
+			}
+			if (result < max) {
+				throw invalidLong(string);
+			}
+			long next = result * radix - digit;
+			if (next > result) {
+				throw invalidLong(string);
+			}
+			result = next;
+		}
+		if (!negative) {
+			result = -result;
+			if (result < 0) {
+				throw invalidLong(string);
+			}
+		}
+		return result;
+	}
+
+    public static long parsePositiveLong(String string) throws NumberFormatException {
+        return parsePositiveLong(string, 10);
+    }
+
+    public static long parsePositiveLong(String string, int radix) throws NumberFormatException {
+        if (radix < Character.MIN_RADIX || radix > Character.MAX_RADIX) {
+            throw new NumberFormatException("Invalid radix: " + radix);
+        }
+        if (string == null || string.length() == 0) {
+            throw invalidLong(string);
+        }
+        return parse(string, 0, radix, false);
+    }
+
+    
+    public short shortValue() {
+        return (short) value;
+    }
+
+    public static String toBinaryString(long v) {
+        return IntegralToString.longToBinaryString(v);
+    }
+
+    public static String toHexString(long v) {
+        return IntegralToString.longToHexString(v);
+    }
+
+    public static String toOctalString(long v) {
+        return IntegralToString.longToOctalString(v);
+    }
+
+    public String toString() {
+        return Long.toString(value);
+    }
+
+    public static String toString(long n) {
+        return IntegralToString.longToString(n);
+    }
+
+    public static String toString(long v, int radix) {
+        return IntegralToString.longToString(v, radix);
+    }
+
+    public static Long valueOf(String string) throws NumberFormatException {
+        return valueOf(parseLong(string));
+    }
+
+    public static Long valueOf(String string, int radix) throws NumberFormatException {
+        return valueOf(parseLong(string, radix));
+    }
+
+    public static long highestOneBit(long v) {
+        // Hacker's Delight, Figure 3-1
+        v |= (v >> 1);
+        v |= (v >> 2);
+        v |= (v >> 4);
+        v |= (v >> 8);
+        v |= (v >> 16);
+        v |= (v >> 32);
+        return v - (v >>> 1);
+    }
+
+    public static long lowestOneBit(long v) {
+        return v & -v;
+    }
+
+    public static int numberOfLeadingZeros(long v) {
+        // After Hacker's Delight, Figure 5-6
+        if (v < 0) {
             return 0;
         }
-        String leadingNumber=strDecimalPart.substring(i,i + 1);
-        return (-i - 1) * 4 + countBitsLength(Long.parseLong(leadingNumber, HEX_RADIX)) - 1;
+        if (v == 0) {
+            return 64;
+        }
+        // On a 64-bit VM, the two previous tests should probably be replaced by
+        // if (v <= 0) return ((int) (~v >> 57)) & 64;
+
+        int n = 1;
+        int i = (int) (v >>> 32);
+        if (i == 0) {
+            n +=  32;
+            i = (int) v;
+        }
+        if (i >>> 16 == 0) {
+            n +=  16;
+            i <<= 16;
+        }
+        if (i >>> 24 == 0) {
+            n +=  8;
+            i <<= 8;
+        }
+        if (i >>> 28 == 0) {
+            n +=  4;
+            i <<= 4;
+        }
+        if (i >>> 30 == 0) {
+            n +=  2;
+            i <<= 2;
+        }
+        return n - (i >>> 31);
     }
 
-    private int countBitsLength(long value) {
-        int leadingZeros = Long.numberOfLeadingZeros(value);
-        return Long.SIZE - leadingZeros;
+ 
+    public static int numberOfTrailingZeros(long v) {
+        int low = (int) v;
+        return low !=0 ? Integer.numberOfTrailingZeros(low)
+                       : 32 + Integer.numberOfTrailingZeros((int) (v >>> 32));
+    }
+
+    public static int bitCount(long v) {
+        // Combines techniques from several sources
+        v -=  (v >>> 1) & 0x5555555555555555L;
+        v = (v & 0x3333333333333333L) + ((v >>> 2) & 0x3333333333333333L);
+        int i =  ((int)(v >>> 32)) + (int) v;
+        i = (i & 0x0F0F0F0F) + ((i >>> 4) & 0x0F0F0F0F);
+        i += i >>> 8;
+        i += i >>> 16;
+        return i  & 0x0000007F;
+    }
+
+
+    public static long rotateLeft(long v, int distance) {
+        // Shift distances are mod 64 (JLS3 15.19), so we needn't mask -distance
+        return (v << distance) | (v >>> -distance);
+    }
+
+  
+    public static long rotateRight(long v, int distance) {
+        // Shift distances are mod 64 (JLS3 15.19), so we needn't mask -distance
+        return (v >>> distance) | (v << -distance);
+    }
+
+   
+    public static long reverseBytes(long v) {
+        // Hacker's Delight 7-1, with minor tweak from Veldmeijer
+        // http://graphics.stanford.edu/~seander/bithacks.html
+        v = ((v >>> 8) & 0x00FF00FF00FF00FFL) | ((v & 0x00FF00FF00FF00FFL) << 8);
+        v = ((v >>>16) & 0x0000FFFF0000FFFFL) | ((v & 0x0000FFFF0000FFFFL) <<16);
+        return ((v >>>32)                   ) | ((v                      ) <<32);
+    }
+
+   
+    public static long reverse(long v) {
+        // Hacker's Delight 7-1, with minor tweak from Veldmeijer
+        // http://graphics.stanford.edu/~seander/bithacks.html
+        v = ((v >>> 1) & 0x5555555555555555L) | ((v & 0x5555555555555555L) << 1);
+        v = ((v >>> 2) & 0x3333333333333333L) | ((v & 0x3333333333333333L) << 2);
+        v = ((v >>> 4) & 0x0F0F0F0F0F0F0F0FL) | ((v & 0x0F0F0F0F0F0F0F0FL) << 4);
+        v = ((v >>> 8) & 0x00FF00FF00FF00FFL) | ((v & 0x00FF00FF00FF00FFL) << 8);
+        v = ((v >>>16) & 0x0000FFFF0000FFFFL) | ((v & 0x0000FFFF0000FFFFL) <<16);
+        return ((v >>>32)                   ) | ((v                      ) <<32);
+    }
+
+  
+    public static int signum(long v) {
+        return v < 0 ? -1 : (v == 0 ? 0 : 1);
+    }
+
+   
+    public static Long valueOf(long v) {
+		if(v>=128 || v< -128){
+			return new Long(v);
+		}
+        return  SMALL_VALUES[((int) v) + 128];
+    }
+
+    
+    private static final Long[] SMALL_VALUES = new Long[256];
+
+    static {
+        for (int i = -128; i < 128; i++) {
+            SMALL_VALUES[i + 128] = new Long(i);
+        }
     }
 }
