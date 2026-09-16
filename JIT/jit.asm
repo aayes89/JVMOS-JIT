@@ -80,6 +80,7 @@ section .text
     extern sys_beep, sys_nosound, sys_get_free_mem, sys_get_ram_size
     extern sys_pci_write_config, sys_pci_read_config, sys_disk_read_sector, sys_disk_write_sector
     extern sys_rtl8139_init, sys_rtl8139_send_packet, sys_net_receive_packet
+	extern sys_pcnet_init, sys_pcnet_send_packet, sys_net_receive_packet_pcnet
     extern sys_inb, sys_outb, sys_inw, sys_outw, sys_indw, sys_outdw, sys_get_ticks
     extern sys_get_time, sys_sleep, sys_exit
     extern sys_exec_jit
@@ -583,6 +584,7 @@ sys_native_dispatch:
     call sys_exec_jit
     add esp, 8
     jmp .done
+
 .sys_pcnet_init_call:
 	push dword [sys_arg_a]	; Puerto I/O
 	call sys_pcnet_init
@@ -602,7 +604,7 @@ sys_native_dispatch:
     push dword [sys_arg_c]
     call sys_net_receive_packet_pcnet
     add esp, 8
-    jmp .done  
+    jmp .done   
 
 .done:
     pop edx
