@@ -353,6 +353,12 @@ sys_native_dispatch:
     je .sys_pci_write
     cmp eax, 30 
     je .sys_exec_jit
+	cmp eax, 31
+	je .sys_pcnet_init_call
+	cmp eax, 32
+	je .sys_pcnet_send_packet
+	cmp eax, 33
+	je .sys_net_receive_packet_pcnet
 
     xor eax, eax
     jmp .done
@@ -577,6 +583,26 @@ sys_native_dispatch:
     call sys_exec_jit
     add esp, 8
     jmp .done
+.sys_pcnet_init_call:
+	push dword [sys_arg_a]	; Puerto I/O
+	call sys_pcnet_init
+	add esp, 4
+	jmp .done
+
+.sys_pcnet_send_packet:
+	push dword [sys_arg_b]
+    push dword [sys_arg_c]
+    call sys_pcnet_send_packet
+    add esp, 8
+    xor eax, eax
+    jmp .done	
+
+.sys_net_receive_packet_pcnet:	
+	push dword [sys_arg_b]
+    push dword [sys_arg_c]
+    call sys_net_receive_packet_pcnet
+    add esp, 8
+    jmp .done  
 
 .done:
     pop edx
