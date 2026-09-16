@@ -86,15 +86,10 @@ public class Boot {
         initFS();    				
         
         // Inicializar redes        
-		int ioBase = NetworkShell.detectRtl8139IoPort(); // ioBase de RTL8139
-        
-        String hexVal = Integer.toHexString(ioBase);
-        g.drawString("RTL8139 detectada en puerto I/O: 0x" + hexVal, 20,40);
-        System.out.println("RTL8139 detectada en puerto I/O: 0x" + hexVal);
-
-        NetworkShell.init(ioBase);  
-        //Native.sys(12,10000,0,0,0); // sleep 10s
-        //Native.sys(17, 0, 0, 0, 0); // exit 	
+        //g.drawString("RTL8139 detectada en puerto I/O: 0x" + hexVal, 20,40);
+        //System.out.println("RTL8139 detectada en puerto I/O: 0x" + hexVal);
+        NetworkShell.init(g);  
+		Native.sys(12,3000,0,0,0); // sleep 3s		
         
         g.drawString("[GRAPHICS] Inicializando subsistema grafico...",20,50);
         System.out.println("[GRAPHICS] Inicializando subsistema grafico...");
