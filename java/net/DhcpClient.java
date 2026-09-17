@@ -26,79 +26,140 @@ import java.lang.Thread;
 import java.lang.System;
 
 public class DhcpClient {
-    private NetworkAdapter adapter; // Mi clase adaptador de red
-    private byte[] mac;             // mi MAC
-    private int xid = 0x3903F311;   // ID de Transacción aleatorio/fijo (probare luego con Random a ver que tal va)
+    private NetworkAdapter adapter;
+    private byte[] mac;             
+    private int xid = 0x3903F311;   
 
-    // Constructor
     public DhcpClient(NetworkAdapter adapter, byte[] mac) {
         this.adapter = adapter;
         this.mac = mac;
     }
 
-    // extraido de implementación en C y adaptado a Java. (similar a como está en Linux)
-    public boolean discoverAndConfigure() {
+	public boolean discoverAndConfigure() {
         if (!adapter.isInitialized()) return false;
 
-        byte[] frame = new byte[342]; 
-        buildDhcpPacket(frame, (byte) 1); 
-
-        DatagramPacket packet = new DatagramPacket(frame, frame.length);
-        adapter.send(packet);
+        byte[] txFrame = new byte[350]; 
+        int txLen = buildDhcpPacket(txFrame, (byte) 1, null, null); 
+        DatagramPacket txPacket = new DatagramPacket(txFrame, txLen);
+        adapter.send(txPacket);
 
         byte[] rx = new byte[1536];
         DatagramPacket rxPacket = new DatagramPacket(rx, 1536);
 
-        for (int i = 0; i < 50; i++) { 
-            if(i%20 == 0){
-                adapter.send(packet);
+        int state = 0; // 0 = DISCOVER sent, waiting OFFER; 1 = REQUEST sent, waiting ACK
+        byte[] offeredIp = new byte[4];
+        byte[] serverId = new byte[4];
+
+        for (int i = 0; i < 100; i++) { // Timeout ampliado para dar tiempo al flujo completo
+            if (i > 0 && i % 20 == 0) {
+                adapter.send(txPacket); // Retransmitir el estado actual
             }
 
             rxPacket.setLength(1536);
             int len = adapter.receive(rxPacket);
             
             if (len > 240) {
-                // Verificar IPv4 y UDP de forma segura
-                if ((rx[12] & 0xFF) == 0x08 && (rx[13] & 0xFF) == 0x00 && (rx[23] & 0xFF) == 17) { 
-                    int udpOffset = 14 + ((rx[14] & 0x0F) * 4);
+                // Validar Ethernet (0x0800)
+                if ((rx[12] & 0xFF) == 0x08 && (rx[13] & 0xFF) == 0x00) { 
                     
-                    // Asegurar que es una respuesta del servidor DHCP (Puerto Origen 67)
-                    if ((rx[udpOffset] & 0xFF) == 0x00 && (rx[udpOffset + 1] & 0xFF) == 67) {
+                    // Validar IPv4 (Versión 4) y UDP (Protocolo 17)
+                    if ((rx[14] & 0xF0) == 0x40 && (rx[23] & 0xFF) == 17) { 
                         
-                        // Escáner dinámico buscando la Magic Cookie (inmune a desplazamientos)
-                        for (int j = udpOffset + 8; j < len - 4; j++) {
-                            if ((rx[j] & 0xFF) == 0x63 && (rx[j+1] & 0xFF) == 0x82 && 
-                                (rx[j+2] & 0xFF) == 0x53 && (rx[j+3] & 0xFF) == 0x63) {
+                        // Validar IHL (Internet Header Length) dinámico
+                        int ipHdrLen = (rx[14] & 0x0F) * 4;
+                        int udpOffset = 14 + ipHdrLen;
+                        
+                        // Validar Puerto Origen (67) y Puerto Destino (68)
+                        if ((rx[udpOffset] & 0xFF) == 0x00 && (rx[udpOffset + 1] & 0xFF) == 67 &&
+                            (rx[udpOffset + 2] & 0xFF) == 0x00 && (rx[udpOffset + 3] & 0xFF) == 68) {
+                            
+                            int dhcpOffset = udpOffset + 8;
+                            
+                            // Validar DHCP op = 2 (Bootreply)
+                            if ((rx[dhcpOffset] & 0xFF) == 2) {
                                 
-                                int dhcpOffset = j - 236; 
-                                byte[] offeredIp = new byte[4];
-                                System.arraycopy(rx, dhcpOffset + 16, offeredIp, 0, 4);
+                                // Validar XID byte por byte para evadir el bug de OR (|) del JIT
+                                if (rx[dhcpOffset + 4] == (byte)(this.xid >> 24) &&
+                                    rx[dhcpOffset + 5] == (byte)(this.xid >> 16) &&
+                                    rx[dhcpOffset + 6] == (byte)(this.xid >> 8) &&
+                                    rx[dhcpOffset + 7] == (byte)this.xid) {
 
-                                byte[] dnsTmp = new byte[4]; 
-                                byte[] gwTmp = new byte[4];
-                                byte[] maskTmp = new byte[4];
+                                    // Validar chaddr (nuestra MAC)
+                                    boolean macMatch = true;
+                                    for(int m = 0; m < 6; m++) {
+                                        if (rx[dhcpOffset + 28 + m] != this.mac[m]) {
+                                            macMatch = false; break;
+                                        }
+                                    }
 
-                                int k = j + 4; 
-                                while (k < len) {
-                                    int code = rx[k] & 0xFF; 
-                                    if (code == 255) break; 
-                                    if (code == 0) { k++; continue; } 
-                                    
-                                    if (k + 1 >= len) break; 
-                                    int optLen = rx[k + 1] & 0xFF; 
-                                    if (k + 2 + optLen > len) break; 
+                                    if (macMatch) {
+                                        // Validar Magic Cookie exacta (sin escaneos dinámicos)
+                                        if ((rx[dhcpOffset + 236] & 0xFF) == 0x63 && 
+                                            (rx[dhcpOffset + 237] & 0xFF) == 0x82 && 
+                                            (rx[dhcpOffset + 238] & 0xFF) == 0x53 && 
+                                            (rx[dhcpOffset + 239] & 0xFF) == 0x63) {
+                                            
+                                            // Extraer YIADDR (IP Ofertada)
+                                            byte[] tempIp = new byte[4];
+                                            System.arraycopy(rx, dhcpOffset + 16, tempIp, 0, 4);
 
-                                    if (code == 1 && optLen == 4) System.arraycopy(rx, k + 2, maskTmp, 0, 4);
-                                    else if (code == 3 && optLen >= 4) System.arraycopy(rx, k + 2, gwTmp, 0, 4);
-                                    else if (code == 6 && optLen >= 4) System.arraycopy(rx, k + 2, dnsTmp, 0, 4);
-                                    k += 2 + optLen;
+                                            byte msgType = 0;
+                                            byte[] dnsTmp = new byte[4]; 
+                                            byte[] gwTmp = new byte[4];
+                                            byte[] maskTmp = new byte[4];
+                                            byte[] srvTmp = new byte[4];
+
+                                            // Extraer opciones TLV
+                                            int k = dhcpOffset + 240; 
+                                            while (k < len) {
+                                                int code = rx[k] & 0xFF; 
+                                                if (code == 255) break; 
+                                                if (code == 0) { k++; continue; } 
+                                                
+                                                if (k + 1 >= len) break; 
+                                                int optLen = rx[k + 1] & 0xFF; 
+                                                if (k + 2 + optLen > len) break; 
+
+                                                if (code == 53 && optLen == 1) msgType = rx[k + 2];
+                                                else if (code == 54 && optLen == 4) System.arraycopy(rx, k + 2, srvTmp, 0, 4);
+                                                else if (code == 1 && optLen == 4) System.arraycopy(rx, k + 2, maskTmp, 0, 4);
+                                                else if (code == 3 && optLen >= 4) System.arraycopy(rx, k + 2, gwTmp, 0, 4);
+                                                else if (code == 6 && optLen >= 4) System.arraycopy(rx, k + 2, dnsTmp, 0, 4);
+                                                k += 2 + optLen;
+                                            }
+
+                                            // MÁQUINA DE ESTADOS DHCP
+                                            if (state == 0 && msgType == 2) { // Recibido OFFER
+                                                System.arraycopy(tempIp, 0, offeredIp, 0, 4);
+                                                System.arraycopy(srvTmp, 0, serverId, 0, 4);
+                                                
+                                                // Transicionar a REQUEST
+                                                txLen = buildDhcpPacket(txFrame, (byte) 3, offeredIp, serverId);
+                                                txPacket.setLength(txLen);
+                                                adapter.send(txPacket);
+                                                
+                                                state = 1;
+                                                i = 1; // Reiniciar contador para esperar el ACK
+                                                
+                                            } else if (state == 1 && msgType == 5) { // Recibido ACK
+                                                // Asignar al sistema EXCLUSIVAMENTE tras el ACK
+                                                NetworkShell.setLocalIP(offeredIp);
+                                                if (maskTmp[0] != 0) NetworkShell.setMask(maskTmp);
+                                                if (gwTmp[0] != 0) NetworkShell.setGW(gwTmp);
+                                                if (dnsTmp[0] != 0) NetworkShell.setDNS1(dnsTmp);
+                                                return true;
+                                                
+                                            } else if (state == 1 && msgType == 6) { // Recibido NAK
+                                                // Revertir a DISCOVER
+                                                state = 0;
+                                                txLen = buildDhcpPacket(txFrame, (byte) 1, null, null);
+                                                txPacket.setLength(txLen);
+                                                adapter.send(txPacket);
+                                                i = 1;
+                                            }
+                                        }
+                                    }
                                 }
-
-                                NetworkShell.setLocalIP(offeredIp);
-                                if (maskTmp[0] != 0) NetworkShell.setMask(maskTmp);
-                                if (gwTmp[0] != 0) NetworkShell.setGW(gwTmp);
-                                if (dnsTmp[0] != 0) NetworkShell.setDNS1(dnsTmp);
-                                return true;
                             }
                         }
                     }
@@ -109,71 +170,60 @@ public class DhcpClient {
         return false;
     }
 
-    // Construir paquete DHCP (extraido y adaptado de implementación oficial)
-    private void buildDhcpPacket(byte[] f, byte msgType) {
+    private int buildDhcpPacket(byte[] f, byte msgType, byte[] reqIp, byte[] srvId) {
+        // Limpiar la memoria residual
+        for (int i = 0; i < f.length; i++) f[i] = 0;
+
         for (int i = 0; i < 6; i++) f[i] = (byte) 0xFF;
         System.arraycopy(mac, 0, f, 6, 6);
         f[12] = 0x08; f[13] = 0x00; 
+        
         f[14] = 0x45; f[15] = 0x00; 
-        f[16] = 0x01; f[17] = 0x48; 
+        f[18] = 0x55; f[19] = 0x66; // ID no nulo para evitar filtros SLIRP
+        f[20] = 0x00; f[21] = 0x00; // Flags limpios
         f[22] = 64;   f[23] = 17;   
+        
         for (int i = 26; i < 30; i++) f[i] = 0; 
         for (int i = 30; i < 34; i++) f[i] = (byte) 0xFF; 
-        
-        int ipCk = Checksum.calculate(f, 14, 20);
-        f[24] = (byte)(ipCk >> 8); f[25] = (byte)ipCk;
 
         f[34] = 0x00; f[35] = 68; 
         f[36] = 0x00; f[37] = 67; 
-        f[38] = 0x01; f[39] = 0x34; 
 
         int d = 42;
         f[d] = 1; f[d+1] = 1; f[d+2] = 6; 
         f[d+4] = (byte)(xid >> 24); f[d+5] = (byte)(xid >> 16);
         f[d+6] = (byte)(xid >> 8);  f[d+7] = (byte)xid;
         
-        // Flag de Broadcast (0x8000)
-        f[d+10] = (byte) 0x80; f[d+11] = 0x00;
+        f[d+10] = (byte) 0x80; f[d+11] = 0x00; // Flag Broadcast
         
         System.arraycopy(mac, 0, f, d + 28, 6); 
 
         int opt = d + 236;
         f[opt++] = 0x63; f[opt++] = (byte)0x82; f[opt++] = 0x53; f[opt++] = 0x63;
+        
         f[opt++] = 53; f[opt++] = 1; f[opt++] = msgType;
-        f[opt++] = 55; f[opt++] = 3; f[opt++] = 1; f[opt++] = 3; f[opt++] = 6;
-        f[opt] = (byte) 255;
-    }
-
-    // Parser básico para obtener Máscara de red, Gateway, DNS y DHCP (TLV)
-    private void parseOptions(byte[] buf, int offset, int maxLen, byte[] mask, byte[] gw, byte[] dns) {
-        int i = offset;
-        while (i < offset + maxLen) {
-            byte code = buf[i];
-            
-            // Opciones de 1 solo byte (sin longitud)
-            if (code == (byte)255) { // 255 = End
-                break; 
-            }
-            if (code == 0) {         // 0 = Padding
-                i++; 
-                continue; 
-            }
-            
-            // Opciones TLV (Tipo, Longitud, Valor)
-            if (i + 1 >= offset + maxLen) break; // Protección contra desbordamiento
-            int len = buf[i + 1] & 0xFF;
-            
-            if (i + 2 + len > offset + maxLen) break; // Protección contra datos corruptos
-
-            if (code == 1 && len == 4) {
-                System.arraycopy(buf, i + 2, mask, 0, 4);      // Subnet Mask
-            } else if (code == 3 && len >= 4) {
-                System.arraycopy(buf, i + 2, gw, 0, 4);        // Router/GW (Solo tomamos el primero)
-            } else if (code == 6 && len >= 4) {
-                System.arraycopy(buf, i + 2, dns, 0, 4);       // DNS Server (Solo tomamos el primero)
-            }
-            
-            i += 2 + len;
+        
+        if (msgType == 3 && reqIp != null && srvId != null) {
+            f[opt++] = 50; f[opt++] = 4; System.arraycopy(reqIp, 0, f, opt, 4); opt += 4;
+            f[opt++] = 54; f[opt++] = 4; System.arraycopy(srvId, 0, f, opt, 4); opt += 4;
         }
+        
+        f[opt++] = 55; f[opt++] = 3; f[opt++] = 1; f[opt++] = 3; f[opt++] = 6;
+        f[opt++] = (byte) 255;
+        
+        while (opt < 342) f[opt++] = 0;
+
+        int totalLen = opt;
+
+        int ipLen = totalLen - 14;
+        f[16] = (byte)(ipLen >> 8); f[17] = (byte)ipLen;
+        
+        int udpLen = totalLen - 34;
+        f[38] = (byte)(udpLen >> 8); f[39] = (byte)udpLen;
+
+        int ipCk = Checksum.calculate(f, 14, 20);
+        f[24] = (byte)(ipCk >> 8); f[25] = (byte)ipCk;
+
+        return totalLen;
     }
 }
