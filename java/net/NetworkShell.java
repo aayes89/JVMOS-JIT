@@ -222,92 +222,6 @@ public class NetworkShell {
         }
         return new String[]{"[-] Error: No hay DHCP. Utiliza las funciones (ip, mask, gw) para modo manual."};
     }
-
-    // Implementación del comando PING adaptado para JVMOS-JIT
-    private static String[] handleIcmpPing(String targetIpStr) {
-        if (targetIpStr.length() < 7) return new String[] { "Uso: net ping <IP>" };
-        byte[] destIp = parseIp(targetIpStr);
-        mac = getMacAddress();
-
-        byte[] nextHopIp = destIp;
-        boolean sameSubnet = true;
-        for(int i = 0; i < 4; i++) {
-            if ((destIp[i] & mask[i]) != (localIp[i] & mask[i])) sameSubnet = false;
-        }
-        if (!sameSubnet) {
-            nextHopIp = gw;
-        }
-
-        byte[] destMac = ArpTable.get(nextHopIp);
-        if (destMac == null) {
-            String nextHopStr = (nextHopIp[0]&0xFF) + "." + (nextHopIp[1]&0xFF) + "." + 
-                                (nextHopIp[2]&0xFF) + "." + (nextHopIp[3]&0xFF);
-            handleArpPing(nextHopStr); 
-            
-            destMac = ArpTable.get(nextHopIp);
-            if (destMac == null) {
-                return new String[] { "Ping a " + targetIpStr + ": Fallo al resolver MAC de ruteo." };
-            }
-        }
-
-        byte[] frame = new byte[74];
-        // Limpiar memoria residual de la RAM
-        for (int i = 0; i < frame.length; i++) frame[i] = 0;
-
-        System.arraycopy(destMac, 0, frame, 0, 6);
-        System.arraycopy(mac, 0, frame, 6, 6);
-        frame[12] = 0x08; frame[13] = 0x00; 
-
-        frame[14] = 0x45; frame[15] = 0x00;
-        frame[16] = 0x00; frame[17] = 60; 
-        
-        frame[18] = 0x12; frame[19] = 0x34; // ID IP 
-        frame[20] = 0x00; frame[21] = 0x00; // Asegurar Flags limpios
-        
-        frame[22] = 64;   frame[23] = 1;  
-        System.arraycopy(localIp, 0, frame, 26, 4);
-        System.arraycopy(destIp, 0, frame, 30, 4);
-
-        int ipCk = Checksum.calculate(frame, 14, 20);
-        frame[24] = (byte)(ipCk >> 8); frame[25] = (byte)ipCk;
-
-        frame[34] = 8; frame[35] = 0;
-        frame[38] = 0x0A; frame[39] = 0x0B; 
-        frame[40] = 0x00; frame[41] = 0x01; 
-
-        int icmpCk = Checksum.calculate(frame, 34, 40);
-        frame[36] = (byte)(icmpCk >> 8); frame[37] = (byte)icmpCk;
-
-        DatagramPacket txPacket = new DatagramPacket(frame, frame.length);
-        rawSocket.send(txPacket);
-
-        byte[] rxBuffer = new byte[1536];
-        DatagramPacket rxPacket = new DatagramPacket(rxBuffer, 1536);
-
-        for (int i = 0; i < 150; i++) { // Timeout de 1.5s
-            rxPacket.setLength(1536); 
-            int len = rawSocket.receive(rxPacket);
-            
-            if (len >= 42) {
-                int ipHdrLen = (rxBuffer[14] & 0x0F) * 4;
-                int icmpOffset = 14 + ipHdrLen;
-                // Si es IPv4, ICMP y Echo Reply
-                if ((rxBuffer[12] & 0xFF) == 0x08 && (rxBuffer[13] & 0xFF) == 0x00 && 
-                    (rxBuffer[23] & 0xFF) == 1 && (rxBuffer[icmpOffset] & 0xFF) == 0) {
-					// Verificamos IP del PING
-                    if ((rxBuffer[26] & 0xFF) == (destIp[0] & 0xFF) && 
-                        (rxBuffer[27] & 0xFF) == (destIp[1] & 0xFF) && 
-                        (rxBuffer[28] & 0xFF) == (destIp[2] & 0xFF) && 
-                        (rxBuffer[29] & 0xFF) == (destIp[3] & 0xFF)) {
-                        
-                        return new String[] { "Respuesta de " + targetIpStr + ": bytes=" + len + " TTL=" + (rxBuffer[22] & 0xFF) };
-                    }
-                }
-            }
-            try { Thread.sleep(10); } catch (Exception e) {}
-        }
-        return new String[] { "Ping a " + targetIpStr + ": Tiempo de espera agotado." };
-    }
 	
     // TODO - Réplica de comando para consultar dirección en internet
     private static String[] handleNslookup(String domain) {
@@ -394,6 +308,95 @@ public class NetworkShell {
         return new String[] {ipToString("Gateway: ",gw) };
     }
 	
+	// Implementación del comando PING adaptado para JVMOS-JIT
+    private static String[] handleIcmpPing(String targetIpStr) {
+        if (targetIpStr.length() < 7) return new String[] { "Uso: net ping <IP>" };
+        byte[] destIp = parseIp(targetIpStr);
+        mac = getMacAddress();
+
+        byte[] nextHopIp = destIp;
+        boolean sameSubnet = true;
+        for(int i = 0; i < 4; i++) {
+            if ((destIp[i] & mask[i]) != (localIp[i] & mask[i])) sameSubnet = false;
+        }
+        if (!sameSubnet) {
+            nextHopIp = gw;
+        }
+
+        byte[] destMac = ArpTable.get(nextHopIp);
+        if (destMac == null) {
+            String nextHopStr = (nextHopIp[0]&0xFF) + "." + (nextHopIp[1]&0xFF) + "." + 
+                                (nextHopIp[2]&0xFF) + "." + (nextHopIp[3]&0xFF);
+            handleArpPing(nextHopStr); 
+            
+            destMac = ArpTable.get(nextHopIp);
+            if (destMac == null) {
+                return new String[] { "Ping a " + targetIpStr + ": Fallo al resolver MAC de ruteo." };
+            }
+        }
+
+        byte[] frame = new byte[74];
+        // Limpiar memoria residual de la RAM
+        for (int i = 0; i < frame.length; i++) frame[i] = 0;
+
+        System.arraycopy(destMac, 0, frame, 0, 6);
+        System.arraycopy(mac, 0, frame, 6, 6);
+        frame[12] = 0x08; frame[13] = 0x00; 
+
+        frame[14] = 0x45; frame[15] = 0x00;
+        frame[16] = 0x00; frame[17] = 60; 
+        
+        frame[18] = 0x12; frame[19] = 0x34; // ID IP 
+        frame[20] = 0x00; frame[21] = 0x00; // Asegurar Flags limpios
+        
+        frame[22] = 64;   frame[23] = 1;  
+        System.arraycopy(localIp, 0, frame, 26, 4);
+        System.arraycopy(destIp, 0, frame, 30, 4);
+
+        int ipCk = Checksum.calculate(frame, 14, 20);
+        frame[24] = (byte)(ipCk >> 8); frame[25] = (byte)ipCk;
+
+        frame[34] = 8; frame[35] = 0;
+        frame[38] = 0x0A; frame[39] = 0x0B; 
+        frame[40] = 0x00; frame[41] = 0x01; 
+
+        int icmpCk = Checksum.calculate(frame, 34, 40);
+        frame[36] = (byte)(icmpCk >> 8); frame[37] = (byte)icmpCk;
+
+        DatagramPacket txPacket = new DatagramPacket(frame, frame.length);
+        rawSocket.send(txPacket);
+
+        byte[] rxBuffer = new byte[1536];
+        DatagramPacket rxPacket = new DatagramPacket(rxBuffer, 1536);
+
+        for (int i = 0; i < 150; i++) { // Timeout de 1.5s
+            rxPacket.setLength(1536); 
+            int len = rawSocket.receive(rxPacket);
+            if (len > 0){
+				if (len >= 42) {
+					int ipHdrLen = (rxBuffer[14] & 0x0F) * 4;
+					int icmpOffset = 14 + ipHdrLen;
+					// Si es IPv4, ICMP y Echo Reply
+					if ((rxBuffer[12] & 0xFF) == 0x08 && (rxBuffer[13] & 0xFF) == 0x00 && 
+						(rxBuffer[23] & 0xFF) == 1 && (rxBuffer[icmpOffset] & 0xFF) == 0) {
+						// Verificamos IP del PING
+						if ((rxBuffer[26] & 0xFF) == (destIp[0] & 0xFF) && 
+							(rxBuffer[27] & 0xFF) == (destIp[1] & 0xFF) && 
+							(rxBuffer[28] & 0xFF) == (destIp[2] & 0xFF) && 
+							(rxBuffer[29] & 0xFF) == (destIp[3] & 0xFF)) {
+							
+							return new String[] { "Respuesta de " + targetIpStr + ": bytes=" + len + " TTL=" + (rxBuffer[22] & 0xFF) };
+						}
+					}
+				}
+				// Si es basura se descarta.
+				continue;
+			}
+            try { Thread.sleep(10); } catch (Exception e) {}
+        }
+        return new String[] { "Ping a " + targetIpStr + ": Tiempo de espera agotado." };
+    }
+	
     // Hacer PING vía ARP
     private static String[] handleArpPing(String targetIp) {
         if (targetIp.length() < 1) {
@@ -442,8 +445,9 @@ public class NetworkShell {
             int bytesRead = rawSocket.receive(rxPacket); 
             
             if (bytesRead > 0) {
-                // Validar si es ARP (0x0806) o ARP Reply (0x0002)
-                if (rxBuffer[12] == 0x08 && rxBuffer[13] == 0x06 && rxBuffer[20] == 0x00 && rxBuffer[21] == 0x02) {
+				// Validar si es ARP (0x0806) o ARP Reply (0x0002)
+				if (bytesRead >= 42 && (rxBuffer[12] & 0xFF) == 0x08 && (rxBuffer[13] & 0xFF) == 0x06 && 
+                   (rxBuffer[20] & 0xFF) == 0x00 && (rxBuffer[21] & 0xFF) == 0x02) {
                     // Es la IP?
                     boolean match = true;
                     for (int i = 0; i < 4; i++) {
@@ -468,8 +472,10 @@ public class NetworkShell {
                         };
                     }
                 }
+				// Drenar color inmediatamente
+				continue;
             }
-            try { Thread.sleep(10); } catch (Exception e) {}
+            try { Thread.sleep(10); } catch (Exception e) {}			
         }
         return new String[] {
             "Enviando ARP Request (Broadcast) a " + targetIp + "...",
