@@ -42,10 +42,43 @@ It is an improved fork of the repository: https://github.com/aayes89/JVMOS.
                      ▼
                    JVMOS
 
+# Commands 
+- help: show the help menu
+- ver: show information about JVMOS-JIT
+- date: show date from CMOS (format dd/mm/yyy)
+- time: show time from CMOS (format HH:mm:ss)
+- startx: start UI (blocked until Filesystem 'BMFS' is finished)
+- cube: a wireframe cube as demonstration of Graphics2D class implementation
+- cube2d: a colored cube as demonstration of Graphics2D class implementation
+- cube3d: a 3D cube rendered as demonstration of g3d libraries
+- demo3d: a full demonstration of g3d capabilities
+- cls / clear: clean the screen
+- reboot: restart the system
+- exit: shutdown the system
+- Basic Filesystem implementation BMFS
+  - run/java <file.class>: executes a .class file (java compiled file with bytecode)
+  - cd <.|..|path>: change the actual directory given a path
+  - rm <file|directory> : removes a file or directory
+  - cp <file_org|directory_org> <file_dest|directory_dest>: copy a file or directory to a new path
+  - mv <file_org|directory_org> <file_dest|directory_dest>: move a file or directory to a new path
+  - paste: fetch the memory from the RAM and paste into actual directory
+  - format: do format to the 1st HDD (caution: clear the whole disk, filling with '0')
+- Basic Network support for (RTL8139 and PCnet (VBox))
+  - net dhcp: initialize the network interface with data from DHCP server if exists
+  - net ifconfig: show eth0 interface info
+  - net arp-ping <ip>: do a PING with ARP
+  - net ping <ip>: do a PING (ICMP)
+  - net ip <ip>: set manually IP to the interface
+  - net mask <mask>: set manually mask to the interface
+  - net gw <ip_gw>: set manually the GateWay to the interface
+  - net nslookup <dest>: do a nslookup command (todo)
+  - net wget <url>: do a download for the given url (todo)
+
+
 # TODO
 * Test useful apps (Notepad, Paint, Calculator)
 * Sound support
-* Network support
+* Full Network support (Parcial done)
 * Improve actual filesystem
 * (FAT/FAT32, NTFS, etc.) support
 
