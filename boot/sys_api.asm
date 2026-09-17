@@ -113,7 +113,7 @@ extern jit_flush_icache
 
 ; SECCIÓN BSS (MEMORIA NO INICIALIZADA)
 section .bss
-align 16
+alignb 16
 
 sys_ticks           resd 1
 
@@ -673,17 +673,21 @@ sys_hlt:
 
 
 ; Apagado / Salida del Sistema Operativo (QEMU / Bochs / ACPI)
-
 sys_exit:
     cli
     ; QEMU / Bochs Poweroff via I/O Ports
     mov ax, 0x2000
     mov dx, 0x604
     out dx, ax
+    
     mov dx, 0xB004
     out dx, ax
+    
+    ; Cargar el puerto 0x501 en DX primero
+    mov dx, 0x0501
     mov al, 0x00
-    out 0x501, al
+    out dx, al
+
 .hang:
     hlt
     jmp .hang
