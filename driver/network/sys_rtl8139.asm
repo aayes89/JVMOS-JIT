@@ -30,6 +30,7 @@ rtl8139_rx_ptr:  resd 1
 
 alignb 16
 rx_buffer:       resb 8192 + 16 + 1500 
+tx_buffers:      resb 1536 * 4
 
 section .text
 
@@ -88,46 +89,63 @@ sys_rtl8139_init:
     pop ebp
     ret
 
-; Transmisión
+; Transmisión 
 sys_rtl8139_send_packet:
     push ebp
     mov ebp, esp
     push ebx
     push esi
+    push edi
 
     mov esi, [ebp + 8]   ; Puntero al byte[] de Java
     add esi, 4           ; Saltar los 4 bytes de longitud del JIT
     
     mov ecx, [ebp + 12]  ; Longitud enviada
-
     mov ebx, [rtl8139_tx_ptr]
 
-    ; Apuntar DMA a los datos puros
+    ; Calcular offset DMA de forma SEGURA (imul NO destruye EDX)
+    mov eax, ebx
+    imul eax, eax, 1536
+    add eax, tx_buffers
+    mov edi, eax
+
+    ; Copiar paquete al DMA
+    push ecx
+    cld
+    rep movsb
+    pop ecx
+
+    ; Apuntar DMA a los datos puros (Registro TSAD: 0x20 + offset)
     movzx edx, word [rtl8139_io_port]
     add edx, 0x20
-    lea edx, [edx + ebx * 4]
-    mov eax, esi
-    out dx, eax
+    lea edx, [edx + ebx * 4]  ; Desplazar según descriptor
+    
+    mov eax, ebx
+    imul eax, eax, 1536       ; IMUL protege a EDX
+    add eax, tx_buffers       
+    out dx, eax               ; ¡DX ahora sí tiene el puerto intacto!
 
-    ; Iniciar envío
+    ; Iniciar envío (Registro TSD: 0x10 + offset)
     movzx edx, word [rtl8139_io_port]
     add edx, 0x10
     lea edx, [edx + ebx * 4]
+    
     mov eax, ecx
-    and eax, 0x0FFF
+    and eax, 0x0FFF           ; Forzar OWN bit a 0
     out dx, eax
 
-    ; Rotar descriptores (4 descriptores de TX)
+    ; Rotar descriptores
     inc ebx
     and ebx, 3
     mov [rtl8139_tx_ptr], ebx
 
+    pop edi
     pop esi
     pop ebx
     pop ebp
     ret
 
-; Recepción
+; Recepción 
 sys_net_receive_packet:
     push ebp
     mov ebp, esp
@@ -135,7 +153,7 @@ sys_net_receive_packet:
     push esi
     push edi
 
-    ; Chequear buffer
+    ; Chequear si el buffer está vacío (Bit 0 de CR en 1 significa vacío)
     mov dx, [rtl8139_io_port]
     add dx, 0x37
     in al, dx
@@ -146,48 +164,51 @@ sys_net_receive_packet:
     mov esi, rx_buffer
     add esi, ebx
 
-    ; Extraer longitud del paquete de la cabecera RTL8139
+    ; Extraer la longitud total guardada por el hardware (incluye los 4 bytes de CRC)
     movzx ecx, word [esi + 2]
+    mov edx, ecx         ; Guardamos la longitud original completa en EDX
 
     mov edi, [ebp + 8]   ; Puntero al byte[] destino en Java
-    add edi, 4           ; Escribir justo después de la longitud
+    add edi, 4           ; Escribir justo después de la longitud de Java
 
-    sub ecx, 4           ; Quitar CRC de hardware
-    push ecx
-    add esi, 4           ; Saltar cabecera HW (Status + Longitud)
+    sub ecx, 4           ; Quitamos los 4 bytes de CRC de red para la capa de Java
+    push ecx             ; Guardamos para retornar los bytes puros leídos
+    add esi, 4           ; Saltar cabecera de Hardware (2 bytes status + 2 bytes largo)
     
     cld                  
     rep movsb            ; Copiar a la RAM de Java
-    pop eax              ; Retornar la longitud en EAX
+    pop eax              ; EAX = Bytes útiles entregados a Java
 
-    ; Actualizar anillo RX
-    add ebx, eax
-    add ebx, 8           ; Compensar cabecera y CRC
-    add ebx, 3           ; Alineación a 4 bytes (DWORD)
+    ; Actualización exacta del anillo circular
+    ; Usamos la longitud original del paquete (EDX) + 4 bytes de la cabecera HW
+    add ebx, edx         
+    add ebx, 4           
+    add ebx, 3           ; Alineación estricta a DWORD de la RTL8139
     and ebx, ~3
+    
     cmp ebx, 8192
     jl .no_wrap
     sub ebx, 8192
 .no_wrap:
     mov [rtl8139_rx_ptr], ebx
 
-    ; Notificar al router HW que el búfer fue leído
+    ; Notificar a la tarjeta el nuevo límite inferior (CBA - 16)
     mov dx, [rtl8139_io_port]
     add dx, 0x38
     mov eax, ebx
-    sub eax, 16
+    sub eax, 16          ; Evitar el bug del buffer overflow por hardware
     out dx, ax
 
-    ; Limpiar interrupciones
+    ; Limpiar los bits de interrupción de transmisión/recepción (ISR)
     mov dx, [rtl8139_io_port]
     add dx, 0x3E
-    mov ax, 0x05
+    mov ax, 0x05         ; TOK (bit 2) + ROK (bit 0)
     out dx, ax
 
     jmp .done
 
 .no_packet:
-    xor eax, eax
+    xor eax, eax         ; Retorna 0 si no había paquetes listos
 
 .done:
     pop edi
@@ -195,6 +216,5 @@ sys_net_receive_packet:
     pop ebx
     pop ebp
     ret
-
 
 section .note.GNU-stack noalloc noexec nowrite progbits
