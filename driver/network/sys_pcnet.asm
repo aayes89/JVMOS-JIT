@@ -31,19 +31,10 @@ pcnet_rx_idx:	resd 1
 pcnet_tx_idx:	resd 1
 
 ; Forzar alineación
-align 16
 pcnet_init_block: resb 28	       ; bloque de inicialización 32-bit (28 bytes)
-
-align 16
 pcnet_rx_ring:    resb 16 * 4      ; 4 descriptores Rx (64 bytes)
-
-align 16
 pcnet_tx_ring:    resb 16 * 4      ; 4 descriptores Tx (64 bytes)
-
-align 16
 pcnet_rx_buffers: resb 1536 * 4    ; Buffers Rx (6 KB)
-
-align 16
 pcnet_tx_buffers: resb 1536 * 4    ; Buffers Tx (6 KB)
 
 section .text
