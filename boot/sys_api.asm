@@ -86,6 +86,7 @@ global sys_beep
 global sys_nosound
 
 ; --- Red RTL8139 ---
+%include "driver/network/sys_rtl8139.asm"
 global sys_rtl8139_init
 global sys_rtl8139_send_packet
 global sys_net_receive_packet
@@ -135,9 +136,6 @@ mouse_btn           resd 1
 current_color       resd 1
 
 disk_sector_buf     resb 512
-
-rtl8139_io_port     resw 1
-rx_buffer           resb 8192 + 16
 
 ; SECCIÓN TEXT (CÓDIGO EJECUTABLE)
 section .text
@@ -539,7 +537,7 @@ sys_sleep:
     jmp .wait
 
 .done:
-	call jit_flush_icache
+    call jit_flush_icache
     pop ebx
     pop ebp
     ret
@@ -561,8 +559,8 @@ sys_kalloc:
     mov eax, 0x00400000
 
 .set_start:
-	add eax, 15
-	and eax, ~15
+    add eax, 15
+    and eax, ~15
     mov [heap_curr_ptr], eax
 
 .do_alloc:
@@ -573,7 +571,7 @@ sys_kalloc:
     jz .done_alloc
 
     add ecx, 15
-    jc .fail	
+    jc .fail    
     and ecx, 0xFFFFFFF0
 
     mov ebx, eax
@@ -593,7 +591,7 @@ sys_kalloc:
     pop ebx
     pop ebp
     ret
-	
+    
 ; Obtener Memoria Disponible en el Heap
 
 sys_get_free_mem:
@@ -737,7 +735,7 @@ sys_pci_write_config:
 sys_pci_read_config:
     push ebp
     mov ebp, esp
-	push ebx
+    push ebx
     push edx
 
     mov eax, [ebp + 8]          ; bus
@@ -766,7 +764,7 @@ sys_pci_read_config:
     mov dx, 0xCFC               ; Leer resultado en CONFIG_DATA
     in eax, dx
 
-	pop edx                     ; Restaurar registros
+    pop edx                     ; Restaurar registros
     pop ebx
     pop ebp
     ret
@@ -774,11 +772,11 @@ sys_pci_read_config:
 
 ; DRIVERS DE TECLADO Y RATÓN
 
-sys_init_keyboard:	
+sys_init_keyboard:  
     ; Habilitar puerto PS/2 primario
     mov al, 0xAE
     out 0x64, al
-	mov al, 0x20
+    mov al, 0x20
     out 0x64, al
     call .wait_read
     in al, 0x60
@@ -1341,160 +1339,6 @@ sys_nosound:
     out 0x61, al
     ret
 
-
-; RED RTL8139
-sys_rtl8139_init:
-    push ebp
-    mov ebp, esp
-    mov ax, [ebp + 8]
-    mov [rtl8139_io_port], ax
-
-    ; Despertar la tarjeta (Power On)
-    mov dx, ax
-    add dx, 0x52
-    mov al, 0x00
-    out dx, al
-
-    ; Software Reset
-    mov dx, [rtl8139_io_port]
-    add dx, 0x37
-    mov al, 0x10
-    out dx, al
-.wait_rst:
-    in al, dx
-    test al, 0x10
-    jnz .wait_rst
-
-    ; Configurar inicio del buffer RX (RBSTART - 0x30)
-    mov dx, [rtl8139_io_port]
-    add dx, 0x30
-    mov eax, rx_buffer
-    out dx, eax
-
-    ; Configurar RCR (0x44): Aceptar Broadcast, Physical Match y Multicast (0x8F) + Wrap (bit 7 = 0)
-    mov dx, [rtl8139_io_port]
-    add dx, 0x44
-    mov eax, 0x0000008F
-    out dx, eax
-
-    ; Habilitar Rx y Tx (Command Reg 0x37 = 0x0C)
-    mov dx, [rtl8139_io_port]
-    add dx, 0x37
-    mov al, 0x0C
-    out dx, al
-
-    mov eax, 1
-    pop ebp
-    ret
-
-
-; TRANSMISIÓN
-sys_rtl8139_send_packet:
-    push ebp
-    mov ebp, esp
-    push ebx
-    push esi
-
-    mov esi, [ebp + 8]   ; Puntero al byte[] de Java
-    add esi, 4           ; Saltar los 4 bytes de longitud del JIT
-    
-    mov ecx, [ebp + 12]  ; Longitud enviada
-
-    mov ebx, [rtl8139_tx_ptr]
-
-    ; Apuntar DMA a los datos puros
-    movzx edx, word [rtl8139_io_port]
-    add edx, 0x20
-    lea edx, [edx + ebx * 4]
-    mov eax, esi
-    out dx, eax
-
-    ; Iniciar envío
-    movzx edx, word [rtl8139_io_port]
-    add edx, 0x10
-    lea edx, [edx + ebx * 4]
-    mov eax, ecx
-    and eax, 0x0FFF
-    out dx, eax
-
-    ; Rotar descriptores
-    inc ebx
-    and ebx, 3
-    mov [rtl8139_tx_ptr], ebx
-
-    pop esi
-    pop ebx
-    pop ebp
-    ret
-
-; RECEPCIÓN
-sys_net_receive_packet:
-    push ebp
-    mov ebp, esp
-    push ebx
-    push esi
-    push edi
-
-    ; Chequear buffer
-    mov dx, [rtl8139_io_port]
-    add dx, 0x37
-    in al, dx
-    test al, 0x01
-    jnz .no_packet
-
-    mov ebx, [rtl8139_rx_ptr]
-    mov esi, rx_buffer
-    add esi, ebx
-
-    movzx ecx, word [esi + 2]
-
-    mov edi, [ebp + 8]   ; Puntero al byte[] destino en Java
-    add edi, 4           ; Escribir justo después de la longitud
-
-    sub ecx, 4           ; Quitar CRC
-    push ecx
-    add esi, 4           ; Saltar cabecera HW
-    
-    cld                  ; Asegurar dirección de copia hacia adelante
-    rep movsb            ; Copiar a la RAM de Java
-    pop eax
-
-    ; Actualizar anillo RX
-    add ebx, eax
-    add ebx, 8
-    add ebx, 3
-    and ebx, ~3
-    cmp ebx, 8192
-    jl .no_wrap
-    sub ebx, 8192
-.no_wrap:
-    mov [rtl8139_rx_ptr], ebx
-
-    ; Notificar al router HW
-    mov dx, [rtl8139_io_port]
-    add dx, 0x38
-    mov eax, ebx
-    sub eax, 16
-    out dx, ax
-
-    ; Limpiar interrupciones
-    mov dx, [rtl8139_io_port]
-    add dx, 0x3E
-    mov ax, 0x05
-    out dx, ax
-
-    jmp .done
-
-.no_packet:
-    xor eax, eax
-
-.done:
-    pop edi
-    pop esi
-    pop ebx
-    pop ebp
-    ret
-
 ; DISCO ATA IDE LBA28 (CON TIMEOUT Y RETARDO 400ns)
 ; --- Subrutina: Esperar a que el disco se libere (BSY = 0) ---
 ata_wait_bsy:
@@ -1744,9 +1588,6 @@ sys_wait_io:
 ; SECCIÓN DATA Y RODATA
 section .data
 align 16
-
-rtl8139_rx_ptr		dd 0
-rtl8139_tx_ptr      dd 0
 
 idtr:
     idtr_limit      dw 2047
