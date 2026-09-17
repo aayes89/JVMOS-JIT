@@ -79,8 +79,10 @@ It is an improved fork of the repository: https://github.com/aayes89/JVMOS.
 * Test useful apps (Notepad, Paint, Calculator)
 * Sound support
 * Full Network support (Parcial done)
+  - DHCP working good in VBox and VMware 
 * Improve actual filesystem
-* (FAT/FAT32, NTFS, etc.) support
+* (FAT/FAT32, NTFS, etc.) support (Parcial done)
+  - BMFS: is a self implementation of FAT/FAT32
 
 # Screenshots
 
