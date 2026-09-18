@@ -63,7 +63,10 @@ public class Native {
 	public static final int SYS_PCNET_SEND		 = 32; // Enviar paquete con tarjeta de red PCnet
 	public static final int SYS_PCNET_RECEIVE	 = 33; // Recibir paquete con tarjeta de red PCnet
 	public static final int SYS_CONTEXT_SWITCH   = 34; // Ceder control al procesador del siguiente hilo en cola
-	public static final int SYS_MEM_WRITE_DWORD  = 35; // Escribir DWORD en memoria
+	public static final int SYS_MEM_WRITE_DWORD  = 35; // Escribir DWORD en memoria	
+	public static final int SYS_RTL8168_INIT     = 36; // Inicializar Tarjeta Gigabit
+    public static final int SYS_RTL8168_SEND     = 37; // Enviar paquete Gigabit
+    public static final int SYS_RTL8168_RECEIVE  = 38; // Recibir paquete Gigabit
 
 
     // FIRMAS NATIVAS
