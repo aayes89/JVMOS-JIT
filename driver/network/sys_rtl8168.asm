@@ -28,14 +28,14 @@ alignb 256
     rtl8168_tx_ring:    resb 16 * 16      ; 16 Descriptores Tx de 16 bytes (256 bytes)
     rtl8168_rx_ring:    resb 16 * 16      ; 16 Descriptores Rx de 16 bytes (256 bytes)
 
-alignb 4096
-    rtl8168_rx_buffers: resb 16 * 2048    ; 16 Buffers Rx de 2KB
-    rtl8168_tx_buffers: resb 16 * 2048    ; 16 Buffers Tx de 2KB
-
 alignb 16
-    rtl8168_io_port:    resd 1            ; Puerto BAR0
+    rtl8168_rx_buffers: resb 1    ; Puntero al Headp (4 bytes)
+    rtl8168_tx_buffers: resb 1    ; Puntero al Headp (4 bytes)
+    rtl8168_io_port:    resd 1    ; Puerto BAR0
     rtl8168_tx_idx:     resd 1
     rtl8168_rx_idx:     resd 1
+
+extern sys_kalloc
 
 section .text
 
@@ -47,7 +47,7 @@ CMD_REG     equ 0x37    ; Command Register (Renombrado para evitar conflicto en 
 IMR         equ 0x3C    ; Interrupt Mask Register
 ISR         equ 0x3E    ; Interrupt Status Register
 TCR         equ 0x40    ; Transmit Configuration Register
-RCR_REG         equ 0x44    ; Receive Configuration Register
+RCR_REG     equ 0x44    ; Receive Configuration Register
 Cfg9346     equ 0x50    ; 9346CR Command Register
 
 ; Bits del Command Register (CMD_REG)
@@ -71,6 +71,17 @@ sys_rtl8168_init:
     mov [rtl8168_io_port], eax
     mov dword [rtl8168_tx_idx], 0
     mov dword [rtl8168_rx_idx], 0
+	
+	; Solicitar 64KB al Heap para evitar colisiones
+    push 32768
+    call sys_kalloc
+    add esp, 4
+    mov [rtl8168_rx_buffers], eax
+
+    push 32768
+    call sys_kalloc
+    add esp, 4
+    mov [rtl8168_tx_buffers], eax
 
     ; Desbloquear configuración (Escribir 0xC0 en 0x50)
     mov dx, ax
@@ -98,7 +109,7 @@ sys_rtl8168_init:
 .init_rx:
     mov eax, 2048
     mul ecx
-    add eax, rtl8168_rx_buffers    ; Puntero al buffer físico
+    add eax, [rtl8168_rx_buffers]    ; Puntero al buffer físico
     mov ebx, ecx
     shl ebx, 4                     ; ecx * 16 bytes por descriptor
     add ebx, rtl8168_rx_ring
@@ -124,7 +135,7 @@ sys_rtl8168_init:
 .init_tx:
     mov eax, 2048
     mul ecx
-    add eax, rtl8168_tx_buffers
+    add eax, [rtl8168_tx_buffers]
     mov ebx, ecx
     shl ebx, 4
     add ebx, rtl8168_tx_ring
@@ -222,7 +233,7 @@ sys_rtl8168_send_packet:
     push edi
     mov eax, 2048
     imul eax, ebx
-    add eax, rtl8168_tx_buffers
+    add eax, [rtl8168_tx_buffers]
     mov edi, eax
     push ecx
     cld
@@ -296,7 +307,7 @@ sys_net_receive_packet_rtl8168:
     ; Copiar desde el buffer Rx al array de Java
     mov eax, 2048
     imul eax, ebx
-    add eax, rtl8168_rx_buffers
+    add eax, [rtl8168_rx_buffers]
     
     push esi                ; Guardar puntero al descriptor
     mov esi, eax            ; Origen: Buffer Físico
