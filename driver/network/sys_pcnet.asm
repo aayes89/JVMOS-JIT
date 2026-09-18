@@ -25,7 +25,7 @@
 ; Primera etapa: reset y detección
 
 section .bss
-align 16
+alignb 16
 pcnet_io_port:	resd 1
 pcnet_rx_idx:	resd 1
 pcnet_tx_idx:	resd 1
