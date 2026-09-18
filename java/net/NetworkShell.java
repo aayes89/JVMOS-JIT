@@ -82,6 +82,61 @@ public class NetworkShell {
     }
 
     // Detectar el puerto base de la tarjet de red (RTL8139 en QEMU y PCnet en VBox)
+	public static int detectNetworkCardIoPort(Graphics2D g) {
+        int posy = 40;
+        int foundIoPort = 0xC000;
+        boolean cardFound = false;
+
+        for (int bus = 0; bus < 8; bus++) {
+            for (int slot = 0; slot < 32; slot++) {
+                int id = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, 0x00);
+                
+                if (id != 0xFFFFFFFF && id != 0) {
+                    int vendorId = id & 0xFFFF;
+                    int deviceId = (id >>> 16) & 0xFFFF;
+
+                    if (vendorId == 0x10EC && deviceId == 0x8139) {
+                        type = NetworkAdapter.TYPE_RTL8139;
+                        g.drawString("[+] RTL8139 detectado", 20, posy); posy += 10;
+                        cardFound = true;
+                    } else if (vendorId == 0x10EC && deviceId == 0x8168) {
+                        type = NetworkAdapter.TYPE_RTL8168;
+                        g.drawString("[+] RTL8168 Gigabit detectado", 20, posy); posy += 10;
+                        cardFound = true;
+                    } else if (vendorId == 0x1022 && deviceId == 0x2000) {
+                        type = NetworkAdapter.TYPE_PCNET;
+                        g.drawString("[+] PCnet detectado", 20, posy); posy += 10;
+                        cardFound = true;
+                    } else if (vendorId == 0x8086 && deviceId == 0x100E) {
+                        type = NetworkAdapter.TYPE_E1000;
+                        g.drawString("[+] Intel PRO/1000 detectado", 20, posy); posy += 10;
+                        cardFound = true;
+                    }
+
+                    if (cardFound) {
+                        // Activar Bus Master e I/O
+                        int cmd = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, 0x04);
+                        cmd |= 0x0005; 
+                        Native.sys(Native.SYS_PCI_WRITE, bus, slot, 0x04, cmd);
+
+                        for (int barOffset = 0x10; barOffset <= 0x24; barOffset += 4) {
+                            int bar = Native.sys(Native.SYS_PCI_READ, bus, slot, 0, barOffset);
+                            if ((bar & 0x1) == 1) {
+                                foundIoPort = bar & ~0x3;
+                                return foundIoPort; // Retornar puerto I/O válido inmediatamente
+                            }
+                        }
+                        
+                        g.drawString("[-] Error: La tarjeta no soporta I/O heredado (Solo MMIO).", 20, posy);
+                        return foundIoPort; // Devuelve 0xC000 si no hay I/O
+                    }
+                }
+            }
+        }
+        return foundIoPort; 
+    }
+	/* 
+	versión antigua
     public static int detectNetworkCardIoPort(Graphics2D g) {
         int posy = 40;
         for (int bus = 0; bus < 8; bus++) {
@@ -96,44 +151,50 @@ public class NetworkShell {
                     String vendorIdHex = Integer.toHexString(vendorId);
                     String deviceIdHex = Integer.toHexString(deviceId);
 
-                    if (vendorId == 0x1234 && deviceId == 0x1111) { // QEMU
+                    /*if (vendorId == 0x1234 && deviceId == 0x1111) { // QEMU
                         System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => QEMU Virtual Video Controller (VGA)");
                         g.drawString("[+] Adaptador QEMU Virtual Video Controller encontrado", 20, posy);
                         posy += 10;
                     }
-                    else if (vendorId == 0x10EC){ // Realtek
-						if (deviceId == 0x8136) {
-							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Realtek RTL810xE Fast Ethernet");
-							g.drawString("[+] Adaptador Realtek RTL810xE Fast Ethernet encontrado", 20, posy);
-							posy += 10;
-						}
-						else if(deviceId == 0x8139) {
+                    else* 
+					if (vendorId == 0x10EC){ // Realtek
+						if(deviceId == 0x8139) {
 							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Realtek RTL8139");
 							type = NetworkAdapter.TYPE_RTL8139;
 							g.drawString("[+] Adaptador RTL8139 encontrado", 20, posy);                        
+							posy += 10;
+						}						
+						else if (deviceId == 0x8168) {
+							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Realtek RTL8168 Gigabit Ethernet");
+							type = NetworkAdapter.TYPE_RTL8168;
+							g.drawString("[+] Adaptador Realtek RTL8168 Gigabit Ethernet encontrado", 20, posy);
+							posy += 10;
+						}					
+						/*if (deviceId == 0x8136) {
+							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Realtek RTL810xE Fast Ethernet");
+							g.drawString("[+] Adaptador Realtek RTL810xE Fast Ethernet encontrado", 20, posy);
 							posy += 10;
 						}
 						else if (deviceId == 0xC822) {
 							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Realtek RTL8822CE Wi-Fi");
 							g.drawString("[+] Adaptador Realtek RTL8822CE Wi-Fi encontrado", 20, posy);
 							posy += 10;
-						}
-						else if (deviceId == 0x8168) {
-							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Realtek RTL8168 Gigabit Ethernet");
-							type = NetworkAdapter.TYPE_RTL8168;
-							g.drawString("[+] Adaptador Realtek RTL8168 Gigabit Ethernet encontrado", 20, posy);
-							posy += 10;
-						}else {
+						} else {
 							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + "=> Dispositivo Realtek Desconocido");
 							g.drawString("[+] Adaptador 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " de Realtek encontrado", 20, posy);
 							posy += 10;
-						}
+						}*
 					}
                     else if (vendorId == 0x1022){ // AMD
 						if(deviceId == 0x2000) {
 							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => AMD PCnet-FAST III");
 							type = NetworkAdapter.TYPE_PCNET;
 							g.drawString("[+] Adaptador PCnet encontrado", 20, posy);                        
+							posy += 10;
+						}
+						/* else {
+							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + "=> Dispositivo AMD Desconocido");
+							g.drawString("[+] Adaptador 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " de AMD encontrado", 20, posy);
 							posy += 10;
 						}
 						else if (deviceId == 0x15D0) {
@@ -160,15 +221,16 @@ public class NetworkShell {
 							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => AMD Audio Processor");
 							g.drawString("[+] Adaptador AMD Audio Processor encontrado", 20, posy);
 							posy += 10;
+						}*						
+                    } else if (vendorId == 0x8086) { // INTEL
+						if (deviceId == 0x100E) {
+                            System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => E1000");
+                            type = NetworkAdapter.TYPE_E1000;
+                            g.drawString("[+] Adaptador E1000 encontrado", 20, posy);                        
+                            posy += 10;
 						}
-						else {
-							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + "=> Dispositivo AMD Desconocido");
-							g.drawString("[+] Adaptador 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " de AMD encontrado", 20, posy);
-							posy += 10;
-						}
-                    }    
-                    else if (vendorId == 0x8086) { // INTEL
-                        if (deviceId == 0x7000) {
+					}
+                        /*if (deviceId == 0x7000) {
                             System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Intel PIIX3 ISA Bridge");
                             g.drawString("[+] Adaptador Intel PIIX3 ISA Bridge encontrado", 20, posy);
                             posy += 10;                            
@@ -176,17 +238,12 @@ public class NetworkShell {
                             System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Intel 440FX (Natoma)");
                             g.drawString("[+] Adaptador Intel 440FX encontrado", 20, posy);
                             posy += 10;                            
-                        } else if (deviceId == 0x100E) {
-                            System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Intel PRO/1000");
-                            type = NetworkAdapter.TYPE_E1000;
-                            g.drawString("[+] Adaptador Intel PRO/1000 encontrado", 20, posy);                        
-                            posy += 10;
                         } else {
 							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + "=> Dispositivo Intel Desconocido");
 							g.drawString("[+] Adaptador 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " de Intel encontrado", 20, posy);
 							posy += 10;
-						}					
-                    }
+						}	 									
+                    } 
                     else if (vendorId == 0x106B) { // Apple
                         System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Apple Device");
                         g.drawString("[+] Adaptador Apple encontrado", 20, posy);                        
@@ -196,12 +253,12 @@ public class NetworkShell {
                         System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Dispositivo VMware encontrado");
                         g.drawString("[+] Adaptador VMware encontrado", 20, posy);                        
                         posy += 10;
-                    }                                    
-                    else {
+                    } else {
                         System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex);
                         g.drawString("[+] Adaptador 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " desconocido encontrado", 20, posy);
                         posy += 10;
-                    }
+                    } *                                  
+                    
                                        
                     // Si hay Realtek (QEMU) o AMD (VirtualBox)
                     if ((vendorId == 0x10EC && deviceId == 0x8139) || (vendorId == 0x1022 && deviceId == 0x2000) || (vendorId == 0x10EC && deviceId == 0x8168)) {
@@ -228,14 +285,14 @@ public class NetworkShell {
         System.out.println("[!] Tarjeta de red compatible no detectada por PCI. Forzando puerto I/O: 0xC000");
         return 0xC000; // Fallback 
     }
+	*/
 
     // Procesa los comandos delegados desde Boot.java
     public static String[] execute(String netCmd, String arg) {
         if (adapter == null || !adapter.isInitialized()) {
             return new String[] { "[!] Error: Interfaz de red no inicializada." };
         }
-
-        if (netCmd.equals("macconfig") || netCmd.equals("ifconfig")) {
+        if (netCmd.equals("ifconfig")) {
             return handleIfconfig();
         } 
         else if(netCmd.equals("dhcp")){
@@ -269,7 +326,20 @@ public class NetworkShell {
             return handleWget(arg);
         }
         
-        return new String[] { "Comandos de red: dhcp, ifconfig, ip, mask, gw, arp-ping, ping, nslookup, wget" };
+        return new String[] { 
+			"Comandos de red:\n",
+			"dhcp - obtener ip autom\u00E1tica",
+			"ifconfig - ver configuraci\u00F3n de red",
+			"ip - establecer ip manualmente",
+			"mask - establecer m\u00E1scara de red manualmente",
+			"gw - establecer Gateway manualmente",
+			"dns1 - establecer DNS1 manualmente",
+			"dns2 - establecer DNS2 manualmente",
+			"arp-ping - comando PING con ARP",
+			"ping - comando PING con ICMP",
+			"nslookup - comando de red",
+			"wget - TODO"
+		};
     }
 
     // Obtención de configuración de red vía servicio DHCP si estuviera disponible
