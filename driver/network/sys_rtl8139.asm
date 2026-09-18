@@ -153,7 +153,6 @@ sys_net_receive_packet:
     push esi
     push edi
 
-    ; Chequear si el buffer está vacío (Bit 0 de CR en 1 significa vacío)
     mov dx, [rtl8139_io_port]
     add dx, 0x37
     in al, dx
@@ -164,26 +163,35 @@ sys_net_receive_packet:
     mov esi, rx_buffer
     add esi, ebx
 
-    ; Extraer la longitud total guardada por el hardware (incluye los 4 bytes de CRC)
+    ; Extraer longitud (EDX será intocable para avanzar el anillo)
     movzx ecx, word [esi + 2]
-    mov edx, ecx         ; Guardamos la longitud original completa en EDX
+    mov edx, ecx         
 
-    mov edi, [ebp + 8]   ; Puntero al byte[] destino en Java
-    add edi, 4           ; Escribir justo después de la longitud de Java
+    ; Truncar ECX para que nunca exceda el buffer de Java
+    cmp ecx, 4
+    jge .check_max
+    mov ecx, 4           ; Evitar underflows
+.check_max:
+    cmp ecx, 1536
+    jle .len_safe
+    mov ecx, 1536        ; Truncar a la capacidad del DatagramPacket
+.len_safe:
 
-    sub ecx, 4           ; Quitamos los 4 bytes de CRC de red para la capa de Java
-    push ecx             ; Guardamos para retornar los bytes puros leídos
-    add esi, 4           ; Saltar cabecera de Hardware (2 bytes status + 2 bytes largo)
+    mov edi, [ebp + 8]   
+    add edi, 4           
+
+    sub ecx, 4           ; Quitar CRC para Java
+    push ecx             
+    add esi, 4           
     
     cld                  
-    rep movsb            ; Copiar a la RAM de Java
-    pop eax              ; EAX = Bytes útiles entregados a Java
+    rep movsb            ; Copia segura en el Heap
+    pop eax              
 
-    ; Actualización exacta del anillo circular
-    ; Usamos la longitud original del paquete (EDX) + 4 bytes de la cabecera HW
+    ; Actualizar anillo usando la longitud ORIGINAL (EDX)
     add ebx, edx         
     add ebx, 4           
-    add ebx, 3           ; Alineación estricta a DWORD de la RTL8139
+    add ebx, 3           
     and ebx, ~3
     
     cmp ebx, 8192
@@ -192,23 +200,21 @@ sys_net_receive_packet:
 .no_wrap:
     mov [rtl8139_rx_ptr], ebx
 
-    ; Notificar a la tarjeta el nuevo límite inferior (CBA - 16)
     mov dx, [rtl8139_io_port]
     add dx, 0x38
     mov eax, ebx
-    sub eax, 16          ; Evitar el bug del buffer overflow por hardware
+    sub eax, 16          
     out dx, ax
 
-    ; Limpiar los bits de interrupción de transmisión/recepción (ISR)
     mov dx, [rtl8139_io_port]
     add dx, 0x3E
-    mov ax, 0x05         ; TOK (bit 2) + ROK (bit 0)
+    mov ax, 0xFFFF       ; Limpiar agresivamente todos los flags
     out dx, ax
 
     jmp .done
 
 .no_packet:
-    xor eax, eax         ; Retorna 0 si no había paquetes listos
+    xor eax, eax         
 
 .done:
     pop edi
