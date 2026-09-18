@@ -27,10 +27,11 @@ import kernel.Native;
 public class NetworkAdapter {
     
 	public static final int TYPE_RTL8139 = 1;
-	public static final int TYPE_E1000 = 2;
-	public static final int TYPE_VIRTIO = 3;
-	public static final int TYPE_INTEL_PRO = 4;
-	public static final int TYPE_PCNET = 5;
+	public static final int TYPE_RTL8168 = 2;
+	public static final int TYPE_E1000 = 3;
+	public static final int TYPE_VIRTIO = 4;
+	public static final int TYPE_INTEL_PRO = 5;
+	public static final int TYPE_PCNET = 6;
 	
     private int modelType;
     private int ioPortBase;
@@ -53,15 +54,26 @@ public class NetworkAdapter {
             initialized = (status == 1);
             return initialized;
         }
+		else if (modelType == TYPE_RTL8168) {            
+			// Inicializar Tarjeta de Red
+			// Syscall 36:  arg_a = Puerto I/O (SYS_RTL8168_INIT)			
+            status = Native.sys(Native.SYS_RTL8168_INIT, ioPortBase, 0, 0, 0);
+            initialized = (status == 1);
+            return initialized;
+        }
         // Soporte a futuras tarjetas
 		else if(modelType == TYPE_INTEL_PRO){
 			// Intel PRO (familia)
-		}else if(modelType == TYPE_E1000){
+		}
+		else if(modelType == TYPE_E1000){
 			// E1000			
-		}else if(modelType == TYPE_VIRTIO){		
+		}
+		else if(modelType == TYPE_VIRTIO){		
 			// Virtio
-		}else if(modelType == TYPE_PCNET){
+		}
+		else if(modelType == TYPE_PCNET){
 			// PCnet
+			// Syscall 31: SYS_PCNET_INIT 
 			status = Native.sys(Native.SYS_PCNET_INIT, ioPortBase, 0, 0, 0);
             initialized = (status == 1);
             return initialized;
@@ -73,10 +85,16 @@ public class NetworkAdapter {
     public void send(DatagramPacket packet) {
         if (!initialized || packet == null) return;
         
-        // Syscall 24, 31: Enviar paquete de Red
-		if(modelType == TYPE_RTL8139)
+        // Syscall 24: Enviar paquete de Red 
+		if(modelType == TYPE_RTL8139){
 			Native.sys(Native.SYS_RTL8139_SEND, 0, packet.getLength(), packet.getData(), 0);
+		}
+		else if(modelType == TYPE_RTL8168){	
+			// Syscall 37 : SYS_RTL8168_SEND
+			Native.sys(Native.SYS_RTL8168_SEND, 0, packet.getLength(), packet.getData(), 0);
+		}
 		else if(modelType == TYPE_PCNET){			
+			//	Syscall 31: SYS_PCNET_INIT
 			Native.sys(Native.SYS_PCNET_SEND, 0, packet.getLength(), packet.getData(), 0);
 		}
 		else if(modelType == TYPE_E1000){
@@ -94,10 +112,16 @@ public class NetworkAdapter {
         if (!initialized || packet == null) return -1;
 		int bytesRead = 0;	
 		
-        // Syscall 25, 33: Recibir paquete de Red
-		if(modelType == TYPE_RTL8139)
+        // Syscall 25: Recibir paquete de Red
+		if(modelType == TYPE_RTL8139){
 			bytesRead = Native.sys(Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
+		}
+		else if(modelType == TYPE_RTL8168){
+			// Syscall 38: SYS_RTL8168_RECEIVE
+			bytesRead = Native.sys(Native.SYS_RTL8168_RECEIVE, 0, packet.getLength(), packet.getData(), 0);			
+		}
 		else if(modelType == TYPE_PCNET){
+			// Syscall 33: SYS_PCNET_RECEIVE
 			bytesRead = Native.sys(Native.SYS_PCNET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);			
 		}
 		else if(modelType == TYPE_E1000){
