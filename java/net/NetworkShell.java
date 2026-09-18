@@ -69,7 +69,7 @@ public class NetworkShell {
 
 		rawSocket = new RawSocket(); 
 		
-		// Demonio de red en segundo plano - TODO hasta implementar Runnable
+		// Demonio de red en segundo plano 
 		NetworkDaemon daemon = new NetworkDaemon(rawSocket, localIp, getMacAddress());
 		Thread daemonThread = new Thread(daemon);
 		daemonThread.start();
@@ -234,12 +234,136 @@ public class NetworkShell {
         return new String[]{"[-] Error: No hay DHCP. Utiliza las funciones (ip, mask, gw) para modo manual."};
     }
 	
-    // TODO - Réplica de comando para consultar dirección en internet
+    // Réplica de comando para consultar dirección en internet
     private static String[] handleNslookup(String domain) {
-        if (domain.length() < 3) {
-            return new String[] { "Uso: net nslookup <dominio>" };
+        if (domain.length() < 3) return new String[] { "Uso: net nslookup <dominio>" };
+
+        byte[] destIp = dns1; // Uso el DNS primario
+        mac = getMacAddress();
+
+        // Ruteo (ARP al Gateway si el DNS está fuera de la subred)
+        byte[] nextHopIp = destIp;
+        boolean sameSubnet = true;
+        for(int i = 0; i < 4; i++) {
+            if ((destIp[i] & mask[i]) != (localIp[i] & mask[i])) sameSubnet = false;
         }
-        return new String[] { "Consulta DNS enviada a " + ipToString("", dns1) + " para: " + domain, "[!] Resolutor UDP activo." };
+        if (!sameSubnet) nextHopIp = gw;
+
+        byte[] destMac = ArpTable.get(nextHopIp);
+        if (destMac == null) {
+            String nextHopStr = ipToString("", nextHopIp);
+            handleArpPing(nextHopStr); 
+            destMac = ArpTable.get(nextHopIp);
+            if (destMac == null) return new String[] { "Error: Fallo al resolver MAC del Gateway." };
+        }
+
+        // El Payload DNS
+        byte[] qname = encodeDomainName(domain);
+        int dnsPayloadLen = 12 + qname.length + 4; // Header(12) + QNAME + QTYPE(2) + QCLASS(2)
+        int udpLen = 8 + dnsPayloadLen;
+        int ipTotalLen = 20 + udpLen;
+        
+        byte[] frame = new byte[14 + ipTotalLen];
+        for (int i = 0; i < frame.length; i++) frame[i] = 0;
+
+        // Cabecera Ethernet
+        System.arraycopy(destMac, 0, frame, 0, 6);
+        System.arraycopy(mac, 0, frame, 6, 6);
+        frame[12] = 0x08; frame[13] = 0x00; // IPv4
+
+        // Cabecera IPv4 
+        frame[14] = 0x45; frame[15] = 0x00;
+        frame[16] = (byte)(ipTotalLen >> 8); frame[17] = (byte)ipTotalLen;
+        frame[18] = 0x11; frame[19] = 0x22; // ID IP
+        frame[20] = 0x00; frame[21] = 0x00; // Flags
+        frame[22] = 64;   frame[23] = 17;   // TTL=64, Protocolo=17 (UDP)
+        System.arraycopy(localIp, 0, frame, 26, 4);
+        System.arraycopy(destIp, 0, frame, 30, 4);
+        
+        int ipCk = Checksum.calculate(frame, 14, 20);
+        frame[24] = (byte)(ipCk >> 8); frame[25] = (byte)ipCk;
+
+        // Cabecera UDP
+        int udpOffset = 34;
+        frame[udpOffset] = (byte)0xC0; frame[udpOffset+1] = (byte)0x00; // Src Port: 49152
+        frame[udpOffset+2] = 0x00;     frame[udpOffset+3] = 53;         // Dst Port: 53 (DNS)
+        frame[udpOffset+4] = (byte)(udpLen >> 8); frame[udpOffset+5] = (byte)udpLen;
+        frame[udpOffset+6] = 0x00;     frame[udpOffset+7] = 0x00;       // UDP Checksum (Opcional en IPv4 = 0)
+
+        // Cabecera DNS
+        int dnsOffset = 42;
+        frame[dnsOffset] = 0x12; frame[dnsOffset+1] = 0x34;       // Transaction ID
+        frame[dnsOffset+2] = 0x01; frame[dnsOffset+3] = 0x00;     // Flags: Standard Query
+        frame[dnsOffset+4] = 0x00; frame[dnsOffset+5] = 0x01;     // Questions: 1
+        // ANCOUNT, NSCOUNT, ARCOUNT ya son 0
+
+        // Consulta DNS
+        System.arraycopy(qname, 0, frame, dnsOffset + 12, qname.length);
+        int qEnd = dnsOffset + 12 + qname.length;
+        frame[qEnd] = 0x00; frame[qEnd+1] = 0x01;     // QTYPE: A (Host Address)
+        frame[qEnd+2] = 0x00; frame[qEnd+3] = 0x01;   // QCLASS: IN (Internet)
+
+        // Enviar y Esperar
+        rawSocket.send(new DatagramPacket(frame, frame.length));
+
+        byte[] rxBuffer = new byte[1536];
+        DatagramPacket rxPacket = new DatagramPacket(rxBuffer, 1536);
+        int attempts = 0;
+        
+        while (attempts < 200) { 
+            rxPacket.setLength(1536); 
+            int len = rawSocket.receive(rxPacket);
+            
+            if (len >= 42) {
+                int etherType = ((rxBuffer[12] & 0xFF) << 8) | (rxBuffer[13] & 0xFF);
+                if (etherType == 0x0800) {
+                    int ipHdrLen = (rxBuffer[14] & 0x0F) * 4;
+                    int protocol = rxBuffer[23] & 0xFF;
+
+                    // Si es UDP (17)
+                    if (protocol == 17) {
+                        int rUdpOffset = 14 + ipHdrLen;
+                        int srcPort = ((rxBuffer[rUdpOffset] & 0xFF) << 8) | (rxBuffer[rUdpOffset+1] & 0xFF);
+                        int dstPort = ((rxBuffer[rUdpOffset+2] & 0xFF) << 8) | (rxBuffer[rUdpOffset+3] & 0xFF);
+                        
+                        // Validar que viene del puerto 53 hacia nuestro puerto 49152
+                        if (srcPort == 53 && dstPort == 49152) {
+                            int rDnsOffset = rUdpOffset + 8;
+                            
+                            // Verificar que sea una respuesta (Bit 15 = 1) y sin error
+                            if ((rxBuffer[rDnsOffset+2] & 0x80) != 0) {
+                                int anCount = ((rxBuffer[rDnsOffset+6] & 0xFF) << 8) | (rxBuffer[rDnsOffset+7] & 0xFF);
+                                if (anCount > 0) {
+                                    // Saltar Header y Question para llegar al Answer
+                                    int ptr = rDnsOffset + 12;
+                                    while (rxBuffer[ptr] != 0) ptr++; // Saltar QNAME
+                                    ptr += 5; // Saltar nulo + QTYPE(2) + QCLASS(2)
+                                    
+                                    // Leer primer Answer (ignorar Name, Type, Class, TTL)
+                                    ptr += 10; 
+                                    int dataLen = ((rxBuffer[ptr] & 0xFF) << 8) | (rxBuffer[ptr+1] & 0xFF);
+                                    ptr += 2;
+                                    
+                                    if (dataLen == 4) { // IPv4
+                                        byte[] resolvedIp = new byte[]{rxBuffer[ptr], rxBuffer[ptr+1], rxBuffer[ptr+2], rxBuffer[ptr+3]};
+                                        return new String[] { 
+                                            "Servidor: " + ipToString("", dns1), 
+                                            "Nombre:   " + domain,
+                                            ipToString("Address:  ", resolvedIp)
+                                        };
+                                    }
+                                } else {
+                                    return new String[] { "Servidor: " + ipToString("", dns1), "*** No se encontro direccion IPv4 para " + domain };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            try { Thread.sleep(10); } catch (Exception e) {}
+            attempts++;
+        }
+        return new String[] { "nslookup: Tiempo de espera agotado para el servidor " + ipToString("", dns1) };
     }
 
     // TODO - réplica de comando en Linux para descargar
@@ -586,6 +710,30 @@ public class NetworkShell {
         charArray[1] = (byte) hexChars.charAt(low);
         
         return new String(charArray);
+    }
+	
+	// Codifica "google.com" a formato DNS -> [6]google[3]com[0]
+    private static byte[] encodeDomainName(String domain) {
+        byte[] qname = new byte[domain.length() + 2];
+        int labelLenIdx = 0;
+        int qnameIdx = 1;
+        int len = 0;
+        
+        for (int i = 0; i < domain.length(); i++) {
+            char c = domain.charAt(i);
+            if (c == '.') {
+                qname[labelLenIdx] = (byte) len;
+                labelLenIdx = qnameIdx;
+                qnameIdx++;
+                len = 0;
+            } else {
+                qname[qnameIdx++] = (byte) c;
+                len++;
+            }
+        }
+        qname[labelLenIdx] = (byte) len;
+        qname[qnameIdx] = 0; // Byte nulo final (Root)
+        return qname;
     }
 
     // Setters y Getters
