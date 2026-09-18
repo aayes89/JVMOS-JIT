@@ -29,8 +29,8 @@ alignb 256
     rtl8168_rx_ring:    resb 16 * 16      ; 16 Descriptores Rx de 16 bytes (256 bytes)
 
 alignb 16
-    rtl8168_rx_buffers: resd 1    ; Puntero al Headp (4 bytes)
-    rtl8168_tx_buffers: resd 1    ; Puntero al Headp (4 bytes)
+    rtl8168_rx_buffers: resd 1    ; Puntero al Heap (4 bytes)
+    rtl8168_tx_buffers: resd 1    ; Puntero al Heap (4 bytes)
     rtl8168_io_port:    resd 1    ; Puerto BAR0
     rtl8168_tx_idx:     resd 1
     rtl8168_rx_idx:     resd 1
@@ -61,6 +61,8 @@ DESC_EOR    equ 0x40000000  ; End of Ring
 DESC_FS     equ 0x20000000  ; First Segment
 DESC_LS     equ 0x10000000  ; Last Segment
 
+; los global de cada rutina están en el HAL
+
 ; sys_rtl8168_init(int ioPort)
 sys_rtl8168_init:
     push ebp
@@ -71,8 +73,8 @@ sys_rtl8168_init:
     mov [rtl8168_io_port], eax
     mov dword [rtl8168_tx_idx], 0
     mov dword [rtl8168_rx_idx], 0
-	
-	; Solicitar 64KB al Heap para evitar colisiones
+    
+    ; Solicitar 64KB al Heap para evitar colisiones
     push 32768
     call sys_kalloc
     add esp, 4
@@ -84,7 +86,7 @@ sys_rtl8168_init:
     mov [rtl8168_tx_buffers], eax
 
     ; Desbloquear configuración (Escribir 0xC0 en 0x50)
-    mov dx, ax
+    mov dx, word [rtl8168_io_port]
     add dx, Cfg9346
     mov al, 0xC0
     out dx, al
@@ -107,11 +109,11 @@ sys_rtl8168_init:
     ; Inicializar Anillo Rx (16 descriptores)
     xor ecx, ecx
 .init_rx:
-    mov eax, 2048
-    mul ecx
-    add eax, [rtl8168_rx_buffers]    ; Puntero al buffer físico
+    mov eax, ecx
+    shl eax, 11                        ; ecx * 2048
+    add eax, [rtl8168_rx_buffers]      ; Puntero al buffer físico
     mov ebx, ecx
-    shl ebx, 4                     ; ecx * 16 bytes por descriptor
+    shl ebx, 4                         ; ecx * 16 bytes por descriptor
     add ebx, rtl8168_rx_ring
 
     ; Formato Descriptor: [0-3] Conf/Len, [4-7] VLAN, [8-11] AddrLow, [12-15] AddrHigh
@@ -133,8 +135,8 @@ sys_rtl8168_init:
     ; Inicializar Anillo Tx (16 descriptores)
     xor ecx, ecx
 .init_tx:
-    mov eax, 2048
-    mul ecx
+    mov eax, ecx
+    shl eax, 11
     add eax, [rtl8168_tx_buffers]
     mov ebx, ecx
     shl ebx, 4
@@ -193,12 +195,12 @@ sys_rtl8168_init:
     add dx, Cfg9346
     mov al, 0x00
     out dx, al
-	
-	; Apagar interrupciones por Hardware
-	mov dx, word [rtl8168_io_port]
-	add dx, IMR
-	xor ax, ax				; Escribir 0x0000
-	out dx, ax
+    
+    ; Apagar interrupciones por Hardware
+    mov dx, word [rtl8168_io_port]
+    add dx, IMR
+    xor ax, ax              ; Escribir 0x0000
+    out dx, ax
 
     mov eax, 1              ; Éxito
 .done:
@@ -231,8 +233,8 @@ sys_rtl8168_send_packet:
 
     ; Copiar datos al buffer asociado
     push edi
-    mov eax, 2048
-    imul eax, ebx
+    mov eax, ebx
+    shl eax, 11
     add eax, [rtl8168_tx_buffers]
     mov edi, eax
     push ecx
@@ -253,7 +255,7 @@ sys_rtl8168_send_packet:
 
     mov [edi], eax          ; Escribir al descriptor (dispara el Tx HW si Polling está activo)
 
-    ; Avisarle a la tarjeta que hay datos nuevos (TxPoll)
+    ; Activando Tx Poll
     mov dx, word [rtl8168_io_port]
     add dx, 0x38            ; TxPoll Command
     mov al, 0x40            ; Normal Priority Tx
@@ -296,52 +298,57 @@ sys_net_receive_packet_rtl8168:
     ; Extraer longitud recibida (14 bits bajos)
     mov ecx, eax
     and ecx, 0x3FFF         ; Mask length
+    sub ecx, 4              ; restar 4 bytes del CRC para Java
     
-    cmp ecx, 4
-    jle .recycle            ; Ignorar basura
-    sub ecx, 4              ; Quitar HW CRC para Java
+    ; Validar que no supere el tamaño máximo del buffer destino
+    mov edx, [ebp + 12]     ; max len
+    cmp ecx, edx
+    jle .len_ok
+    mov ecx, edx
 
-    cmp ecx, 1536
-    jg .recycle             ; Ignorar paquetes gigantes (Jumbo frames no soportados aquí)
-
-    ; Copiar desde el buffer Rx al array de Java
-    mov eax, 2048
-    imul eax, ebx
+.len_ok:
+    ; Obtener la dirección del buffer físico actual Rx
+    mov eax, ebx
+    shl eax, 11
     add eax, [rtl8168_rx_buffers]
     
-    push esi                ; Guardar puntero al descriptor
-    mov esi, eax            ; Origen: Buffer Físico
+    ; Copiar desde el buffer Rx al array de Java
     mov edi, [ebp + 8]      ; Destino: Buffer Java
     add edi, 4              ; Evadir length del Array
     
-    push ecx                ; Guardar longitud devuelta
+    push esi                ; Guardar puntero al descriptor
+    mov esi, eax            ; Origen: Buffer Físico
     cld
+    push ecx
     rep movsb               ; Copiar paquete
-    pop eax                 ; EAX = longitud retornada a Java
+    pop ecx
     pop esi                 ; Restaurar descriptor
-
-.recycle:
+ 
     ; Devolver descriptor a la tarjeta
-    mov edx, 2048           ; Tamaño del buffer original
-    or edx, DESC_OWN        ; Dar control al HW
+    mov eax, 2048           ; Tamaño del buffer original
+    or eax, DESC_OWN        ; Dar control al HW
     
     cmp ebx, 15             ; Restaurar EOR si aplica
     jne .no_eor_rx
-    or edx, DESC_EOR
+    or eax, DESC_EOR        
 .no_eor_rx:
 
-    mov [esi], edx          ; Escribir status limpio
+    mov [esi], eax          ; Escribir status limpio
 
     ; Rotar puntero Rx
     inc ebx
     and ebx, 15             ; Modulo 16
     mov [rtl8168_rx_idx], ebx
+    
+    mov eax, ecx            ; Retornar tamaño del paquete leído    
 
-    ; Limpiar banderas ISR (Opcional, en polling agresivo no siempre es necesario)
+    ; Limpiar banderas ISR (Opcional)
     mov dx, word [rtl8168_io_port]
     add dx, ISR
+    push eax                ; Proteger EAX (longitud) antes de usar AX
     mov ax, 0xFFFF
     out dx, ax
+    pop eax                 ; Restaurar EAX con la longitud real
 
     jmp .done_rx
 
@@ -354,5 +361,5 @@ sys_net_receive_packet_rtl8168:
     pop ebx
     pop ebp
     ret
-	
-section .note.GNU-stack noalloc noexec nowrite progbits	
+    
+section .note.GNU-stack noalloc noexec nowrite progbits
