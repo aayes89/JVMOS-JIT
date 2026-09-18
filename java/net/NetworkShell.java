@@ -120,6 +120,7 @@ public class NetworkShell {
 						}
 						else if (deviceId == 0x8168) {
 							System.out.println("PCI [" + bus + ":" + slot + "] Encontrado: Vendor 0x" + vendorIdHex + " Device 0x" + deviceIdHex + " => Realtek RTL8168 Gigabit Ethernet");
+							type = NetworkAdapter.TYPE_RTL8168;
 							g.drawString("[+] Adaptador Realtek RTL8168 Gigabit Ethernet encontrado", 20, posy);
 							posy += 10;
 						}else {
