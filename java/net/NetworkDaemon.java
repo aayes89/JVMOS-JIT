@@ -30,13 +30,17 @@ import java.net.DatagramPacket;
 
 public class NetworkDaemon implements Runnable {
     private RawSocket socket;
+	private DatagramPacket packet;
     private byte[] localIp;
     private byte[] mac;
+	private byte[] buffer;	
 
     public NetworkDaemon(RawSocket socket, byte[] ip, byte[] mac) {
         this.socket = socket;
         this.localIp = ip;
         this.mac = mac;
+		this.buffer = new byte[1536];
+		this.packet = new DatagramPacket(this.buffer, 1536);
     }
 
     public void run() {
@@ -84,12 +88,10 @@ public class NetworkDaemon implements Runnable {
             }
 
             if (isOurIp) {
-                // Alguien pregunta por nuestra IP. Reutilizamos la misma trama para enviar la respuesta.
-                
                 // Intercambiar MACs de Ethernet
                 for (int i = 0; i < 6; i++) {
-                    frame[i] = frame[6 + i];       // MAC destino = MAC origen original
-                    frame[6 + i] = mac[i];         // MAC origen = Nuestra MAC
+                    frame[i] = frame[6 + i];       
+                    frame[6 + i] = mac[i];         
                 }
 
                 // Cambiar Opcode a ARP Reply (2)
@@ -102,13 +104,9 @@ public class NetworkDaemon implements Runnable {
                 System.arraycopy(frame, 28, senderIp, 0, 4);
 
                 // Llenar los nuevos datos ARP
-                // Sender MAC = Nuestra MAC
                 System.arraycopy(mac, 0, frame, 22, 6);
-                // Sender IP = Nuestra IP
                 System.arraycopy(localIp, 0, frame, 28, 4);
-                // Target MAC = MAC del remitente original
                 System.arraycopy(senderMac, 0, frame, 32, 6);
-                // Target IP = IP del remitente original
                 System.arraycopy(senderIp, 0, frame, 38, 4);
 
                 // Enviar la respuesta ARP
@@ -134,31 +132,31 @@ public class NetworkDaemon implements Runnable {
             // Validar que sea un ICMP Echo Request (Tipo 8)
             if ((frame[icmpOffset] & 0xFF) == 8) {
                 
-                // 1. Intercambiar MACs de Ethernet
+                // Intercambiar MACs de Ethernet
                 for (int i = 0; i < 6; i++) {
                     frame[i] = frame[6 + i];
                     frame[6 + i] = mac[i];
                 }
 
-                // 2. Intercambiar IPs de IPv4
+                // Intercambiar IPs de IPv4
                 byte tempIp;
                 for (int i = 0; i < 4; i++) {
                     tempIp = frame[26 + i];
-                    frame[26 + i] = frame[30 + i]; // Origen = Antiguo Destino
-                    frame[30 + i] = tempIp;        // Destino = Antiguo Origen
+                    frame[26 + i] = frame[30 + i]; 
+                    frame[30 + i] = tempIp;        
                 }
 
-                // 3. Recalcular Checksum IP
-                frame[24] = 0; frame[25] = 0; // Poner a 0 antes de calcular
+                // Recalcular Checksum IP
+                frame[24] = 0; frame[25] = 0; 
                 int ipCk = Checksum.calculate(frame, 14, 20);
                 frame[24] = (byte)(ipCk >> 8); frame[25] = (byte)ipCk;
 
-                // 4. Cambiar tipo ICMP a Echo Reply (Tipo 0)
+                // Cambiar tipo ICMP a Echo Reply (Tipo 0)
                 frame[icmpOffset] = 0;
 
-                // 5. Recalcular Checksum ICMP
+                // Recalcular Checksum ICMP
                 int icmpTotalLen = len - icmpOffset;
-                frame[icmpOffset + 2] = 0; frame[icmpOffset + 3] = 0; // Poner a 0 antes de calcular
+                frame[icmpOffset + 2] = 0; frame[icmpOffset + 3] = 0; 
                 int icmpCk = Checksum.calculate(frame, icmpOffset, icmpTotalLen);
                 frame[icmpOffset + 2] = (byte)(icmpCk >> 8); frame[icmpOffset + 3] = (byte)icmpCk;
 
