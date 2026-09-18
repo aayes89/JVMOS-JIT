@@ -82,6 +82,7 @@ section .text
     extern sys_beep, sys_nosound, sys_get_free_mem, sys_get_ram_size
     extern sys_pci_write_config, sys_pci_read_config, sys_disk_read_sector, sys_disk_write_sector
     extern sys_rtl8139_init, sys_rtl8139_send_packet, sys_net_receive_packet
+    extern sys_rtl8168_init, sys_rtl8168_send_packet, sys_net_receive_packet_rtl8168
 	extern sys_pcnet_init, sys_pcnet_send_packet, sys_net_receive_packet_pcnet
     extern sys_inb, sys_outb, sys_inw, sys_outw, sys_indw, sys_outdw, sys_get_ticks
     extern sys_get_time, sys_sleep, sys_exit
