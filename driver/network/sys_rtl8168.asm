@@ -29,8 +29,8 @@ alignb 256
     rtl8168_rx_ring:    resb 16 * 16      ; 16 Descriptores Rx de 16 bytes (256 bytes)
 
 alignb 16
-    rtl8168_rx_buffers: resb 1    ; Puntero al Headp (4 bytes)
-    rtl8168_tx_buffers: resb 1    ; Puntero al Headp (4 bytes)
+    rtl8168_rx_buffers: resd 1    ; Puntero al Headp (4 bytes)
+    rtl8168_tx_buffers: resd 1    ; Puntero al Headp (4 bytes)
     rtl8168_io_port:    resd 1    ; Puerto BAR0
     rtl8168_tx_idx:     resd 1
     rtl8168_rx_idx:     resd 1
