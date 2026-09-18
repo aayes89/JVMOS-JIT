@@ -71,10 +71,12 @@ section .text
     extern cp_offsets
     extern current_param_count
     extern current_class_ptr
+	
 
     extern sys_arg_id, sys_arg_a, sys_arg_b, sys_arg_c, sys_arg_d           
     extern draw_char_vram, sys_draw_string, sys_serial_puts, sys_serial_putc, sys_serial_print_java, sys_scroll_vram
     extern current_color
+	extern sys_switch_context
     extern sys_read_keyboard_scancode, sys_set_keyboard_layout, sys_read_mouse
     extern sys_draw_rect, sys_fill_rect, sys_draw_line, sys_get_pixel, sys_draw_pixel
     extern sys_beep, sys_nosound, sys_get_free_mem, sys_get_ram_size
@@ -360,6 +362,10 @@ sys_native_dispatch:
 	je .sys_pcnet_send_packet
 	cmp eax, 33
 	je .sys_net_receive_packet_pcnet
+	cmp eax, 34
+	je .sys_switch_context
+	cmp eax, 35
+	je .sys_mem_write_dword
 
     xor eax, eax
     jmp .done
@@ -557,7 +563,8 @@ sys_native_dispatch:
     call sys_net_receive_packet
     add esp, 8
     jmp .done   
-    
+
+; 8 bits    
 .sys_mem_write_byte:
     mov eax, [sys_arg_a]
     mov ebx, [sys_arg_b]
@@ -571,6 +578,14 @@ sys_native_dispatch:
     mov bl, byte [eax]
     mov eax, ebx
     jmp .done
+
+; 32 bits
+.sys_mem_write_dword:
+    mov eax, [sys_arg_a]  ; Dirección de memoria
+    mov ebx, [sys_arg_b]  ; Valor de 32 bits a escribir
+    mov dword [eax], ebx
+    xor eax, eax
+    jmp .done	
 
 .sys_scroll_vram:
     push dword [sys_arg_a]  ; Píxeles a desplazar
@@ -605,6 +620,14 @@ sys_native_dispatch:
     call sys_net_receive_packet_pcnet
     add esp, 8
     jmp .done   
+
+.sys_switch_context:
+	push dword [sys_arg_b]
+    push dword [sys_arg_a]
+    call sys_switch_context
+    add esp, 8
+    xor eax, eax
+    jmp .done
 
 .done:
     pop edx
