@@ -366,6 +366,12 @@ sys_native_dispatch:
 	je .sys_switch_context
 	cmp eax, 35
 	je .sys_mem_write_dword
+	cmp eax, 36
+    je .sys_rtl8168_init
+    cmp eax, 37
+    je .sys_rtl8168_send_packet
+    cmp eax, 38
+    je .sys_rtl8168_receive_packet
 
     xor eax, eax
     jmp .done
@@ -628,6 +634,27 @@ sys_native_dispatch:
     add esp, 8
     xor eax, eax
     jmp .done
+
+.sys_rtl8168_init:
+    push dword [sys_arg_a]  ; Puerto I/O (BAR0)
+    call sys_rtl8168_init
+    add esp, 4
+    jmp .done
+
+.sys_rtl8168_send_packet:
+    push dword [sys_arg_b]  ; Longitud
+    push dword [sys_arg_c]  ; Arreglo de bytes (payload)
+    call sys_rtl8168_send_packet
+    add esp, 8
+    xor eax, eax
+    jmp .done   
+
+.sys_rtl8168_receive_packet:    
+    push dword [sys_arg_b]  ; Longitud máxima
+    push dword [sys_arg_c]  ; Arreglo de bytes destino
+    call sys_net_receive_packet_rtl8168
+    add esp, 8
+    jmp .done	
 
 .done:
     pop edx
