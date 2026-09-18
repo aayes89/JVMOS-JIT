@@ -51,7 +51,7 @@ public class Native {
     public static final int SYS_SERIAL_PUTS      = 20; // Enviar cadena por COM1 (Debug)
     public static final int SYS_PCI_READ         = 21; // Leer espacio de config PCI
     public static final int SYS_BEEP             = 22; // Audio PC Speaker (Frecuencia Hz)
-    public static final int SYS_RTL8139_INIT     = 23; // Inicializar Tarjeta de Red
+    public static final int SYS_RTL8139_INIT     = 23; // Inicializar Tarjeta de Red RTL8139
     public static final int SYS_RTL8139_SEND     = 24; // Enviar paquete de Red
     public static final int SYS_NET_RECEIVE      = 25; // Recibir paquete de Red
 	public static final int SYS_MEM_WRITE_BYTE   = 26; // Escribir un byte en una direccion fisica
@@ -62,6 +62,8 @@ public class Native {
 	public static final int SYS_PCNET_INIT		 = 31; // Inicializar Tarjeta de Red PCnet
 	public static final int SYS_PCNET_SEND		 = 32; // Enviar paquete con tarjeta de red PCnet
 	public static final int SYS_PCNET_RECEIVE	 = 33; // Recibir paquete con tarjeta de red PCnet
+	public static final int SYS_CONTEXT_SWITCH   = 34; // Ceder control al procesador del siguiente hilo en cola
+	public static final int SYS_MEM_WRITE_DWORD  = 35; // Escribir DWORD en memoria
 
 
     // FIRMAS NATIVAS
