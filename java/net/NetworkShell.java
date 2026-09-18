@@ -105,12 +105,12 @@ public class NetworkShell {
                     boolean cardFound = false;
 
                     // Filtrar únicamente adaptadores de red soportados por JVMOS-JIT
-                    if (vendorId == 0x10EC && (deviceId == 0x8139 || deviceId == 0x8136)) {
-                        type = NetworkAdapter.TYPE_RTL8139; // La 8136 (RTL810xE) es compatible con el driver 8139
+                   if (vendorId == 0x10EC && deviceId == 0x8139) {
+                        type = NetworkAdapter.TYPE_RTL8139; 
                         g.drawString("[+] Adaptador de red soportado: " + deviceName, 20, posy); posy += 10;
                         cardFound = true;
                     } 
-                    else if (vendorId == 0x10EC && deviceId == 0x8168) {
+                    else if (vendorId == 0x10EC && (deviceId == 0x8168 || deviceId == 0x8136)) {
                         type = NetworkAdapter.TYPE_RTL8168;
                         g.drawString("[+] Adaptador de red soportado: " + deviceName, 20, posy); posy += 10;
                         cardFound = true;
