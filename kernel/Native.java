@@ -68,5 +68,6 @@ public class Native {
 
     // FIRMAS NATIVAS
     public static native int sys(int id, int a, int b, Object c, int d);
+	public static native int sys(int id, Object a, int b, int c, int d);
     public static native int sys(int id, int a, int b, int c, int d);
 }
