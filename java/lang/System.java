@@ -85,7 +85,9 @@ public final class System {
         if (key.equals("java.version")) return "1.8-Baremetal";
         if (key.equals("file.separator")) return "/";
         if (key.equals("line.separator")) return "\n";
-        
+        if (key.startsWith("hw.pci.")){
+			// integración a futuro para el DeviceTree
+		}
         return def;
     }
 }
