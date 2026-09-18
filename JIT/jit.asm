@@ -39,7 +39,7 @@ align 16
     fixup_addr:      resd 1024  ; donde sobreescribir métodos nativos
     fixup_target:    resd 1024  ; a cual PC del bytecode apuntaba
     fixup_count:     resd 1     ; contador de saltos hacia adelante
-    method_cache:    resd 2048  ; mapea [CP_Index] -> [Dirección Nativa]
+    method_cache:    resd 4096  ; mapea [CP_Index] -> [Dirección Nativa]
     java_static_vars: resd 4096 ; para manejar variables estáticas
 
 section .data
@@ -82,7 +82,7 @@ section .text
     extern sys_beep, sys_nosound, sys_get_free_mem, sys_get_ram_size
     extern sys_pci_write_config, sys_pci_read_config, sys_disk_read_sector, sys_disk_write_sector
     extern sys_rtl8139_init, sys_rtl8139_send_packet, sys_net_receive_packet
-    extern sys_rtl8168_init, sys_rtl8168_send_packet, sys_net_receive_packet_rtl8168
+	extern sys_rtl8168_init, sys_rtl8168_send_packet, sys_net_receive_packet_rtl8168
 	extern sys_pcnet_init, sys_pcnet_send_packet, sys_net_receive_packet_pcnet
     extern sys_inb, sys_outb, sys_inw, sys_outw, sys_indw, sys_outdw, sys_get_ticks
     extern sys_get_time, sys_sleep, sys_exit
@@ -913,10 +913,51 @@ jit_op_ldc:
     shl ecx, 8
     mov cl, byte [esi - 1]
 
-    mov [eax], ecx              
     mov edi, eax
-    add edi, 4                  
-    rep movsb                   
+    add edi, 4
+    xor edx, edx                
+.dec_loop:
+    test ecx, ecx
+    jz .dec_done
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    
+    cmp bl, 0xC3                
+    je .is_c3
+    cmp bl, 0xC2                
+    je .is_c2
+    
+    mov [edi], bl               
+    inc edi
+    inc edx
+    jmp .dec_loop
+    
+.is_c3:
+    test ecx, ecx
+    jz .dec_done
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    add bl, 64                  
+    mov [edi], bl
+    inc edi
+    inc edx
+    jmp .dec_loop
+    
+.is_c2:
+    test ecx, ecx
+    jz .dec_done
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    mov [edi], bl               
+    inc edi
+    inc edx
+    jmp .dec_loop
+    
+.dec_done:
+    mov [eax], edx              
 
     mov [esp + 16], eax         
 
@@ -959,7 +1000,7 @@ jit_op_ldc_w:
 
     mov ebx, [cp_offsets + eax * 4]
     test ebx, ebx
-    jz .fallback_zero
+    jz .fallback_zero_w
 
     cmp byte [ebx], 8
     je .is_string_w
@@ -993,10 +1034,51 @@ jit_op_ldc_w:
     shl ecx, 8
     mov cl, byte [esi - 1]
 
-    mov [eax], ecx              
     mov edi, eax
-    add edi, 4                  
-    rep movsb                   
+    add edi, 4
+    xor edx, edx                
+.dec_loop_w:
+    test ecx, ecx
+    jz .dec_done_w
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    
+    cmp bl, 0xC3
+    je .is_c3_w
+    cmp bl, 0xC2
+    je .is_c2_w
+    
+    mov [edi], bl               
+    inc edi
+    inc edx
+    jmp .dec_loop_w
+    
+.is_c3_w:
+    test ecx, ecx
+    jz .dec_done_w
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    add bl, 64                  
+    mov [edi], bl
+    inc edi
+    inc edx
+    jmp .dec_loop_w
+    
+.is_c2_w:
+    test ecx, ecx
+    jz .dec_done_w
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    mov [edi], bl
+    inc edi
+    inc edx
+    jmp .dec_loop_w
+    
+.dec_done_w:
+    mov [eax], edx              
 
     mov [esp + 16], eax         
 
@@ -1018,7 +1100,7 @@ jit_op_ldc_w:
     popa
     jmp .emit_val_w
 
-.fallback_zero:
+.fallback_zero_w:
     xor eax, eax
 
 .emit_val_w:
