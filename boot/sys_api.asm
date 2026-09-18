@@ -87,12 +87,6 @@ global sys_get_time
 global sys_beep
 global sys_nosound
 
-; --- Red RTL8111/8168 ---
-%include "driver/network/sys_rtl8168.asm"
-global sys_rtl8168_init
-global sys_rtl8168_send_packet
-global sys_net_receive_packet_rtl8168
-
 ; --- Red RTL8139 ---
 %include "driver/network/sys_rtl8139.asm"
 global sys_rtl8139_init
@@ -104,6 +98,12 @@ global sys_net_receive_packet
 global sys_pcnet_init
 global sys_pcnet_send_packet
 global sys_net_receive_packet_pcnet
+
+; --- Red RTL8111/8168 ---
+%include "driver/network/sys_rtl8168.asm"
+global sys_rtl8168_init
+global sys_rtl8168_send_packet
+global sys_net_receive_packet_rtl8168
 
 ; --- Puertos I/O ---
 global sys_inb
@@ -1186,12 +1186,19 @@ sys_draw_string:
 
 .char:
     mov al, [esi]
+	; Decodificador UTF-8
+	cmp al, 0xC3
+	je .utf8_c3
+	cmp al, 0xC2
+	je .utf8_c2
+	
+.process_char:	
     cmp al, 13
     je .skip_char
     cmp al, 10
     je .skip_char
     cmp al, 32
-    jl .skip_char
+    jb .skip_char		; Compara de 0 a 255 (sin signo)
     
     pusha
     push edi
@@ -1208,6 +1215,22 @@ sys_draw_string:
     inc esi
     dec ecx
     jnz .char
+	jmp .done
+
+.utf8_c3:	
+	inc esi						; avanzar al segundo byte del UTF-8
+	dec ecx						; restar longitud total
+	jz .done					; evitar cuelgue si la cadena se corta
+	mov al, [esi]				; Leer el segundo byte (0xA1 para 'á' por ej.)
+	add al, 64					; 0xA1 + 64 = 0xE1 (índice en font.asm)
+	jmp .process_char
+
+.utf8_c2:
+    inc esi
+    dec ecx
+    jz .done
+    mov al, [esi]               ; El segundo byte ya es el ASCII correcto
+    jmp .process_char	
 
 .done:
     popa
