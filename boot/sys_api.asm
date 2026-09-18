@@ -87,6 +87,12 @@ global sys_get_time
 global sys_beep
 global sys_nosound
 
+; --- Red RTL8111/8168 ---
+%include "driver/network/sys_rtl8168.asm"
+global sys_rtl8168_init
+global sys_rtl8168_send_packet
+global sys_net_receive_packet_rtl8168
+
 ; --- Red RTL8139 ---
 %include "driver/network/sys_rtl8139.asm"
 global sys_rtl8139_init
