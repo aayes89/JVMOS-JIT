@@ -648,19 +648,19 @@ jit_compile_method:
     mov [pc_map + ecx * 4], edx  
 
     movzx eax, byte [esi]
-    pusha
-    mov ebx, eax
-    shr ebx, 4
-    call .nibble_to_hex
-    mov [hex_byte_str], bl
-    mov ebx, eax
-    and ebx, 0x0F
-    call .nibble_to_hex
-    mov [hex_byte_str + 1], bl
-    push hex_byte_str
-    call sys_serial_puts
-    add esp, 4
-    popa
+    ;pusha
+    ;mov ebx, eax
+    ;shr ebx, 4
+    ;call .nibble_to_hex
+    ;mov [hex_byte_str], bl
+    ;mov ebx, eax
+    ;and ebx, 0x0F
+    ;call .nibble_to_hex
+    ;mov [hex_byte_str + 1], bl
+    ;push hex_byte_str
+    ;call sys_serial_puts
+    ;add esp, 4
+    ;popa
 
     movzx eax, byte [esi]
     inc esi
