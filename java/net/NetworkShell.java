@@ -234,7 +234,7 @@ public class NetworkShell {
         return new String[]{"[-] Error: No hay DHCP. Utiliza las funciones (ip, mask, gw) para modo manual."};
     }
 	
-    // Réplica de comando para consultar dirección en internet
+    // Réplica de comando para consultar dirección en internet    
     private static String[] handleNslookup(String domain) {
         if (domain.length() < 3) return new String[] { "Uso: net nslookup <dominio>" };
 
@@ -316,6 +316,37 @@ public class NetworkShell {
             
             if (len >= 42) {
                 int etherType = ((rxBuffer[12] & 0xFF) << 8) | (rxBuffer[13] & 0xFF);
+                
+                // Intercepto ARP Requests entrantes para no ahogar al servidor DNS
+                if (etherType == 0x0806 && (rxBuffer[20] & 0xFF) == 0x00 && (rxBuffer[21] & 0xFF) == 0x01) {
+                    boolean isOurIp = true;
+                    for (int m = 0; m < 4; m++) {
+                        if ((rxBuffer[38 + m] & 0xFF) != (localIp[m] & 0xFF)) { isOurIp = false; break; }
+                    }
+                    
+                    if (isOurIp) {
+                        for (int m = 0; m < 6; m++) {
+                            rxBuffer[m] = rxBuffer[6 + m]; 
+                            rxBuffer[6 + m] = mac[m];      
+                        }
+                        rxBuffer[21] = 0x02; 
+                        
+                        byte[] senderMac = new byte[6];
+                        byte[] senderIp = new byte[4];
+                        System.arraycopy(rxBuffer, 22, senderMac, 0, 6);
+                        System.arraycopy(rxBuffer, 28, senderIp, 0, 4);
+                        
+                        System.arraycopy(mac, 0, rxBuffer, 22, 6);
+                        System.arraycopy(localIp, 0, rxBuffer, 28, 4);
+                        System.arraycopy(senderMac, 0, rxBuffer, 32, 6);
+                        System.arraycopy(senderIp, 0, rxBuffer, 38, 4);
+                        
+                        rawSocket.send(new DatagramPacket(rxBuffer, 60));
+                        continue; // Responder ARP y seguir esperando la respuesta DNS
+                    }
+                }
+
+                // Proceso las respuestas UDP / DNS
                 if (etherType == 0x0800) {
                     int ipHdrLen = (rxBuffer[14] & 0x0F) * 4;
                     int protocol = rxBuffer[23] & 0xFF;
