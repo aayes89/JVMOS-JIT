@@ -39,6 +39,8 @@ global sys_get_free_mem
 global sys_get_ram_size
 global sys_memcpy
 global sys_memset
+%include "boot/sys_thread.asm"
+global sys_switch_context
 
 ; --- Serie (debug JVM) ---
 global sys_serial_init
