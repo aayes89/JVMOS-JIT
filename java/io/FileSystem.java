@@ -107,7 +107,11 @@ public class FileSystem {
 
                 int nameLen = 0;
                 while (nameLen < 16 && table[offset + nameLen] != 0) nameLen++;
-                String entryName = new String(table, offset, nameLen);
+				byte[] nameB = new byte[nameLen];
+				for(int k=0;k<nameLen;k++){
+					nameB[k] = table[offset + k];
+				}
+                String entryName = new String(nameB);
 
                 byte type = table[offset + 16];
                 int startLba = bytesToInt(table, offset + 17);
@@ -137,7 +141,9 @@ public class FileSystem {
                 
                 int nameLen = 0;
                 while (nameLen < 16 && table[offset + nameLen] != 0) nameLen++;
-                String entryName = new String(table, offset, nameLen);
+				byte[] nameB = new byte[nameLen];
+                for (int k = 0; k < nameLen; k++) nameB[k] = table[offset + k];
+                String entryName = new String(nameB);
                 
                 if (entryName.equals(name)) {
                     byte type = table[offset + 16];
@@ -174,7 +180,9 @@ public class FileSystem {
         for (int i = 0; i < sectorsNeeded; i++) {
             byte[] sec = new byte[512];
             int toCopy = (data.length - offset > 512) ? 512 : (data.length - offset);
-            System.arraycopy(data, offset, sec, 0, toCopy);
+            for(int j = 0; j < toCopy; j++) {
+				sec[j] = data[offset + j];
+			}
             disk.writeSector(startLba + i, sec);
             offset += toCopy;
         }
@@ -221,7 +229,9 @@ public class FileSystem {
         for (int i = 0; i < sectors; i++) {
             byte[] sec = disk.readSector(currentLba + i);
             int toCopy = (f.length() - offset > 512) ? 512 : (f.length() - offset);
-            System.arraycopy(sec, 0, buffer, offset, toCopy);
+            for(int k = 0; k < toCopy; k++){
+				buffer[offset + k] = sec[k];
+			}
             offset += toCopy;
         }
         return buffer;
@@ -309,8 +319,10 @@ public class FileSystem {
                 int offset = i * 32;
                 if (table[offset + 16] == File.FLAG_EMPTY) {
                     byte[] nameBytes = name.getBytes();
-                    System.arraycopy(nameBytes, 0, table, offset, nameBytes.length);
-                    table[offset + nameBytes.length] = 0; 
+                    for (int k = 0; k < nameBytes.length && k < 15; k++) {
+                        table[offset + k] = nameBytes[k];
+                    }
+                    table[offset + nameBytes.length] = 0;
 
                     table[offset + 16] = type;
                     intToBytes(startLba, table, offset + 17);
