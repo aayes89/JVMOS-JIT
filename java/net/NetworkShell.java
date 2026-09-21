@@ -74,7 +74,7 @@ public class NetworkShell {
 			adapter.init();			
 		}
 
-		rawSocket = new RawSocket(); 
+		rawSocket = new RawSocket(type); 
 		
 		// Demonio de red en segundo plano 
 		NetworkDaemon daemon = new NetworkDaemon(rawSocket, localIp, getMacAddress());
@@ -105,7 +105,7 @@ public class NetworkShell {
                     boolean cardFound = false;
 
                     // Filtrar únicamente adaptadores de red soportados por JVMOS-JIT
-                   if (vendorId == 0x10EC && deviceId == 0x8139) {
+                    if (vendorId == 0x10EC && deviceId == 0x8139) {
                         type = NetworkAdapter.TYPE_RTL8139; 
                         g.drawString("[+] Adaptador de red soportado: " + deviceName, 20, posy); posy += 10;
                         cardFound = true;
@@ -137,8 +137,7 @@ public class NetworkShell {
                             if ((bar & 0x1) == 1) { // Es puerto I/O
                                 return bar & ~0x3;
                             }
-                        }
-                        
+                        }                        
                         g.drawString("[-] Error: La tarjeta no soporta I/O heredado (Solo MMIO).", 20, posy); posy += 10;
                     }
                 }
@@ -241,13 +240,14 @@ public class NetworkShell {
         if (!sameSubnet) nextHopIp = gw;
 
         byte[] destMac = ArpTable.get(nextHopIp);
+		trace("Capturando MAC destino");
         if (destMac == null) {
             String nextHopStr = ipToString("", nextHopIp);
             handleArpPing(nextHopStr); 
             destMac = ArpTable.get(nextHopIp);
             if (destMac == null) return new String[] { "Error: Fallo al resolver MAC del Gateway." };
         }
-
+		trace("Generando payload");
         // El Payload DNS
         byte[] qname = encodeDomainName(domain);
         int dnsPayloadLen = 12 + qname.length + 4; // Header(12) + QNAME + QTYPE(2) + QCLASS(2)
@@ -256,12 +256,14 @@ public class NetworkShell {
         
         byte[] frame = new byte[14 + ipTotalLen];
         for (int i = 0; i < frame.length; i++) frame[i] = 0;
-
+		
+		trace("Generando cabecera ethernet");
         // Cabecera Ethernet
         System.arraycopy(destMac, 0, frame, 0, 6);
         System.arraycopy(mac, 0, frame, 6, 6);
         frame[12] = 0x08; frame[13] = 0x00; // IPv4
-
+		
+		trace("Generando cabecera ipv4");
         // Cabecera IPv4 
         frame[14] = 0x45; frame[15] = 0x00;
         frame[16] = (byte)(ipTotalLen >> 8); frame[17] = (byte)ipTotalLen;
@@ -274,6 +276,7 @@ public class NetworkShell {
         int ipCk = Checksum.calculate(frame, 14, 20);
         frame[24] = (byte)(ipCk >> 8); frame[25] = (byte)ipCk;
 
+		trace("Generando cabecera UDP");
         // Cabecera UDP
         int udpOffset = 34;
         frame[udpOffset] = (byte)0xC0; frame[udpOffset+1] = (byte)0x00; // Src Port: 49152
@@ -281,6 +284,7 @@ public class NetworkShell {
         frame[udpOffset+4] = (byte)(udpLen >> 8); frame[udpOffset+5] = (byte)udpLen;
         frame[udpOffset+6] = 0x00;     frame[udpOffset+7] = 0x00;       // UDP Checksum (Opcional en IPv4 = 0)
 
+		trace("Generando cabecera DNS");
         // Cabecera DNS
         int dnsOffset = 42;
         frame[dnsOffset] = 0x12; frame[dnsOffset+1] = 0x34;       // Transaction ID
@@ -288,6 +292,7 @@ public class NetworkShell {
         frame[dnsOffset+4] = 0x00; frame[dnsOffset+5] = 0x01;     // Questions: 1
         // ANCOUNT, NSCOUNT, ARCOUNT ya son 0
 
+		trace("Generando consulta DNS");
         // Consulta DNS
         System.arraycopy(qname, 0, frame, dnsOffset + 12, qname.length);
         int qEnd = dnsOffset + 12 + qname.length;
@@ -295,15 +300,20 @@ public class NetworkShell {
         frame[qEnd+2] = 0x00; frame[qEnd+3] = 0x01;   // QCLASS: IN (Internet)
 
         // Enviar y Esperar
+		trace("Enviando datagrama");
         rawSocket.send(new DatagramPacket(frame, frame.length));
+		trace("Datagrama enviado, esperando...");
 
         byte[] rxBuffer = new byte[1536];
         DatagramPacket rxPacket = new DatagramPacket(rxBuffer, 1536);
-        int attempts = 0;
-        
+        trace("Entrando a bucle de recepción...");
+		int attempts = 0;        
         while (attempts < 200) { 
             rxPacket.setLength(1536); 
-            int len = rawSocket.receive(rxPacket);
+			
+            trace("  -> Intento " + attempts + ": Llamando rawSocket.receive()...");
+			int len = rawSocket.receive(rxPacket);
+			trace("  <- receive() devolvio " + len + " bytes.");
             
             if (len >= 42) {
                 int etherType = ((rxBuffer[12] & 0xFF) << 8) | (rxBuffer[13] & 0xFF);
@@ -382,9 +392,12 @@ public class NetworkShell {
                     }
                 }
             }
-            try { Thread.sleep(10); } catch (Exception e) {}
-            attempts++;
+            trace("  -> Llamando Thread.sleep(10)...");
+			try { Thread.sleep(10); } catch (Exception e) {}
+			trace("  <- Thread.sleep finalizado.");
+			attempts++;
         }
+		trace("Bucle finalizado por timeout");
         return new String[] { "nslookup: Tiempo de espera agotado para el servidor " + ipToString("", dns1) };
     }
 	
@@ -505,9 +518,11 @@ public class NetworkShell {
         if (!sameSubnet) {
             nextHopIp = gw;
         }
-
+		
+		trace("Resolviendo MAC del destino...");
         byte[] destMac = ArpTable.get(nextHopIp);
         if (destMac == null) {
+			trace("MAC no encontrada. Llamando handleArpPing interno...");
             String nextHopStr = (nextHopIp[0]&0xFF) + "." + (nextHopIp[1]&0xFF) + "." + 
                                 (nextHopIp[2]&0xFF) + "." + (nextHopIp[3]&0xFF);
             handleArpPing(nextHopStr); 
@@ -517,7 +532,7 @@ public class NetworkShell {
                 return new String[] { "Ping a " + targetIpStr + ": Fallo al resolver MAC de ruteo." };
             }
         }
-
+		trace("MAC resuelta. Construyendo trama ICMP...");
         byte[] frame = new byte[74];
         // Limpiar memoria residual de la RAM
         for (int i = 0; i < frame.length; i++) frame[i] = 0;
@@ -547,16 +562,21 @@ public class NetworkShell {
         frame[36] = (byte)(icmpCk >> 8); frame[37] = (byte)icmpCk;
 
         DatagramPacket txPacket = new DatagramPacket(frame, frame.length);
-        rawSocket.send(txPacket);
+        trace("Disparando rawSocket.send()...");
+		rawSocket.send(txPacket);
+		trace("rawSocket.send() finalizo sin panico.");
 
         byte[] rxBuffer = new byte[1536];
         DatagramPacket rxPacket = new DatagramPacket(rxBuffer, 1536);
 
         // Bucle While para desacoplar el timeout del vaciado de red        
+		trace("Entrando al bucle de recepcion...");
         int attempts = 0;
         while (attempts < 150) { 
             rxPacket.setLength(1536); 
-            int len = rawSocket.receive(rxPacket);
+            trace("  -> Intento " + attempts + ": Llamando rawSocket.receive()...");
+			int len = rawSocket.receive(rxPacket);
+			trace("  <- receive() devolvio " + len + " bytes.");
             
             if (len > 0) {
                 if (len >= 42) {
@@ -611,11 +631,15 @@ public class NetworkShell {
                     }
                 }
                 // Si es basura, vaciar cola
+				attempts++;
                 continue;
             }
-            try { Thread.sleep(10); } catch (Exception e) {}
-            attempts++;
+            trace("  -> Llamando Thread.sleep(10)...");
+			try { Thread.sleep(10); } catch (Exception e) {}
+			trace("  <- Thread.sleep finalizado.");
+			attempts++;
         }
+		trace("Bucle finalizado por timeout.");
         return new String[] { "Ping a " + targetIpStr + ": Tiempo de espera agotado." };
     }
     
@@ -688,6 +712,7 @@ public class NetworkShell {
                     }
                 }
                 // Si es basura, vaciar cola
+				attempts++;
                 continue;
             }
             try { Thread.sleep(10); } catch (Exception e) {}
@@ -698,6 +723,13 @@ public class NetworkShell {
             "Tiempo de espera agotado. Host inalcanzable."
         };       
     }
+	
+	private static void trace(String msg) {
+		// Imprime en la pantalla VGA
+		System.out.println(msg);
+		// Empuja el texto físicamente por el puerto serie COM1
+		Native.sys(Native.SYS_SERIAL_PUTS, 0, 0, msg + "\n", 0);
+	}
 	
 	// Construye el String de manera segura evitando el operador '+'
     private static String ipToString(String prefix, byte[] ip) {
@@ -774,4 +806,7 @@ public class NetworkShell {
     public static void setDNS2(byte[] dns){
         NetworkShell.dns2 = dns;
     }
+	public static RawSocket getRawSocket(){
+		return rawSocket;
+	}
 }
