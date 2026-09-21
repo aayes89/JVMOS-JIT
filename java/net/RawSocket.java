@@ -26,20 +26,40 @@ import kernel.Native;
 
 public class RawSocket {
     private boolean initialized = false;
+	private int type;
 
     // Inicializa la RTL8139 pasando su puerto I/O base de PCI
-    public RawSocket() {
+    public RawSocket(int type) {
+		this.type = type;
         initialized = true;
     }
     // Enviar datagrama
     public void send(DatagramPacket packet) {
         if (!initialized || packet == null) return;
-        kernel.Native.sys(kernel.Native.SYS_RTL8139_SEND, 0, packet.getLength(), packet.getData(), 0);
+		if (type == NetworkAdapter.TYPE_RTL8168) {
+            Native.sys(Native.SYS_RTL8168_SEND, 0, packet.getLength(), packet.getData(), 0);
+        } else if (type == NetworkAdapter.TYPE_PCNET) {
+            Native.sys(Native.SYS_PCNET_SEND, 0, packet.getLength(), packet.getData(), 0);
+        } else {
+            // Default a RTL8139
+            Native.sys(Native.SYS_RTL8139_SEND, 0, packet.getLength(), packet.getData(), 0);
+        }
     }
+	
     // Recibir datagrama
     public int receive(DatagramPacket packet) {
         if (!initialized || packet == null) return -1;
-        int bytesRead = kernel.Native.sys(kernel.Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
+        int bytesRead = 0;
+        
+        if (type == NetworkAdapter.TYPE_RTL8168) {
+            bytesRead = Native.sys(Native.SYS_RTL8168_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
+        } else if (type == NetworkAdapter.TYPE_PCNET) {
+            bytesRead = Native.sys(Native.SYS_PCNET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
+        } else {
+            // Default a RTL8139
+            bytesRead = Native.sys(Native.SYS_NET_RECEIVE, 0, packet.getLength(), packet.getData(), 0);
+        }
+        
         if (bytesRead > 0) {
             packet.setLength(bytesRead);
         }
