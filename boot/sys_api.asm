@@ -551,7 +551,7 @@ sys_sleep:
     ret
 
 
-; Asignador de Memoria Kernel (Heap Allocator - Alineado a 4 bytes)
+; Asignador de Memoria Kernel preparado para GC (Cabecera de 16 bytes)
 sys_kalloc:
     push ebp
     mov ebp, esp
@@ -573,23 +573,33 @@ sys_kalloc:
 
 .do_alloc:
     mov eax, [heap_curr_ptr]
-    mov ecx, [ebp + 8]
+    mov ecx, [ebp + 8]          ; Tamaño solicitado por Java
 
     test ecx, ecx
     jz .done_alloc
 
-    add ecx, 15
+    ; [GC INJECTION: Cabecera de 16 bytes] 
+    add ecx, 16                 ; 1. Reservar 16 bytes fijos para metadatos del GC
+    jc .fail
+
+    add ecx, 15                 ; 2. Alinear todo el bloque resultante a 16 bytes
     jc .fail    
     and ecx, 0xFFFFFFF0
 
     mov ebx, eax
-    add ebx, ecx
+    add ebx, ecx                ; EBX = Nuevo tope del Heap
     jc .fail
 
-    cmp ebx, 0x08000000
+    cmp ebx, 0x08000000         ; Límite de RAM
     ja .fail
 
     mov [heap_curr_ptr], ebx
+
+    ; Escribir tamaño total en los primeros 4 bytes de la cabecera
+    mov [eax], ecx              
+    
+    ; Retornar payload desplazado 16 bytes (garantiza alineación y padding de ceros)
+    add eax, 16                 
     jmp .done_alloc
 
 .fail:
@@ -825,7 +835,7 @@ sys_set_keyboard_layout:
     pop ebp
     ret
 
-; Lectura de FIFO sin Polling invasivo
+; Lectura de FIFO con soporte de Shift
 sys_read_keyboard_scancode:
     push ebx
     push ecx
@@ -845,18 +855,22 @@ sys_read_keyboard_scancode:
     cmp eax, 128
     jge .empty                  ; Si es un scancode de liberación (>128), retornar 0
     
-    mov al, [kbd_ascii_map + eax]
-    movzx eax, al
-    
-    cmp al, 'A'
-    jl .done
-    cmp al, 'Z'
-    jg .done
-    add al, 32                  ; Convertir a minúscula
-    jmp .done
+	cmp byte [kbd_shift_state], 0	; presionó Shift?
+	jne .use_shift
+	
+    mov al, [kbd_ascii_map_normal + eax]
+    jmp .finish_map
+	
+.use_shift:
+	mov al, [kbd_ascii_map_shift + eax]	
 
-.empty:
-    xor eax, eax
+.finish_map:
+	movzx eax, al
+	jmp .done
+
+.empty:    
+	xor eax, eax
+	
 .done:
     pop edx
     pop ecx
@@ -1629,7 +1643,37 @@ idt_entries:        times 256 * 8 db 0
 section .rodata
 align 4
 
-kbd_ascii_map:
+; Mapa de teclado LATAM Normal (Minúsculas y números)
+kbd_ascii_map_normal:
+    ; 0x00 - 0x0F (191 = ¿)
+    db 0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 39, 191, 8, 9
+    ; 0x10 - 0x1F (180 = ´)
+    db 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 180, '+', 13, 0, 'a', 's'
+    ; 0x20 - 0x2F (241 = ñ)
+    db 'd', 'f', 'g', 'h', 'j', 'k', 'l', 241, '{', '|', 0, '}', 'z', 'x', 'c', 'v'    
+    ; 0x30 - 0x3F 
+    db 'b', 'n', 'm', ',', '.', '-', 0, '*', 0, 32, 0, 0, 0, 0, 0, 0
+    ; 0x40 - 0x5F (Scancode 0x56 = <)
+    db 0, 0, 0, 0, 0, 0, 0, '7', '8', '9', '-', '4', '5', '6', '+', '1'
+    db '2', '3', '0', '.', 0, 0, '<', 0, 0, 0, 0, 0, 0, 0, 0, 0
+    times 32 db 0
+
+; Mapa de teclado LATAM Shifted (Mayúsculas y Símbolos)
+kbd_ascii_map_shift:
+    ; 0x00 - 0x0F (161 = ¡)
+    db 0, 27, '!', '"', '#', '$', '%', '&', '/', '(', ')', '=', '?', 161, 8, 9
+    ; 0x10 - 0x1F (168 = ¨)
+    db 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 168, '*', 13, 0, 'A', 'S'
+    ; 0x20 - 0x2F (209 = Ñ, 176 = °)
+    db 'D', 'F', 'G', 'H', 'J', 'K', 'L', 209, '[', 176, 0, ']', 'Z', 'X', 'C', 'V'    
+    ; 0x30 - 0x3F 
+    db 'B', 'N', 'M', ';', ':', '_', 0, '*', 0, 32, 0, 0, 0, 0, 0, 0
+    ; 0x40 - 0x5F (Scancode 0x56 = >)
+    db 0, 0, 0, 0, 0, 0, 0, '7', '8', '9', '-', '4', '5', '6', '+', '1'
+    db '2', '3', '0', '.', 0, 0, '>', 0, 0, 0, 0, 0, 0, 0, 0, 0
+    times 32 db 0
+
+kbd_ascii_map_old:
     ; 0x00 - 0x0F
     db 0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '=', '+', 8, 9
     ; 0x10 - 0x1F
