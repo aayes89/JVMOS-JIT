@@ -32,22 +32,17 @@ import java.net.DatagramPacket;
 import java.net.Netcat;
 import java.awt.Color;
 import java.awt.Graphics2D;
-import java.awt.g3d.Renderer3D;
-import java.awt.g3d.Triangle3D;
-import java.awt.g3d.Mesh;
-import java.awt.g3d.Vertex3D;
-import java.awt.g3d.Matrix3D;
 import java.awt.g3d.Demo3D;
-import java.awt.g3d.MeshFactory;
 import java.awt.Toolkit;
 import java.util.Calendar;
 import java.lang.Thread;
 import java.lang.Math;
 import java.apps.JTunelScope;
+import java.apps.RenderDemos;
 import kernel.Native;
 
 
-public class Boot {    	
+public class Boot {     
     // ==========================================
     // SISTEMA DE ARCHIVOS Y NAVEGACIÓN EN ÁRBOL
     // ==========================================
@@ -72,28 +67,28 @@ public class Boot {
     private static int cursorY = 80;
 
     public static void main(String[] args) {
-		//Native.sys(1, 0x0000FF00, 0, 0, 0); // verde
-		Native.sys(5, 20, 20, "INICIANDO JVMOS-JIT...", 0);	
-		//Native.sys(12,1000,0,0,0); // sleep 3s
-		//Native.sys(17, 0, 0, 0, 0); // exit
+        //Native.sys(1, 0x0000FF00, 0, 0, 0); // verde
+        Native.sys(5, 20, 20, "INICIANDO JVMOS-JIT...", 0); 
+        //Native.sys(12,1000,0,0,0); // sleep 3s
+        //Native.sys(17, 0, 0, 0, 0); // exit
 
-		java.lang.System.out = new PrintStream();
+        java.lang.System.out = new PrintStream();
         System.out.println("[Boot] Inicializando subsistemas Micro-RT de JVMOS-JIT...");
-		g = new Graphics2D();
-		
+        g = new Graphics2D();
+        
         portapapeles = new Portapapeles();
 
         // inicializar Teclado
-        initKeyboard();				
+        initKeyboard();             
 
         // inicializar BMFS (Sistema de archivos)
-        initFS();    				
+        initFS();                   
         
         // Inicializar redes        
         //g.drawString("RTL8139 detectada en puerto I/O: 0x" + hexVal, 20,40);
         //System.out.println("RTL8139 detectada en puerto I/O: 0x" + hexVal);
         NetworkShell.init(g);  
-		Native.sys(12,3000,0,0,0); // sleep 3s		
+        Native.sys(12,3000,0,0,0); // sleep 3s      
         
         //g.drawString("[GRAPHICS] Inicializando subsistema grafico...",20,50);
         System.out.println("[GRAPHICS] Inicializando subsistema grafico...");
@@ -103,7 +98,7 @@ public class Boot {
         System.out.println("[JVMOS-JIT] Iniciando entorno interactivo...");
         
         dramaticBIOS();
-        clearScreen();
+        g.clearScreen();
         shellHeader();
 
         int lastKey = 0, cmdLen = 0;
@@ -123,8 +118,8 @@ public class Boot {
                     }
 
                     for (int i = 0; i < cmdLen; i++){ 
-						cmdBuffer[i] = 0;
-					}
+                        cmdBuffer[i] = 0;
+                    }
                     cmdLen = 0;
 
                     if (cursorY > 700) { 
@@ -138,10 +133,10 @@ public class Boot {
                     int limitX = 90 + (currentDirPath.length() * 10) + 20;
                     if (cmdLen > 0 && cursorX > limitX) {
                         cmdLen--;
-						cmdBuffer[cmdLen] = 0;
-						cursorX -= 10;
+                        cmdBuffer[cmdLen] = 0;
+                        cursorX -= 10;
                         g.setColor(Color.BLACK);
-						g.fillRect(cursorX, cursorY, 12, 20);
+                        g.fillRect(cursorX, cursorY, 12, 20);
                     }
                 } else if (asciiChar >= 32 && asciiChar <= 165) { // CARACTERES
                     if (cmdLen < 60) {
@@ -155,10 +150,10 @@ public class Boot {
                 lastKey = 0;
             }
             try {
-				Thread.sleep(1);
-				}catch(Exception e){
-					// No capturar nada aquí
-				}
+                Thread.sleep(1);
+                }catch(Exception e){
+                    // No capturar nada aquí
+                }
         }
     }
     
@@ -181,9 +176,9 @@ public class Boot {
         int spaceIdx = -1;
         for (int i = 0; i < cmdLen; i++) {
             if (cmdBuffer[i] == ' ') {
-				spaceIdx = i;
-				break;
-			}
+                spaceIdx = i;
+                break;
+            }
         }
         
         String cmd = "";
@@ -192,20 +187,20 @@ public class Boot {
         if (spaceIdx == -1) {
             byte[] cb = new byte[cmdLen];
             for(int i=0; i<cmdLen; i++) {
-				cb[i] = (byte)cmdBuffer[i];
-			}
+                cb[i] = (byte)cmdBuffer[i];
+            }
             cmd = new String(cb);
         } else {
             byte[] cb = new byte[spaceIdx];
             for(int i=0; i<spaceIdx; i++) {
-				cb[i] = (byte)cmdBuffer[i];
-			}
+                cb[i] = (byte)cmdBuffer[i];
+            }
             cmd = new String(cb);
             
             byte[] ab = new byte[cmdLen - spaceIdx - 1];
             for(int i=spaceIdx+1; i<cmdLen; i++) {
-				ab[i - spaceIdx - 1] = (byte)cmdBuffer[i];
-			}
+                ab[i - spaceIdx - 1] = (byte)cmdBuffer[i];
+            }
             arg = new String(ab);
         }
 
@@ -296,7 +291,7 @@ public class Boot {
                 }
             }
         }
-		else if (cmd.equals("write")) {
+        else if (cmd.equals("write")) {
             int space = arg.indexOf(' ');
             if (space == -1) {
                 g.setColor(Color.RED); printLine("Uso: write <archivo.txt> <contenido>");
@@ -306,16 +301,16 @@ public class Boot {
                 // Extraer el nombre del archivo
                 byte[] nameB = new byte[space];
                 for(int i = 0; i < space; i++) {
-					nameB[i] = argBytes[i];
-				}
+                    nameB[i] = argBytes[i];
+                }
                 String fileName = new String(nameB);
                 
                 // Extraer el contenido
                 int txtLen = argBytes.length - space - 1;
                 byte[] txtB = new byte[txtLen];
                 for(int i = 0; i < txtLen; i++){
-					txtB[i] = argBytes[space + 1 + i];
-				}
+                    txtB[i] = argBytes[space + 1 + i];
+                }
                 
                 if (fs.writeFile(fileName, txtB, currentDirLba)) {
                     g.setColor(Color.GREEN); printLine("Archivo guardado: " + fileName);
@@ -343,81 +338,81 @@ public class Boot {
         }
         else if (cmd.equals("mkdir")) {
             if (arg.length() < 1) { 
-				g.setColor(Color.RED);
-				printLine("Uso: mkdir <nombre>"); 
-				return; 
-			}
+                g.setColor(Color.RED);
+                printLine("Uso: mkdir <nombre>"); 
+                return; 
+            }
             if (fs.mkdir(arg, currentDirLba)) {
-				g.setColor(Color.GREEN); 
-				printLine("Directorio creado."); 
-			}
+                g.setColor(Color.GREEN); 
+                printLine("Directorio creado."); 
+            }
             else { 
-				g.setColor(Color.RED);
-				printLine("Error al crear directorio."); 
-			}
+                g.setColor(Color.RED);
+                printLine("Error al crear directorio."); 
+            }
         }
         else if (cmd.equals("rm")) {
             if (arg.length() < 1) {
-				g.setColor(Color.RED);
-				printLine("Uso: rm <nombre>"); 
-				return; 
-			}
+                g.setColor(Color.RED);
+                printLine("Uso: rm <nombre>"); 
+                return; 
+            }
             File target = fs.lookup(arg, currentDirLba, currentDirPath);
             if (target != null) {
                 if (fs.delete(target, currentDirLba)) { 
-					g.setColor(Color.GREEN); 
-					printLine("Eliminado."); 
-				}
+                    g.setColor(Color.GREEN); 
+                    printLine("Eliminado."); 
+                }
                 else { 
-					g.setColor(Color.RED); 
-					printLine("Error al eliminar."); 
-				}
+                    g.setColor(Color.RED); 
+                    printLine("Error al eliminar."); 
+                }
             } else {
-				g.setColor(Color.RED);
-				printLine("Archivo no encontrado.");
-			}
+                g.setColor(Color.RED);
+                printLine("Archivo no encontrado.");
+            }
         }
         else if (cmd.equals("cp")) {
             if (arg.length() < 1) { 
-				g.setColor(Color.RED);
-				printLine("Uso: cp <archivo>"); 
-				return; 
-			}
+                g.setColor(Color.RED);
+                printLine("Uso: cp <archivo>"); 
+                return; 
+            }
             File source = fs.lookup(arg, currentDirLba, currentDirPath);
             if (source == null || !source.isFile()) {
                 g.setColor(Color.RED); 
-				printLine("Archivo origen invalido.");
+                printLine("Archivo origen invalido.");
             } else if (portapapeles.capturarArchivo(source, currentDirLba, false)) {
                 g.setColor(Color.GREEN); 
-				printLine("Copiado al portapapeles.");
+                printLine("Copiado al portapapeles.");
             } else {
                 g.setColor(Color.RED); 
-				printLine("No se pudo copiar.");
+                printLine("No se pudo copiar.");
             }
         }
         else if (cmd.equals("mv")) {
             if (arg.length() < 1) { 
-				g.setColor(Color.RED); 
-				printLine("Uso: mv <archivo>"); 
-				return; 
-			}
+                g.setColor(Color.RED); 
+                printLine("Uso: mv <archivo>"); 
+                return; 
+            }
             File source = fs.lookup(arg, currentDirLba, currentDirPath);
             if (source == null || !source.isFile()) {
                 g.setColor(Color.RED); 
-				printLine("Archivo origen invalido.");
+                printLine("Archivo origen invalido.");
             } else if (portapapeles.capturarArchivo(source, currentDirLba, true)) {
                 g.setColor(Color.GREEN); 
-				printLine("Cortado al portapapeles.");
+                printLine("Cortado al portapapeles.");
             } else {
                 g.setColor(Color.RED); 
-				printLine("No se pudo cortar.");
+                printLine("No se pudo cortar.");
             }
         }
         else if (cmd.equals("paste")) {
             if (!portapapeles.tieneArchivo()) {
                 g.setColor(Color.RED); 
-				printLine("Portapapeles vacio."); 
-				return;
+                printLine("Portapapeles vacio."); 
+                return;
             }
             File clipFile = portapapeles.obtenerArchivo();
             int sourceDirLba = portapapeles.obtenerLba();
@@ -436,23 +431,23 @@ public class Boot {
                         fs.delete(source, sourceDirLba);
                         portapapeles.limpiarArchivo();
                         g.setColor(Color.GREEN);
-						printLine("Movido exitosamente.");
+                        printLine("Movido exitosamente.");
                     } else {
                         g.setColor(Color.GREEN);
-						printLine("Pegado exitoso.");
+                        printLine("Pegado exitoso.");
                     }
                 } else { 
-					g.setColor(Color.RED);
-					printLine("Error al escribir archivo."); 
-				}
+                    g.setColor(Color.RED);
+                    printLine("Error al escribir archivo."); 
+                }
             } else { 
-				g.setColor(Color.RED);
-				printLine("Archivo original perdido.");
-			}
+                g.setColor(Color.RED);
+                printLine("Archivo original perdido.");
+            }
         }
         else if (cmd.equals("format")) {
             g.setColor(Color.YELLOW); 
-			printLine("Formateando disco (Wipe rapido)...");
+            printLine("Formateando disco (Wipe rapido)...");
             fs.format(40960, false);
             currentDirLba = FileSystem.ROOT_DIR_LBA;
             parentDirLba = FileSystem.ROOT_DIR_LBA;
@@ -461,24 +456,24 @@ public class Boot {
             currentDirPath = "/";
             portapapeles.limpiar();
             g.setColor(Color.GREEN); 
-			printLine("Disco formateado.");
+            printLine("Disco formateado.");
         }
         else if (cmd.equals("run") || cmd.equals("java")) {
             if (arg.length() < 1) { 
-				g.setColor(Color.RED); 
-				printLine("Uso: run <archivo.class>"); 
-				return;
-			}
+                g.setColor(Color.RED); 
+                printLine("Uso: run <archivo.class>"); 
+                return;
+            }
             if(arg.indexOf(".class") != -1) {
                 g.setColor(Color.GREEN); 
-				printLine("Ejecutando " + arg + "...");
+                printLine("Ejecutando " + arg + "...");
                 fs.execute(arg, currentDirLba, currentDirPath);
             } else {
-				g.setColor(Color.RED); 
-				printLine("Solo ejecuta .class");
-			}
+                g.setColor(Color.RED); 
+                printLine("Solo ejecuta .class");
+            }
         }
-		else if (cmd.equals("nc")) {
+        else if (cmd.equals("nc")) {
             String[] lineas = Netcat.execute(arg, fs, currentDirLba);
             g.setColor(Color.WHITE);
             for (int i = 0; i < lineas.length; i++) {
@@ -486,57 +481,57 @@ public class Boot {
             }
         }
         else if (cmd.equals("cube")) { 
-			runCubeWireframe();
-			clearScreen(); 
-			cursorY = 40; 
-		}
-		else if(cmd.equals("cube2d")){
-			runCube2D();
-			clearScreen();
-			cursorY = 40;
-		}else if(cmd.equals("cube3d")){
-			runCubeMesh3D();			
-			clearScreen();
-			cursorY = 40;
-		}else if(cmd.equals("demo3d")){
-			Demo3D.run(g);
-			clearScreen();
-			cursorY = 40;
-		}
-		else if (cmd.equals("startx")) {
-			runStartX(); 
-		}
-		else if (cmd.equals("time")) { 
-			showTime(cursorY); 
-			cursorY += 25; 
-		}
-		else if (cmd.equals("date")) { 
-			showDate(cursorY); 
-			cursorY += 25; 
-		}
+            RenderDemos.runCubeWireframe();
+            g.clearScreen(); 
+            cursorY = 40; 
+        }
+        else if(cmd.equals("cube2d")){
+            RenderDemos.runCube2D();
+            g.clearScreen();
+            cursorY = 40;
+        }else if(cmd.equals("cube3d")){
+            RenderDemos.runCubeMesh3D();            
+            g.clearScreen();
+            cursorY = 40;
+        }else if(cmd.equals("demo3d")){
+            Demo3D.run(g);
+            g.clearScreen();
+            cursorY = 40;
+        }
+        else if (cmd.equals("startx")) {
+            runStartX(); 
+        }
+        else if (cmd.equals("time")) { 
+            showTime(cursorY); 
+            cursorY += 25; 
+        }
+        else if (cmd.equals("date")) { 
+            showDate(cursorY); 
+            cursorY += 25; 
+        }
         else if (cmd.equals("ver")) {
             g.setColor(Color.GREEN);
             printLine("JVMOS Kernel v2.5 (Baremetal Java x86)");
             printLine("Micro-rt Integrado - Slam 2026");
         }
         else if (cmd.equals("clear") || cmd.equals("cls")) { 
-			clearScreen(); 
-			cursorY = 40; 
-		}		
+            g.clearScreen(); 
+            cursorY = 40; 
+        }       
         else if (cmd.equals("help")) { 
-			printHelp(); 
-		}
+            printHelp(); 
+        }
         else if (cmd.equals("exit")) { 
-			shutdown(); 
-		}
-		else if(cmd.equals("reboot")){
-			reboot();
-		}
-		else if(cmd.equals("tunel")){
-			// juego de muestra
-			JTunelScope.execute();
-		}
-		else if (cmd.equals("net")) {
+            shutdown(); 
+        }
+        else if(cmd.equals("reboot")){
+            reboot();
+        }
+        else if(cmd.equals("tunel")){
+            // juego de muestra
+            JTunelScope.execute();
+        }
+        else if (cmd.equals("net")) {
             String netCmd = "";
             String netArg = "";
             int space = arg.indexOf(' ');
@@ -602,26 +597,26 @@ public class Boot {
         printLine("  ls / dir   : Lista archivos");
         printLine("  mkdir      : Crea directorio");
         printLine("  cd         : Cambia directorio (soporta ..)");
-		printLine("  write      : Crea un archivo con texto (write test.txt hola)");		
-		printLine("  cat        : Muestra el contenido de un archivo");
+        printLine("  write      : Crea un archivo con texto (write test.txt hola)");        
+        printLine("  cat        : Muestra el contenido de un archivo");
         printLine("  rm         : Elimina archivo");
         printLine("  cp         : Copia archivo a RAM");
         printLine("  mv         : Corta archivo a RAM");
         printLine("  paste      : Pega desde la RAM");
         printLine("  run / java : Ejecuta .class");
         printLine("  format     : Formatea la particion actual");
-		printLine("  nc-listen	: Recibir archivos desde la red (netcat)");
-		printLine("  net        : Herramientas de red (ej. net ifconfig)");
+        printLine("  nc-listen  : Recibir archivos desde la red (netcat)");
+        printLine("  net        : Herramientas de red (ej. net ifconfig)");
         printLine("  cls / clear: Limpia pantalla");
         printLine("  date       : Muestra fecha");
         printLine("  time       : Muestra hora");
         printLine("  cube       : Animacion de Cubo en wireframe");
-		printLine("  cube2d     : Animacion de Cubo en 3D");
-		printLine("  cube3d     : Animacion de Cubo en 3D con Mesh");
-		printLine("  demo3d     : Test de motor 3D final");
+        printLine("  cube2d     : Animacion de Cubo en 3D");
+        printLine("  cube3d     : Animacion de Cubo en 3D con Mesh");
+        printLine("  demo3d     : Test de motor 3D final");
         printLine("  startx     : Interfaz Grafica (Deshabilitada)");
         printLine("  ver        : Info del sistema");
-		printLine("  reboot     : Reiniciar el sistema");
+        printLine("  reboot     : Reiniciar el sistema");
         printLine("  exit       : Apagar equipo");
     }
     
@@ -633,368 +628,87 @@ public class Boot {
         java.lang.System.arraycopy(dBytes, 0, nBytes, 2, limit);
         return new String(nBytes);
     }
-    
-    // =========================================================================
-    // MOTOR 3D BAREMETAL (Cubo Giratorio)
-    // =========================================================================
-    public static void runCubeWireframe() {
-        clearScreen();
-        g.setColor(Color.CYAN);
-        g.drawString("Baremetal 3D Engine (JIT Integer Math) - Presiona ESC para salir", 20, 20);
-
-        int[] cubeX = {-50, 50, 50, -50, -50, 50, 50, -50};
-        int[] cubeY = {-50, -50, 50, 50, -50, -50, 50, 50};
-        int[] cubeZ = {-50, -50, -50, -50, 50, 50, 50, 50};
-        int[] edges = { 0,1, 1,2, 2,3, 3,0, 4,5, 5,6, 6,7, 7,4, 0,4, 1,5, 2,6, 3,7 };
-        int[] projX = new int[8];
-		int[] projY = new int[8];
-		int[] oldProjX = new int[8];
-		int[] oldProjY = new int[8];
-        int angleX = 0, angleY = 0, angleZ = 0;
-
-        while (true) {
-            g.setColor(Color.BLACK);
-            for (int i = 0; i < 12; i++) {
-                int p1 = edges[i * 2];
-				int p2 = edges[i * 2 + 1];
-                if (oldProjX[p1] != 0){
-					g.drawLine(oldProjX[p1], oldProjY[p1], oldProjX[p2], oldProjY[p2]);
-				}
-            }
-
-            int sinX = Math.sin(angleX), cosX = Math.cos(angleX);
-            int sinY = Math.sin(angleY), cosY = Math.cos(angleY);
-            int sinZ = Math.sin(angleZ), cosZ = Math.cos(angleZ);
-
-            for (int i = 0; i < 8; i++) {
-                int x = cubeX[i], y = cubeY[i], z = cubeZ[i];
-                int xy = (y * cosX - z * sinX) / 256, xz = (y * sinX + z * cosX) / 256; y = xy; z = xz;
-                int yx = (x * cosY + z * sinY) / 256, yz = (-x * sinY + z * cosY) / 256; x = yx; z = yz;
-                int zx = (x * cosZ - y * sinZ) / 256, zy = (x * sinZ + y * cosZ) / 256; x = zx; y = zy;
-
-                int z_shifted = z + 150;
-                projX[i] = (x * 400) / z_shifted + 512; projY[i] = (y * 400) / z_shifted + 384;
-            }
-
-            g.setColor(Color.GREEN);
-            for (int i = 0; i < 12; i++) {
-                int p1 = edges[i * 2], p2 = edges[i * 2 + 1];
-                g.drawLine(projX[p1], projY[p1], projX[p2], projY[p2]);
-            }
-
-            for (int i = 0; i < 8; i++) { oldProjX[i] = projX[i]; oldProjY[i] = projY[i]; }
-
-            angleX = (angleX + 2) % 360; angleY = (angleY + 3) % 360; angleZ = (angleZ + 1) % 360;
-            try{Thread.sleep(16);}catch(Exception e){}
-            if (Native.sys(Native.SYS_READ_KEYBOARD, 0, 0, 0, 0) == 27) break;
-        }
-    }
-	
-	public static void runCube2D() {
-		clearScreen();
-		g.setColor(0x0000FFFF);
-		g.drawString("Baremetal 3D Engine - Filled Cube - ESC para salir",20,20);
-
-		int[] cubeX = {-50,  50,  50, -50, -50,  50,  50, -50};
-		int[] cubeY = {-50, -50,  50,  50, -50, -50,  50,  50};
-		int[] cubeZ = {-50, -50, -50, -50,  50,  50,  50,  50};
-
-		int[] faces = {	0, 1, 2, 3,	4, 7, 6, 5,	0, 4, 5, 1,	3, 2, 6, 7,	0, 3, 7, 4,	1, 5, 6, 2};
-		int[] faceColors = {
-			0x00FF0000, // rojo
-			0x00000080, // azul oscuro
-			0x0000AA00, // verde
-			0x0000FF00, // verde brillante
-			0x000000FF, // azul
-			0x00FFFF00  // amarillo
-		};
-
-		int[] projX = new int[8];
-		int[] projY = new int[8];
-
-		int[] rotZ = new int[8];
-
-		int[] faceDepth = new int[6];
-		int[] faceOrder = {0, 1, 2, 3, 4, 5};
-
-		int angleX = 0;
-		int angleY = 0;
-		int angleZ = 0;
-
-		while (true) {
-			clearScreen();
-			// Seno y Coseno
-			int sinX = Math.sin(angleX);
-			int cosX = Math.cos(angleX);
-
-			int sinY = Math.sin(angleY);
-			int cosY = Math.cos(angleY);
-
-			int sinZ = Math.sin(angleZ);
-			int cosZ = Math.cos(angleZ);
-
-			// Rotadr y proyectar los 8 vértices
-			for (int i = 0; i < 8; i++) {
-				int x = cubeX[i];
-				int y = cubeY[i];
-				int z = cubeZ[i];
-
-				// Rotación en X
-				int newY = (y * cosX - z * sinX) >> 8;
-				int newZ = (y * sinX + z * cosX) >> 8;
-				y = newY;
-				z = newZ;
-
-				// Rotación en Y
-				int newX = (x * cosY + z * sinY) >> 8;
-				newZ = (-x * sinY + z * cosY) >> 8;
-				x = newX;
-				z = newZ;
-
-				// Rotación en Z
-				newX = (x * cosZ - y * sinZ) >> 8;
-				newY = (x * sinZ + y * cosZ) >> 8;
-				x = newX;
-				y = newY;
-				
-				// Respaldamos la profundidad
-				rotZ[i] = z;
-
-				// Perspectiva
-				int zShifted = z + 200;
-
-				// Protección contra división entre cero y geometría detrás de la cámara.
-				if (zShifted < 1) {
-					zShifted = 1;
-				}
-
-				projX[i] = (x * 400) / zShifted + 512;
-				projY[i] = (y * 400) / zShifted + 384;
-			}
-
-			// Calcular profundidad promedio de cada cara
-			for (int i = 0; i < 6; i++) {
-				int base = i << 2;
-
-				int v0 = faces[base];
-				int v1 = faces[base + 1];
-				int v2 = faces[base + 2];
-				int v3 = faces[base + 3];
-
-				faceDepth[i] = rotZ[v0]	+ rotZ[v1] + rotZ[v2] + rotZ[v3];
-			}
-
-			// Ordenar caras
-			for (int i = 0; i < 6; i++) {
-				for (int j = i + 1; j < 6; j++) {
-					if (faceDepth[faceOrder[i]] > faceDepth[faceOrder[j]]) {
-						int temp = faceOrder[i];
-						faceOrder[i] = faceOrder[j];
-						faceOrder[j] = temp;
-					}
-				}
-			}
-
-			// Dibujar caras
-			for (int f = 0; f < 6; f++) {
-				int face = faceOrder[f];
-				int base = face << 2;
-
-				int v0 = faces[base];
-				int v1 = faces[base + 1];
-				int v2 = faces[base + 2];
-				int v3 = faces[base + 3];
-
-
-				// Producto cruzado en espacio de pantalla.
-				int cross = (projX[v1] - projX[v0])	* (projY[v2] - projY[v0]) -	(projY[v1] - projY[v0])	* (projX[v2] - projX[v0]);
-
-				// Si la cara apunta hacia atrás, no se dibuja.
-				if (cross >= 0) {
-					continue;
-				}
-				// Color de la cara actual
-				g.setColor(faceColors[face]);
-
-
-				// CUADRILATERO -> DOS TRIANGULOS
-				g.fillTriangle(projX[v0],projY[v0],projX[v1],projY[v1],projX[v2],projY[v2]);
-				g.fillTriangle(projX[v0],projY[v0],projX[v2],projY[v2],projX[v3],projY[v3]);
-			}
-
-
-			// Dibujar los border para dar aspecto de cubo			
-			g.setColor(Color.BLACK);
-
-			for (int i = 0; i < 6; i++) {
-				int face = faceOrder[i];
-				int base = face << 2;
-
-				int v0 = faces[base];
-				int v1 = faces[base + 1];
-				int v2 = faces[base + 2];
-				int v3 = faces[base + 3];
-
-				g.drawLine(projX[v0],projY[v0],projX[v1],projY[v1]);
-				g.drawLine(projX[v1],projY[v1],projX[v2],projY[v2]);
-				g.drawLine(projX[v2],projY[v2],projX[v3],projY[v3]);
-				g.drawLine(projX[v3],projY[v3],projX[v0],projY[v0]);
-			}
-
-			// Siguiente frame
-			angleX = (angleX + 2) % 360;
-			angleY = (angleY + 3) % 360;
-			angleZ = (angleZ + 1) % 360;
-			try {
-				Thread.sleep(16);
-			} catch (Exception e) {
-			}
-
-			if (kernel.Native.sys(kernel.Native.SYS_READ_KEYBOARD,0,0,0,0) == 27) {
-				break;
-			}
-		}
-	}
-	
-	public static void runCubeMesh3D() {
-        Renderer3D renderer = new Renderer3D(g, 1024, 768);
-		
-        Mesh cube = MeshFactory.createCube();
-        
-        // Pre-asignar matrices fuera del bucle para proteger la memoria
-        Matrix3D matrix = new Matrix3D();
-        Matrix3D rotY = new Matrix3D();
-        Matrix3D rotZ = new Matrix3D();
-        
-        // Inicializar ángulos independientes
-        int angleX = 0;
-        int angleY = 0;
-        int angleZ = 0;
-        
-        while (true) {
-            // Limpiar pantalla
-            clearScreen();
-
-            // Calcular trigonometría para los tres ejes
-            int sinX = Math.sin(angleX); 
-            int cosX = Math.cos(angleX); 
-            int sinY = Math.sin(angleY); 
-            int cosY = Math.cos(angleY); 
-            int sinZ = Math.sin(angleZ); 
-            int cosZ = Math.cos(angleZ); 
-
-            // 1. Iniciar la matriz principal con la rotación X
-            matrix.setRotationX(sinX, cosX);
-            
-            // 2. Preparar rotación Y y multiplicar
-            rotY.setRotationY(sinY, cosY);
-            matrix.multiply(rotY);
-            
-            // 3. Preparar rotación Z y multiplicar
-            rotZ.setRotationZ(sinZ, cosZ);
-            matrix.multiply(rotZ);
-
-            // Renderizar la geometría final combinada
-            renderer.render(cube, matrix, 200, 385, 100);
-            
-            // Avanzar rotaciones a distintas velocidades para un efecto más natural
-            angleX = (angleX + 1) % 360;
-            angleY = (angleY + 2) % 360;
-            angleZ = (angleZ + 3) % 360;
-
-            // Mantener ~60 FPS
-            Native.sys(12, 16, 0, 0, 0);
-
-            // Salir con ESC
-            if (Native.sys(6, 0, 0, 0, 0) == 27) {
-                break;
-            }
-        }
-    }
 
     public static void runStartX() {
-        g.setColor(Color.RED); printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");				
+        g.setColor(Color.RED); printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");             
     }
 
     public static void showTime(int y) {
-		// Formato-> HORA: HH:mm:ss
+        // Formato-> HORA: HH:mm:ss
         int hour = Calendar.get(Calendar.HOUR);
-		int min  = Calendar.get(Calendar.MINUTE);
-		int sec  = Calendar.get(Calendar.SECOND);
+        int min  = Calendar.get(Calendar.MINUTE);
+        int sec  = Calendar.get(Calendar.SECOND);
         g.setColor(Color.GREEN);
-		g.drawString(" HORA: ", 20, y);
-		// hora 01-12
+        g.drawString(" HORA: ", 20, y);
+        // hora 01-12
         g.drawChar((char)((hour / 10) + '0'), 90, y); 
-		g.drawChar((char)((hour % 10) + '0'), 100, y); 
-		g.drawChar(':', 110, y);
-		// minutos 00 a 59
+        g.drawChar((char)((hour % 10) + '0'), 100, y); 
+        g.drawChar(':', 110, y);
+        // minutos 00 a 59
         g.drawChar((char)((min / 10) + '0'), 120, y); 
-		g.drawChar((char)((min % 10) + '0'), 130, y);  
-		g.drawChar(':', 140, y);
-		// segundos 00 a 59
+        g.drawChar((char)((min % 10) + '0'), 130, y);  
+        g.drawChar(':', 140, y);
+        // segundos 00 a 59
         g.drawChar((char)((sec / 10) + '0'), 150, y); 
-		g.drawChar((char)((sec % 10) + '0'), 160, y);
+        g.drawChar((char)((sec % 10) + '0'), 160, y);
     }
 
     public static void showDate(int y) {
-		// Formato-> FECHA: dd/mm/aaaa
+        // Formato-> FECHA: dd/mm/aaaa
         int day = Calendar.get(Calendar.DAY);
-		int month = Calendar.get(Calendar.MONTH);
-		int year = Calendar.get(Calendar.YEAR);
+        int month = Calendar.get(Calendar.MONTH);
+        int year = Calendar.get(Calendar.YEAR);
         g.setColor(Color.GREEN); 
-		g.drawString("FECHA: ", 20, y);
-		// dias 01 a 31
+        g.drawString("FECHA: ", 20, y);
+        // dias 01 a 31
         g.drawChar((char)((day / 10) + '0'), 90, y); 
-		g.drawChar((char)((day % 10) + '0'), 100, y); 
-		g.drawChar('/', 110, y);
-		// mes 01 a 12
+        g.drawChar((char)((day % 10) + '0'), 100, y); 
+        g.drawChar('/', 110, y);
+        // mes 01 a 12
         g.drawChar((char)((month / 10) + '0'), 120, y); 
-		g.drawChar((char)((month % 10) + '0'), 130, y); 
-		g.drawString("/20", 140, y);
-		// años 0000 a 9999
+        g.drawChar((char)((month % 10) + '0'), 130, y); 
+        g.drawString("/20", 140, y);
+        // años 0000 a 9999
         g.drawChar((char)((year / 10) + '0'), 170, y); 
-		g.drawChar((char)((year % 10) + '0'), 180, y);
+        g.drawChar((char)((year % 10) + '0'), 180, y);
     }
 
-    public static void clearScreen() {
-		g.setColor(Color.BLACK); 
-		g.fillRect(0, 0, 1024, 768);
-	}
+    
     public static void initKeyboard() {
         System.out.println("Lectura de Teclado inicializada!");
-		Native.sys(Native.SYS_SET_KBD_LAYOUT, 1, 0, 0, 0);
-	}
+        Native.sys(Native.SYS_SET_KBD_LAYOUT, 1, 0, 0, 0);
+    }
 
     public static void dramaticBIOS() {
-        clearScreen(); 
-		/*try { 
-			Thread.sleep(250);
-		} catch(Exception e) {
-			// System.err.println(e.getMessage());			
-		}*/
+        g.clearScreen(); 
+        /*try { 
+            Thread.sleep(250);
+        } catch(Exception e) {
+            // System.err.println(e.getMessage());          
+        }*/
         g.setColor(Color.GREEN); 
-		g.drawString("JVMOS BIOS [v2.5]", 20, 25); 
-		g.drawString("=============================================", 20, 45);
+        g.drawString("JVMOS BIOS [v2.5]", 20, 25); 
+        g.drawString("=============================================", 20, 45);
         g.drawString("[ OK ]", 20, 75); g.setColor(Color.WHITE); g.drawString("Verificando CPU x86 [Protected Mode 32-Bit]...", 90, 75);
         g.setColor(Color.GREEN); 
-		g.drawString("[ OK ]", 20, 95); g.setColor(Color.WHITE); g.drawString("Memoria RAM Detectada: [128MB]", 90, 95);
+        g.drawString("[ OK ]", 20, 95); g.setColor(Color.WHITE); g.drawString("Memoria RAM Detectada: [128MB]", 90, 95);
         g.setColor(Color.GREEN); 
-		g.drawString("[ OK ]", 20, 115); g.setColor(Color.WHITE); g.drawString("Cargando Driver PS/2 Keyboard [LATAM ISO Map]", 90, 115);
+        g.drawString("[ OK ]", 20, 115); g.setColor(Color.WHITE); g.drawString("Cargando Driver PS/2 Keyboard [LATAM ISO Map]", 90, 115);
         g.setColor(Color.GREEN); 
-		g.drawString("[ OK ]", 20, 135); g.setColor(Color.WHITE); g.drawString("Cargando Driver Mouse i8042 [240 DPI]", 90, 135);
+        g.drawString("[ OK ]", 20, 135); g.setColor(Color.WHITE); g.drawString("Cargando Driver Mouse i8042 [240 DPI]", 90, 135);
         g.setColor(Color.GREEN); 
-		g.drawString("[ OK ]", 20, 155); g.setColor(Color.WHITE); g.drawString("Montando Sistema de Archivos JVMFS [ATA IDE LBA28]", 90, 155);
+        g.drawString("[ OK ]", 20, 155); g.setColor(Color.WHITE); g.drawString("Montando Sistema de Archivos JVMFS [ATA IDE LBA28]", 90, 155);
         g.setColor(Color.GREEN); 
-		g.drawString("[ OK ]", 20, 175); g.setColor(Color.WHITE); g.drawString("Modo de Video VBE VESA [1024x768 @ 32bpp]", 90, 175);
+        g.drawString("[ OK ]", 20, 175); g.setColor(Color.WHITE); g.drawString("Modo de Video VBE VESA [1024x768 @ 32bpp]", 90, 175);
         g.setColor(Color.GREEN); 
-		g.drawString("=============================================", 20, 45);
-		g.drawString("SISTEMA LISTO. Iniciando Shell interactivo...", 20, 205);
+        g.drawString("=============================================", 20, 45);
+        g.drawString("SISTEMA LISTO. Iniciando Shell interactivo...", 20, 205);
         try { 
-			Thread.sleep(2000);
-		} catch(Exception e) {
-			// System.err.println(e.getMessage());			
-		} 
-		clearScreen();
+            Thread.sleep(2000);
+        } catch(Exception e) {
+            // System.err.println(e.getMessage());          
+        } 
+        g.clearScreen();
     }
 
     public static void shellHeader() {
@@ -1006,17 +720,17 @@ public class Boot {
     }
 
     public static void shutdown() {
-		clearScreen();
+        g.clearScreen();
         g.setColor(Color.RED);
-		g.drawString("SISTEMA APAGADO. CERRANDO EN 2s...", 380, 360);
+        g.drawString("SISTEMA APAGADO. CERRANDO EN 2s...", 380, 360);
         try { 
-			Thread.sleep(2000);
-		} catch(Exception e){
-			// System.err.println(e.getMessage); 
-		} 
-		java.lang.System.exit(0);
+            Thread.sleep(2000);
+        } catch(Exception e){
+            // System.err.println(e.getMessage); 
+        } 
+        java.lang.System.exit(0);
     }
-	public static void reboot(){
-		java.lang.System.reboot();
-	}
+    public static void reboot(){
+        java.lang.System.reboot();
+    }
 }
