@@ -26,7 +26,10 @@ import java.io.DiskIO;
 import java.io.FileSystem;
 import java.io.File;
 import java.io.PrintStream;
+import java.io.IOException;
 import java.net.NetworkShell;
+import java.net.DatagramPacket;
+import java.net.Netcat;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.g3d.Renderer3D;
@@ -40,8 +43,9 @@ import java.awt.Toolkit;
 import java.util.Calendar;
 import java.lang.Thread;
 import java.lang.Math;
+import java.apps.JTunelScope;
 import kernel.Native;
-import java.io.IOException;
+
 
 public class Boot {    	
     // ==========================================
@@ -91,11 +95,11 @@ public class Boot {
         NetworkShell.init(g);  
 		Native.sys(12,3000,0,0,0); // sleep 3s		
         
-        g.drawString("[GRAPHICS] Inicializando subsistema grafico...",20,50);
+        //g.drawString("[GRAPHICS] Inicializando subsistema grafico...",20,50);
         System.out.println("[GRAPHICS] Inicializando subsistema grafico...");
-        g.drawString("[HARDWARE] Inicializando controladores I/O...",20,60);
+        //g.drawString("[HARDWARE] Inicializando controladores I/O...",20,60);
         System.out.println("[HARDWARE] Inicializando controladores I/O...");
-        g.drawString("[JVMOS-JIT] Iniciando entorno interactivo...",20,70);
+        //g.drawString("[JVMOS-JIT] Iniciando entorno interactivo...",20,70);
         System.out.println("[JVMOS-JIT] Iniciando entorno interactivo...");
         
         dramaticBIOS();
@@ -292,6 +296,51 @@ public class Boot {
                 }
             }
         }
+		else if (cmd.equals("write")) {
+            int space = arg.indexOf(' ');
+            if (space == -1) {
+                g.setColor(Color.RED); printLine("Uso: write <archivo.txt> <contenido>");
+            } else {
+                byte[] argBytes = arg.getBytes();
+                
+                // Extraer el nombre del archivo
+                byte[] nameB = new byte[space];
+                for(int i = 0; i < space; i++) {
+					nameB[i] = argBytes[i];
+				}
+                String fileName = new String(nameB);
+                
+                // Extraer el contenido
+                int txtLen = argBytes.length - space - 1;
+                byte[] txtB = new byte[txtLen];
+                for(int i = 0; i < txtLen; i++){
+					txtB[i] = argBytes[space + 1 + i];
+				}
+                
+                if (fs.writeFile(fileName, txtB, currentDirLba)) {
+                    g.setColor(Color.GREEN); printLine("Archivo guardado: " + fileName);
+                } else {
+                    g.setColor(Color.RED); printLine("Error al guardar archivo.");
+                }
+            }
+        }
+        else if (cmd.equals("cat")) {
+            if (arg.length() < 1) { 
+                g.setColor(Color.RED); printLine("Uso: cat <archivo>"); 
+            } else {
+                File f = fs.lookup(arg, currentDirLba, currentDirPath);
+                if (f != null && f.isFile()) {
+                    byte[] data = fs.readFile(f);
+                    if (data != null && data.length > 0) {
+                        g.setColor(Color.WHITE); printLine(new String(data));
+                    } else {
+                        g.setColor(Color.YELLOW); printLine("[Archivo vacio]");
+                    }
+                } else {
+                    g.setColor(Color.RED); printLine("Archivo no encontrado o es directorio.");
+                }
+            }
+        }
         else if (cmd.equals("mkdir")) {
             if (arg.length() < 1) { 
 				g.setColor(Color.RED);
@@ -429,6 +478,13 @@ public class Boot {
 				printLine("Solo ejecuta .class");
 			}
         }
+		else if (cmd.equals("nc")) {
+            String[] lineas = Netcat.execute(arg, fs, currentDirLba);
+            g.setColor(Color.WHITE);
+            for (int i = 0; i < lineas.length; i++) {
+                printLine(lineas[i]);
+            }
+        }
         else if (cmd.equals("cube")) { 
 			runCubeWireframe();
 			clearScreen(); 
@@ -475,6 +531,10 @@ public class Boot {
 		}
 		else if(cmd.equals("reboot")){
 			reboot();
+		}
+		else if(cmd.equals("tunel")){
+			// juego de muestra
+			JTunelScope.execute();
 		}
 		else if (cmd.equals("net")) {
             String netCmd = "";
@@ -542,12 +602,15 @@ public class Boot {
         printLine("  ls / dir   : Lista archivos");
         printLine("  mkdir      : Crea directorio");
         printLine("  cd         : Cambia directorio (soporta ..)");
+		printLine("  write      : Crea un archivo con texto (write test.txt hola)");		
+		printLine("  cat        : Muestra el contenido de un archivo");
         printLine("  rm         : Elimina archivo");
         printLine("  cp         : Copia archivo a RAM");
         printLine("  mv         : Corta archivo a RAM");
         printLine("  paste      : Pega desde la RAM");
         printLine("  run / java : Ejecuta .class");
         printLine("  format     : Formatea la particion actual");
+		printLine("  nc-listen	: Recibir archivos desde la red (netcat)");
 		printLine("  net        : Herramientas de red (ej. net ifconfig)");
         printLine("  cls / clear: Limpia pantalla");
         printLine("  date       : Muestra fecha");
