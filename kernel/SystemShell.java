@@ -37,8 +37,9 @@ import java.awt.g3d.Demo3D;
 import kernel.Native;
 
 public class SystemShell {
-	  private static Graphics2D g;
-	  private static FileSystem fs;
+	// Clases de sistema de archivo y hardware general
+	private static Graphics2D g;
+	private static FileSystem fs;
     private static Portapapeles portapapeles;
 
     // Estado visual del Shell
@@ -53,6 +54,7 @@ public class SystemShell {
     private static int parentDirLba;
     private static String currentDirPath;
 
+    // Función constructor para inicializar variables
     public static void init(FileSystem fileSys, Graphics2D graphics, Portapapeles clip) {
         fs = fileSys;
         g = graphics;
@@ -65,6 +67,7 @@ public class SystemShell {
         currentDirPath = "/";
     }
 
+    // Ciclo principal del shell
 	public static void startLoop() {
         g.clearScreen();
         shellHeader();
@@ -125,6 +128,7 @@ public class SystemShell {
         }
     }
 
+    // Procesar comandos en el shell
 	public static void processCommand(int cmdLen, int[] cmdBuffer) {
         int spaceIdx = -1;
         for (int i = 0; i < cmdLen; i++) {
@@ -531,6 +535,7 @@ public class SystemShell {
         }
     }
     
+    // Imprime el prólogo del shell
     public static void drawPrompt() {
         g.setColor(Color.GREEN); 
         g.drawString("JVMOS [", 20, cursorY);
@@ -543,6 +548,7 @@ public class SystemShell {
         cursorX = endBracketX + 20;
     }
 
+    // Imprime la ayuda del shell
 	public static void printHelp() {
         g.setColor(Color.GREEN); printLine("COMANDOS DISPONIBLES:");
         g.setColor(Color.WHITE);
@@ -573,6 +579,7 @@ public class SystemShell {
         printLine("  exit       : Apagar equipo");
     }
 
+    // Crea una copia segura de una cadena de texto
     private static String generateSafeCopyName(String original) {
         byte[] dBytes = original.getBytes();
         byte[] nBytes = new byte[15];
@@ -582,11 +589,13 @@ public class SystemShell {
         return new String(nBytes);
     }
 
+    // Iniciar el modo gráfico del UI
     public static void runStartX() {
         g.setColor(Color.RED); 
         printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");             
     }
 
+    // Muestra la hora
     public static void showTime(int y) {
         // Formato-> HORA: HH:mm:ss
         int hour = Calendar.get(Calendar.HOUR);
@@ -607,6 +616,7 @@ public class SystemShell {
         g.drawChar((char)((sec % 10) + '0'), 160, y);
     }
 
+    // Muestra la fecha
     public static void showDate(int y) {
         // Formato-> FECHA: dd/mm/aaaa
         int day = Calendar.get(Calendar.DAY);
@@ -627,6 +637,8 @@ public class SystemShell {
         g.drawChar((char)((year % 10) + '0'), 180, y);
     }
 
+    
+    // Imprime una cabecera inicial en el shell
     public static void shellHeader() {
         g.setColor(Color.CYAN);
         g.drawString("JVMOS BAREMETAL TERMINAL", 20, 30);
@@ -635,6 +647,7 @@ public class SystemShell {
         cursorY = 85;
     }
 
+    // Apaga el sistema
     public static void shutdown() {
         g.clearScreen();
         g.setColor(Color.RED);
@@ -646,6 +659,8 @@ public class SystemShell {
         } 
         java.lang.System.exit(0);
     }
+
+    // Reinicia el sistema
     public static void reboot(){
         java.lang.System.reboot();
     }
