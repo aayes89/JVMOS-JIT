@@ -56,8 +56,9 @@ public class NetworkShell {
         mask = new byte[]{(byte)255,(byte)255,(byte)255,(byte)0};   // mask: 255.255.255.0
         gw = new byte[]{(byte)10,(byte)0,(byte)2,(byte)2};          //   gw: 10.0.2.2
         dns1 = new byte[]{(byte)8,(byte)8,(byte)8,(byte)8};         // dns1: 8.8.8.8 google
-        dns2 = new byte[]{(byte)1,(byte)1,(byte)1,(byte)1};         // dns2: 1.1.1.1 one.one.one.one
-
+        dns2 = new byte[]{(byte)1,(byte)1,(byte)1,(byte)1};         // dns2: 1.1.1.1 one.one.one.one		
+		mac = getMacAddress();
+		
 		if(type == NetworkAdapter.TYPE_RTL8139){	// RTL8139 = 1
 			// Inicializando el adaptador RTL8139
 			adapter = new NetworkAdapter(NetworkAdapter.TYPE_RTL8139, portBase);
@@ -203,8 +204,7 @@ public class NetworkShell {
     }
 
     // Obtención de configuración de red vía servicio DHCP si estuviera disponible
-    private static String[] handleDHCP(){
-        mac = getMacAddress();
+    private static String[] handleDHCP(){        
         DhcpClient dhcp = new DhcpClient(adapter, mac);
         if(dhcp.discoverAndConfigure()){
             return new String[]{
@@ -229,8 +229,7 @@ public class NetworkShell {
         if (domain.length() < 3) return new String[] { "Uso: net nslookup <dominio>" };
 
         byte[] destIp = dns1; // Uso el DNS primario
-        mac = getMacAddress();
-
+		
         // Ruteo (ARP al Gateway si el DNS está fuera de la subred)
         byte[] nextHopIp = destIp;
         boolean sameSubnet = true;
@@ -411,15 +410,15 @@ public class NetworkShell {
 	
     // Obtiene la MAC de la tarjeta de red (funciona en QEMU)
 	private static byte[] getMacAddress(){ 
-		byte[] mac = new byte[16];
+		byte[] mmac = new byte[16];
 		for(int i=0;i<6;i++){
-			mac[i] = (byte) Runtime.inb(portBase + i);
+			mmac[i] = (byte) Runtime.inb(portBase + i);
 		}
-		return mac;
+		return mmac;
 	}
 	
     // Obtiene la IP de una cadena de texto y la convierte a arreglo de bytes
-	private static byte[] parseIp(String ipString){
+	public static byte[] parseIp(String ipString){
 		byte[] ip = new byte[4];
 		int part = 0;
 		int value = 0;
@@ -644,7 +643,7 @@ public class NetworkShell {
     }
     
     // Hacer PING vía ARP
-    private static String[] handleArpPing(String targetIp) {
+    public static String[] handleArpPing(String targetIp) {
         if (targetIp.length() < 1) {
             return new String[] { "Uso: net arp-ping <IP>" };
         }
@@ -806,6 +805,24 @@ public class NetworkShell {
     public static void setDNS2(byte[] dns){
         NetworkShell.dns2 = dns;
     }
+	public static byte[] getLocalIP(){
+		return localIp;
+	}
+	public static byte[] getMask(){
+		return mask;
+	}
+	public static byte[] getGW(){
+		return gw;
+	}
+	public static byte[] getMAC(){
+		return mac;
+	}
+	public static byte[] getDNS1(){
+		return dns1;
+	}
+	public static byte[] getDNS2(){
+		return dns2;
+	}
 	public static RawSocket getRawSocket(){
 		return rawSocket;
 	}
