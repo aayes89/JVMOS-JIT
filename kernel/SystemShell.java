@@ -35,6 +35,7 @@ import java.apps.JTunelScope;
 import java.apps.RenderDemos;
 import java.awt.g3d.Demo3D;
 import kernel.Native;
+import kernel.UI;
 
 public class SystemShell {
 	// Clases de sistema de archivo y hardware general
@@ -456,7 +457,7 @@ public class SystemShell {
             cursorY = 40;
         }
         else if (cmd.equals("startx")) {
-            runStartX(); 
+           runStartX(); 
         }
         else if (cmd.equals("time")) { 
             showTime(cursorY); 
@@ -592,7 +593,9 @@ public class SystemShell {
     // Iniciar el modo gráfico del UI
     public static void runStartX() {
         g.setColor(Color.RED); 
-        printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");             
+        //printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");   
+        UI mui = new UI();    
+        mui.runStartX();      
     }
 
     // Muestra la hora
