@@ -47,6 +47,12 @@ public final class System {
 		//while (1) asm volatile ("hlt");
 	}
 
+    // Inicializar teclado
+    public static void initKeyboard() {
+        out.println("Lectura de Teclado inicializada!");
+        Native.sys(Native.SYS_SET_KBD_LAYOUT, 1, 0, 0, 0);
+    }
+
     // Copia manual para eludir punteros inseguros de C
     public static void arraycopy(Object src, int srcPos, Object dest, int destPos, int length) {
         if (src instanceof byte[] && dest instanceof byte[]) {
