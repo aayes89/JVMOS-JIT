@@ -129,8 +129,10 @@ clean:
 
 .PHONY: all run clean
 
+# Crear un disco virtual para almacenar archivos
+# qemu-img create -f raw disk.img 10M
+
 # LISTA ESTRICTA DE CLASES JAVA A COMPILAR
-# qemu-img create -f raw mi_disk.img 10M
 #JAVA_SOURCES := kernel/Boot.java kernel/Native.java kernel/vfs/Node.java \
 #                java/lang/Object.java java/lang/String.java java/lang/StringBuilder.java \
 #                java/lang/System.java java/lang/Thread.java java/lang/Runtime.java \
