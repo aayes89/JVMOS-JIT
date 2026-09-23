@@ -1183,11 +1183,11 @@ methods_ptr:       dd 0
 current_param_count: dd 0
 
 section .bss
-cp_offsets:        resd 1024
+cp_offsets:        resd 65536
 
 align 4
-class_name_ptr: resd 256
-class_addr_ptr: resd 256
+class_name_ptr: resd 1024
+class_addr_ptr: resd 1024
 class_count:    resd 1
 
 section .note.GNU-stack noalloc noexec nowrite progbits
