@@ -908,6 +908,7 @@ jit_op_ldc:
     push edx
     call sys_kalloc
     add esp, 4
+	or dword [eax - 12], 4 		; hacer el byte[] interno Inmortal (Bit 2)
 
     mov esi, [esp + 28]         
     movzx ecx, byte [esi - 2]
@@ -965,6 +966,7 @@ jit_op_ldc:
     push 4096
     call sys_kalloc
     add esp, 4
+	or dword [eax - 12], 4			; Hacer el String Inmortal (Bit 2)
 
     mov ebx, [esp + 16]         
     mov edi, eax
@@ -1029,6 +1031,7 @@ jit_op_ldc_w:
     push edx
     call sys_kalloc
     add esp, 4
+	or dword [eax - 12], 4 		; hacer el byte[] interno Inmortal (Bit 2)
     
     mov esi, [esp + 28]         
     movzx ecx, byte [esi - 2]
@@ -1086,6 +1089,7 @@ jit_op_ldc_w:
     push 4096
     call sys_kalloc
     add esp, 4
+	or dword [eax - 12], 4			; Hacer el String Inmortal (Bit 2)
     
     mov ebx, [esp + 16]         
     mov edi, eax
