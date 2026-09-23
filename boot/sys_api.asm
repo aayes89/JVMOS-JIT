@@ -39,6 +39,7 @@ global sys_get_free_mem
 global sys_get_ram_size
 global sys_memcpy
 global sys_memset
+global sys_gc_collect
 %include "boot/sys_thread.asm"
 global sys_switch_context
 
@@ -114,11 +115,12 @@ global sys_indw
 global sys_outdw
 global sys_wait_io
 
-; Externos del Kernel/Framebuffer
+; Externos del Kernel/Framebuffer/GC
 extern g_framebuffer
 extern g_pitch
 extern draw_char_vram
 extern jit_flush_icache
+extern java_static_vars
 
 ; SECCIÓN BSS (MEMORIA NO INICIALIZADA)
 section .bss
@@ -128,6 +130,8 @@ sys_ticks           resd 1
 
 heap_curr_ptr       resd 1
 heap_start_ptr      resd 1
+free_list_head		resd 1	; cabeza de la lisa de bloques reciclados
+stack_bottom		resd 1	; saber hasta donde escanear la pila
 
 kbd_fifo_buf        resb 256
 kbd_fifo_head       resd 1
@@ -166,9 +170,11 @@ sys_hardware_init:
     mov dword [mouse_y], 384
     mov dword [mouse_btn], 0
     mov dword [sys_ticks], 0
-    mov dword [heap_curr_ptr], 0
+    mov dword [heap_curr_ptr], 0x00400000
     mov dword [heap_start_ptr], 0x00400000
     mov dword [current_color], 0xFFFFFFFF
+	mov dword [free_list_head], 0       
+    mov [stack_bottom], ebp    ; Guardar la base inicial de la pila del kernel
 
     call sys_init_keyboard
     call sys_init_mouse
@@ -556,62 +562,195 @@ sys_kalloc:
     push ebp
     mov ebp, esp
     push ebx
+    push esi
+    push edi
 
-    cmp dword [heap_curr_ptr], 0
-    jne .do_alloc
-
-    mov eax, [heap_start_ptr]
-    cmp eax, 0
-    jne .set_start
-
-    mov eax, 0x00400000
-
-.set_start:
-    add eax, 15
-    and eax, ~15
-    mov [heap_curr_ptr], eax
-
-.do_alloc:
-    mov eax, [heap_curr_ptr]
-    mov ecx, [ebp + 8]          ; Tamaño solicitado por Java
-
+    mov ecx, [ebp + 8]          ; Tamaño solicitado
     test ecx, ecx
-    jz .done_alloc
+    jz .fail
 
-    ; [GC INJECTION: Cabecera de 16 bytes] 
-    add ecx, 16                 ; 1. Reservar 16 bytes fijos para metadatos del GC
-    jc .fail
+    ; Calcular tamaño real (Payload + 16 bytes de cabecera alineados a 16)
+    add ecx, 16                 
+    add ecx, 15                 
+    and ecx, 0xFFFFFFF0         ; ECX = Tamaño total alineado
 
-    add ecx, 15                 ; 2. Alinear todo el bloque resultante a 16 bytes
-    jc .fail    
-    and ecx, 0xFFFFFFF0
+.try_alloc:
+    ; Buscar en la free_list (First-Fit)
+    mov ebx, free_list_head
+    mov esi, [ebx]              ; ESI = Nodo actual
+.search_free_list:
+    test esi, esi
+    jz .bump_alloc              ; Si es NULL, no hay bloques reciclados grandes, usar el heap residual
 
+    mov eax, [esi]              ; Leer tamaño del bloque libre
+    cmp eax, ecx
+    jae .found_free_block       ; Si el bloque es suficientemente grande, se usa
+
+    lea ebx, [esi + 8]          ; Avanzar al siguiente nodo (Offset 8 es 'next')
+    mov esi, [ebx]
+    jmp .search_free_list
+
+.found_free_block:
+    ; Desvincular de la free_list
+    mov edi, [esi + 8]          ; Leer 'next' del nodo actual
+    mov [ebx], edi              ; Padre->next = Nodo->next
+
+    ; Marcar como asignado (Bit 0 = 1, Bit 1 = 0)
+    mov dword [esi + 4], 1      
+    mov eax, esi
+    add eax, 16                 ; Retornar puntero al payload
+    jmp .done
+
+.bump_alloc:
+    ; Asignación lineal si no hay reciclaje
+    mov eax, [heap_curr_ptr]
     mov ebx, eax
     add ebx, ecx                ; EBX = Nuevo tope del Heap
-    jc .fail
-
-    cmp ebx, 0x08000000         ; Límite de RAM
-    ja .fail
+    
+    cmp ebx, 0x08000000         ; mayor que 128 MB?
+    ja .trigger_gc
 
     mov [heap_curr_ptr], ebx
+    mov [eax], ecx              ; Cabecera Offset 0: Tamaño total
+    mov dword [eax + 4], 1      ; Cabecera Offset 4: Flags (1 = Asignado)
+    mov dword [eax + 8], 0      ; Cabecera Offset 8: Puntero Next
 
-    ; Escribir tamaño total en los primeros 4 bytes de la cabecera
-    mov [eax], ecx              
-    
-    ; Retornar payload desplazado 16 bytes (garantiza alineación y padding de ceros)
-    add eax, 16                 
-    jmp .done_alloc
+    add eax, 16                 ; Retornar puntero al payload
+    jmp .done
+
+.trigger_gc:
+    ; Invocar Recolector de Basura y reintentar una sola vez
+    call sys_gc_collect
+    ; Tras el barrido, intentar allocation temporalmente
+    ; Para evitar bucle infinito, aquí deberíamos poner un flag, pero por ahora lo simplificamos:
+    ; Si tras el GC el bump pointer bajó o hay bloques libres, funcionará arriba.
+    jmp .try_alloc
 
 .fail:
     xor eax, eax
-
-.done_alloc:
+.done:
+    pop edi
+    pop esi
     pop ebx
     pop ebp
     ret
+	
+; Recolector de basura GC (método MARK AND SWEEP)
+sys_gc_collect:
+    pusha
+
+    ; FASE 1: MARCADOR (MARK)
+    ; 1A. Escanear Variables Estáticas Globales de Java (4096 DWORDs)
+    mov esi, java_static_vars
+    mov ecx, 4096
+.mark_statics:
+    mov edi, [esi]              ; Leer valor de la variable
+    call gc_mark_object
+    add esi, 4
+    loop .mark_statics
+
+    ; 1B. Escaneo Conservador de la Pila (Stack)
+    mov esi, esp
+    mov ecx, [stack_bottom]
+.mark_stack:
+    cmp esi, ecx
+    jae .phase2
+    mov edi, [esi]
+    call gc_mark_object
+    add esi, 4
+    jmp .mark_stack
+
+    ; FASE 2: BARRIDO (SWEEP) 
+.phase2:
+    mov esi, [heap_start_ptr]
+    mov dword [free_list_head], 0   ; Reiniciar free_list
+
+.sweep_loop:
+    cmp esi, [heap_curr_ptr]
+    jae .gc_done                ; Fin del heap utilizado
+
+    mov eax, [esi]              ; EAX = Tamaño del bloque
+    mov ebx, [esi + 4]          ; EBX = Flags (Bit 0: Asignado, Bit 1: Marcado)
+
+    test ebx, 2                 ; ¿Está marcado? (Bit 1)
+    jnz .keep_object
+
+    ; Objeto Muerto o Libre: Añadir a free_list
+    mov dword [esi + 4], 0      ; Limpiar flags (Desasignado)
+    mov edx, [free_list_head]
+    mov [esi + 8], edx          ; block->next = free_list_head
+    mov [free_list_head], esi   ; free_list_head = block
+    jmp .next_block
+
+.keep_object:
+    ; Objeto Vivo: Quitar marca para el siguiente ciclo de GC
+    and dword [esi + 4], ~2     ; Apagar Bit 1
+
+.next_block:
+    add esi, eax                ; Saltar al siguiente bloque físico
+    jmp .sweep_loop
+
+.gc_done:
+    popa
+    ret
+
+; Subrutina: Marca un objeto y escanea recursivamente sus campos
+; Entrada: EDI = Posible puntero a objeto (Payload)
+gc_mark_object:
+    ; Verificar límites (Rango del Heap)
+    cmp edi, [heap_start_ptr]
+    jb .done
+    cmp edi, [heap_curr_ptr]
+    jae .done
+
+    ; Calcular inicio de la cabecera (Puntero - 16 bytes)
+    mov eax, edi
+    sub eax, 16
+    
+    ; Verificar si está asignado (Bit 0 de Flags en [eax + 4])
+    mov ebx, [eax + 4]
+    test ebx, 1
+    jz .done
+
+    ; Verificar si ya está marcado (Bit 1) 
+	; (Para evitar bucles infinitos en referencias cíclicas)
+    test ebx, 2
+    jnz .done
+
+    ; Marcar el objeto (Encender Bit 1)
+    or dword [eax + 4], 2
+
+    ; Escaneo recursivo del payload (conservador)
+    mov ecx, [eax]          ; Leer tamaño total del bloque
+    sub ecx, 16             ; Descontar la cabecera para obtener tamaño del payload
+    shr ecx, 2              ; Dividir entre 4 para obtener cantidad de DWORDs a escanear
+    jz .done                ; Si el payload es 0, terminar
+
+    ; Guardar contexto antes de la recursión
+    push esi                
+    push edi                
+    
+    mov esi, edi            ; ESI = Inicio del payload a escanear
+    
+.scan_fields:
+    push ecx                ; Guardar el contador del bucle actual
+    
+    mov edi, [esi]          ; Leer el DWORD actual (potencial puntero)
+    call gc_mark_object     ; Recursión 
+    
+    pop ecx                 ; Restaurar contador
+    add esi, 4              ; Avanzar al siguiente DWORD
+    dec ecx
+    jnz .scan_fields
+    
+    ; Restaurar contexto original
+    pop edi                 
+    pop esi                 
+    
+.done:
+    ret
     
 ; Obtener Memoria Disponible en el Heap
-
 sys_get_free_mem:
     cmp dword [heap_curr_ptr], 0
     jne .ok
