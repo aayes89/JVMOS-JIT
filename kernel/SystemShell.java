@@ -34,8 +34,8 @@ import java.lang.Thread;
 import java.apps.JTunelScope;
 import java.apps.RenderDemos;
 import java.awt.g3d.Demo3D;
-import kernel.Native;
-import kernel.UI;
+//import kernel.Native;
+//import kernel.UI;
 
 public class SystemShell {
 	// Clases de sistema de archivo y hardware general
@@ -116,7 +116,7 @@ public class SystemShell {
                         g.setColor(Color.WHITE); g.drawChar((char)asciiChar, cursorX, cursorY);
                         cursorX += 10;
                     }
-                }
+                }				
                 lastKey = asciiChar;
             } else if (asciiChar == 0) {
                 lastKey = 0;
@@ -594,7 +594,7 @@ public class SystemShell {
     public static void runStartX() {
         g.setColor(Color.RED); 
         //printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");   
-        UI mui = new UI();    
+        UI mui = new UI(fs, portapapeles);    
         mui.runStartX();      
     }
 
