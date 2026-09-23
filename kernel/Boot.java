@@ -58,7 +58,11 @@ public class Boot {
         initFS();                   
         
         // Inicializar redes        
-        NetworkShell.init(g);  
+        NetworkShell.init(g); 
+		
+		// Prueba del GC
+		testGarbageCollector();
+		
         Native.sys(12,3000,0,0,0); // sleep 3s      
         
         System.out.println("[GRAPHICS] Inicializando subsistema grafico...");
@@ -73,6 +77,19 @@ public class Boot {
         SystemShell.init(fs, g, portapapeles);
         SystemShell.startLoop();
     }
+	
+	public static void testGarbageCollector() {
+        System.out.println("[GC Test] Creando 50,000 arreglos (Aprox 200MB) para forzar el Recolector...");
+        
+        for (int i = 0; i < 50000; i++) {
+            // Cada arreglo ocupa unos 4KB. Multiplicado por 50,000 excede tu RAM de 128MB.
+            // Si el GC no los detectara como "muertos" y los reciclara, el SO crashearía aquí.
+            int[] basura = new int[1024]; 
+            basura[0] = i; 
+        }
+        
+        System.out.println("[GC Test] Prueba superada! La memoria fue reciclada sin crashear.");
+    }
     
     public static void initFS() {
         disk = new DiskIO();
@@ -84,7 +101,7 @@ public class Boot {
         System.out.println("Sistema de Archivos BMFS inicializado!");
     }
 
-    public static void dramaticBIOS() {
+    public static void dramaticBIOS() {		
         g.clearScreen(); 
         g.setColor(Color.GREEN); 
         g.drawString("JVMOS BIOS [v2.5]", 20, 25); 
