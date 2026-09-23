@@ -46,6 +46,7 @@ extern sys_hardware_init
 extern sys_kalloc
 extern sys_hlt
 extern sys_serial_puts
+extern sys_serial_putc
 extern sys_native_dispatch      ; Enlace directo al despachador de Syscalls HAL
 
 extern jit_init
@@ -143,9 +144,9 @@ bootjvm_start:
     ; Cachear puntero a método e inicializar JIT global
     call parse_class_structure
 
-    ; Asignar 1MB para la memoria persistente del JIT
-    mov eax, 0x00200000
-    mov ebx, 1048576
+    ; Asignar 4MB para la memoria persistente del JIT
+    mov eax, 0x01000000
+    mov ebx, 4194304
     call jit_init
 
     ; Buscar MAIN en bytecode
@@ -551,12 +552,12 @@ resolve_and_compile_java_method:
     jz .panic
 
 .search_class_hierarchy:
-    ; 1. Cargar el contexto de la clase actual en la jerarquía
+    ; Cargar el contexto de la clase actual en la jerarquía
     mov [current_class_ptr], eax
     call parse_constant_pool
     call parse_class_structure
 
-    ; 2. Buscar el método en la clase activa
+    ; Buscar el método en la clase activa
     push dword [ebp - 28]       ; Longitud Descriptor
     push dword [ebp - 24]       ; Puntero Descriptor
     push dword [ebp - 16]       ; Longitud Nombre
@@ -567,7 +568,7 @@ resolve_and_compile_java_method:
     test eax, eax
     jnz .method_found           ; ¡Encontrado! Salir del bucle
 
-    ; --- 3. FALLBACK DE HERENCIA: Buscar en la Superclase ---
+    ; FALLBACK DE HERENCIA: Buscar en la Superclase 
     mov esi, [cp_end_ptr]
     mov ax, [esi + 4]           ; Leer el índice 'super_class'
     xchg al, ah
@@ -725,10 +726,25 @@ resolve_and_compile_java_method:
 .panic:
     push msg_err_resolve
     call sys_serial_puts
-    mov eax, [ebp - 12]
+	add esp, 4
+	mov esi, [ebp - 12]
+    mov ecx, [ebp - 16]
+
+.panic_print_loop:
+	test ecx, ecx
+	jz .panic_halt
+	movzx eax, byte [esi]	
     push eax
-    call sys_serial_puts
-    add esp, 8
+    call sys_serial_putc	
+    add esp, 4
+	inc esi
+	dec ecx
+	jmp .panic_print_loop
+
+.panic_halt:	
+	push msg_newline
+	call sys_serial_puts
+	add esp, 4
     cli
     hlt
 
