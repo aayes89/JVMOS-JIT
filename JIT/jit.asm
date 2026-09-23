@@ -2745,11 +2745,10 @@ jit_op_lcmp:
     ret
 
 ; Opcode: 0xC5
-jit_op_multianewarray:
-    add esi, 3
-	jmp alloc_array
-
-alloc_array:
+jit_op_newarray:
+    movzx edx, byte [esi]       ; Leer el <atype> (tipo de dato primitivo)
+    inc esi                     ; Saltar byte <atype>
+    
     mov al, 0x5B                ; pop ebx (length)
     call jit_emit_byte
     
@@ -2757,27 +2756,114 @@ alloc_array:
     call jit_emit_byte
     mov al, 0xD8
     call jit_emit_byte
+
+    cmp dl, 4                   ; boolean
+    je .mult_1
+    cmp dl, 8                   ; byte
+    je .mult_1
+    cmp dl, 5                   ; char
+    je .mult_2
+    cmp dl, 9                   ; short
+    je .mult_2
+    cmp dl, 7                   ; double
+    je .mult_8
+    cmp dl, 11                  ; long
+    je .mult_8
     
-    mov al, 0xC1                ; shl eax, 2 (length * 4 bytes)
+    ; Por defecto (int, float, referencias)
+    jmp .mult_4
+
+.mult_1:
+    jmp .calc_size
+
+.mult_2:
+    mov al, 0xD1                ; shl eax, 1 (eax * 2)
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    jmp .calc_size
+
+.mult_8:
+    mov al, 0xC1                ; shl eax, 3 (eax * 8)
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0x03
+    call jit_emit_byte
+    jmp .calc_size
+
+.mult_4:
+    mov al, 0xC1                ; shl eax, 2 (eax * 4)
     call jit_emit_byte
     mov al, 0xE0
     call jit_emit_byte
     mov al, 0x02
     call jit_emit_byte
-    
+
+.calc_size:
     mov al, 0x83                ; add eax, 4 (+4 bytes para guardar el length)
     call jit_emit_byte
     mov al, 0xC0
     call jit_emit_byte
     mov al, 0x04
     call jit_emit_byte
+    jmp alloc_array_common
+
+jit_op_anewarray:
+    add esi, 2                  ; Saltar el índice de la clase en el Constant Pool (2 bytes)
     
-    ; Empujar el tamaño total (eax) como argumento para sys_kalloc
-    mov al, 0x50                ; push eax
+    mov al, 0x5B                ; pop ebx (length)
+    call jit_emit_byte
+    mov al, 0x89                ; mov eax, ebx
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    
+    mov al, 0xC1                ; shl eax, 2 (length * 4 bytes, pues son referencias de 32 bits)
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0x02
+    call jit_emit_byte
+    
+    mov al, 0x83                ; add eax, 4 (+4 bytes para guardar la longitud original)
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    
+    jmp alloc_array_common      ; Saltar a la rutina común de kalloc
+
+jit_op_multianewarray:
+    add esi, 3
+    mov al, 0x5B                ; pop ebx (length)
+    call jit_emit_byte
+    mov al, 0x89                ; mov eax, ebx
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0xC1                ; shl eax, 2 (length * 4 bytes)
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0x02
+    call jit_emit_byte
+    mov al, 0x83                ; add eax, 4
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    jmp alloc_array_common
+
+alloc_array_common:
+    ; push eax (argumento tamaño para kalloc)
+    mov al, 0x50                
     call jit_emit_byte
 
-    ; Llamar al asignador de memoria del kernel (evitando el heap_ptr manual)
-    mov al, 0xE8                ; call rel32
+    ; call sys_kalloc
+    mov al, 0xE8                
     call jit_emit_byte
     mov eax, sys_kalloc
     mov edx, [jit_buffer_ptr]
@@ -2785,7 +2871,7 @@ alloc_array:
     sub eax, edx
     call jit_emit_dword
 
-    ; Limpiar argumento de la pila (add esp, 4)
+    ; add esp, 4 (limpiar argumento)
     mov al, 0x83                
     call jit_emit_byte
     mov al, 0xC4
@@ -2793,14 +2879,14 @@ alloc_array:
     mov al, 0x04
     call jit_emit_byte
     
-    ; Guardar el 'length' (ebx) en el primer bloque del nuevo arreglo [eax]
-    mov al, 0x89                ; mov [eax], ebx
+    ; mov [eax], ebx (guardar la longitud ORIGINAL)
+    mov al, 0x89                
     call jit_emit_byte
     mov al, 0x18
     call jit_emit_byte
     
-    ; Empujar la referencia del arreglo a la pila Java
-    mov al, 0x50                ; push eax
+    ; push eax (devolver referencia a Java)
+    mov al, 0x50                
     call jit_emit_byte
     ret
     
@@ -3723,10 +3809,6 @@ jit_op_return:
     call jit_emit_epilogue
     ret
 
-jit_op_newarray:
-    inc esi                     ; Saltar byte <atype>
-	jmp alloc_array   
-
 ; Opcodes: 0x16 (lload) y 0x18 (dload)
 jit_op_lload:
 jit_op_dload:
@@ -4119,10 +4201,6 @@ jit_op_ifgt:
     call jit_emit_byte
     call jit_emit_branch_target
     ret
-
-jit_op_anewarray:
-    add esi, 2
-    jmp alloc_array
 
 jit_op_fneg:                    
     mov al, 0x58                ; pop eax
