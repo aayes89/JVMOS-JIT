@@ -599,7 +599,7 @@ sys_kalloc:
     mov dword [esi + 4], 1      
     mov eax, esi
     add eax, 16                 ; Retornar puntero al payload
-    jmp .done
+    jmp .clear_mem
 
 .bump_alloc:
     ; Asignación lineal si no hay reciclaje
@@ -616,13 +616,29 @@ sys_kalloc:
     mov dword [eax + 8], 0      ; Cabecera Offset 8: Puntero Next
 
     add eax, 16                 ; Retornar puntero al payload
+    jmp .clear_mem
+
+.clear_mem:	
+	push edi
+    push ecx
+    push eax
+    
+    mov edi, eax                ; Destino = Inicio del Payload
+    sub ecx, 16                 ; Restar la cabecera para limpiar sólo el Payload
+    xor al, al                  ; Valor a escribir = 0
+    cld                         ; Dirección hacia adelante
+    rep stosb                   ; Llenar toda la memoria asignada con ceros
+    
+    pop eax
+    pop ecx
+    pop edi
     jmp .done
 
 .trigger_gc:
     ; Invocar Recolector de Basura y reintentar una sola vez
     call sys_gc_collect
     ; Tras el barrido, intentar allocation temporalmente
-    ; Para evitar bucle infinito, aquí deberíamos poner un flag, pero por ahora lo simplificamos:
+    ; Para evitar bucle infinito, aquí va un flag, pero por ahora lo simplifico así:
     ; Si tras el GC el bump pointer bajó o hay bloques libres, funcionará arriba.
     jmp .try_alloc
 
@@ -672,8 +688,11 @@ sys_gc_collect:
     mov eax, [esi]              ; EAX = Tamaño del bloque
     mov ebx, [esi + 4]          ; EBX = Flags (Bit 0: Asignado, Bit 1: Marcado)
 
-    test ebx, 2                 ; ¿Está marcado? (Bit 1)
-    jnz .keep_object
+    test ebx, 4                 ; Es inmortal? (Bit 2)
+    jnz .keep_immortal
+	
+	test ebx, 2					; Está marcado? (Bit 1)
+	jnz .keep_object
 
     ; Objeto Muerto o Libre: Añadir a free_list
     mov dword [esi + 4], 0      ; Limpiar flags (Desasignado)
@@ -682,8 +701,11 @@ sys_gc_collect:
     mov [free_list_head], esi   ; free_list_head = block
     jmp .next_block
 
+.keep_immortal:
+	jmp .next_block				; Saltar sin tocar flags
+
 .keep_object:
-    ; Objeto Vivo: Quitar marca para el siguiente ciclo de GC
+    ; Quitar marca para el siguiente ciclo de GC (está vivo)
     and dword [esi + 4], ~2     ; Apagar Bit 1
 
 .next_block:
@@ -697,6 +719,10 @@ sys_gc_collect:
 ; Subrutina: Marca un objeto y escanea recursivamente sus campos
 ; Entrada: EDI = Posible puntero a objeto (Payload)
 gc_mark_object:
+	; Filtro de seguridad
+	test edi, 15
+	jnz .done
+	
     ; Verificar límites (Rango del Heap)
     cmp edi, [heap_start_ptr]
     jb .done
@@ -711,7 +737,11 @@ gc_mark_object:
     mov ebx, [eax + 4]
     test ebx, 1
     jz .done
-
+	
+	; Es inmortal? No seguir escaneo (Bit 2)
+	test ebx, 4		
+	jnz .done
+	
     ; Verificar si ya está marcado (Bit 1) 
 	; (Para evitar bucles infinitos en referencias cíclicas)
     test ebx, 2
@@ -728,8 +758,7 @@ gc_mark_object:
 
     ; Guardar contexto antes de la recursión
     push esi                
-    push edi                
-    
+    push edi                  
     mov esi, edi            ; ESI = Inicio del payload a escanear
     
 .scan_fields:
