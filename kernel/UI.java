@@ -1,4 +1,5 @@
-/*MIT License
+/*
+MIT License
 
 Copyright (c) 2026 Allan (Slam)
 
@@ -19,47 +20,48 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.*/
+
 package kernel;
 
 import java.awt.Graphics2D;
 import java.awt.Color;
 import java.lang.Thread;
 import java.lang.System;
-import kernel.vfs.Node;
+import java.io.FileSystem;
 
-
-// Versión antigua del UI, la reemplazaré cuando acabe con los driver de red y el sistema de archivo
 public class UI {
 
-	private static Graphics2D g;
-	private static int winX, winY, winW, winH, contextX, contextY, backgroundMode, dragOffsetX, dragOffsetY;
-	private static boolean windowOpen, windowMinimized, isDragging, showStartMenu, showContextMenu, showAbout;
-	private static Node root, currentDir;
+    private static Graphics2D g;
+    private static FileSystem fs;
+    private static JExplorer explorer;
+	private static JEditor editor;
 
-	// Constructor
-	public UI(){
-		g = new Graphics2D();
-	}
+    private static int contextX, contextY, backgroundMode;
+    private static boolean showStartMenu, showContextMenu, showAbout;
 
-	// Me daba flojera cambiar cada método, así que hice unos cambios para que se ajustara el código antiguo
-	public static int readTime(int p) { return Native.sys(Native.SYS_GET_TIME, p, 0, 0, 0); }
-	public static int drawChar(int x, int y, int c){ return g.drawChar((char)c,x,y);}
-	public static void drawString(int x, int y, String text){ g.drawString(text, x, y);}
-	public static int readMouseEvent(int e){ return Native.sys(Native.SYS_READ_MOUSE,e,0,0,0);}
-	public static int readKeyboardKey(int p) { return Native.sys(Native.SYS_READ_KEYBOARD, p, 0, 0, 0); }
-	public static void shutdown() {
+    // Constructor
+    public UI(FileSystem fileSys, Portapapeles clip){
+        g = new Graphics2D();
+        fs = fileSys;	
+		editor = new JEditor(g, fs);
+        explorer = new JExplorer(g, fs, clip, editor);
+    }
+
+    public static int readTime(int p) { return Native.sys(Native.SYS_GET_TIME, p, 0, 0, 0); }
+    public static int drawChar(int x, int y, int c){ return g.drawChar((char)c,x,y);}
+    public static void drawString(int x, int y, String text){ g.drawString(text, x, y);}
+    public static int readMouseEvent(int e){ return Native.sys(Native.SYS_READ_MOUSE,e,0,0,0);}
+    public static int readKeyboardKey(int p) { return Native.sys(Native.SYS_READ_KEYBOARD, p, 0, 0, 0); }
+    
+    public static void shutdown() {
         g.setColor(0x00FF5555); // Rojo
         drawString(380, 360, "SISTEMA APAGADO. CERRANDO EN 2s...");
         Thread.sleep(2000); 
         System.exit(0);
     }
 
-    // Aquí inicia el módo gráfico
-	public static void runStartX() {
-        // Inicialización Explicita (Vital en Baremetal)
-        winX = 150; winY = 60; winW = 720; winH = 460;
-        windowOpen = true; windowMinimized = false;
-        isDragging = false; dragOffsetX = 0; dragOffsetY = 0;
+    // Aquí inicia el modo gráfico
+    public void runStartX() {
         showStartMenu = false; showContextMenu = false; showAbout = false;
         contextX = 0; contextY = 0; backgroundMode = 0;
 
@@ -76,16 +78,26 @@ public class UI {
             // Capturar eventos de mouse
             int mx = readMouseEvent(0), my = readMouseEvent(1), btn = readMouseEvent(2);
 
-            // Vigilar colisión con inicio y fin de la pantalla (evitar desbordamiento)
+            // Vigilar colisión con inicio y fin de la pantalla
             if (mx < 0) mx = 0; if (mx > 1010) mx = 1010;
             if (my < 0) my = 0; if (my > 750) my = 750;
 
             if (mx != oldMx || my != oldMy) {
-                if (isDragging && windowOpen && !windowMinimized && !showAbout) {
-                    winX = mx - dragOffsetX; winY = my - dragOffsetY;
-                    if (winX < 0) winX = 0; if (winY < 0) winY = 0;
-                    if (winX + winW > 1024) winX = 1024 - winW;
-                    if (winY + winH > 726) winY = 726 - winH;
+                if (explorer.isDragging && explorer.windowOpen && !explorer.windowMinimized && !showAbout) {
+                    explorer.winX = mx - explorer.dragOffsetX; 
+                    explorer.winY = my - explorer.dragOffsetY;
+                    if (explorer.winX < 0) explorer.winX = 0; 
+                    if (explorer.winY < 0) explorer.winY = 0;
+                    if (explorer.winX + explorer.winW > 1024) explorer.winX = 1024 - explorer.winW;
+                    if (explorer.winY + explorer.winH > 726) explorer.winY = 726 - explorer.winH;
+                    redrawScreen();
+                } else if (editor.isDragging && editor.windowOpen && !showAbout) {
+                    editor.winX = mx - editor.dragOffsetX; 
+                    editor.winY = my - editor.dragOffsetY;
+                    if (editor.winX < 0) editor.winX = 0; 
+                    if (editor.winY < 0) editor.winY = 0;
+                    if (editor.winX + editor.winW > 1024) editor.winX = 1024 - editor.winW;
+                    if (editor.winY + editor.winH > 726) editor.winY = 726 - editor.winH;
                     redrawScreen();
                 } else {
                     clearMouse(oldMx, oldMy);
@@ -102,22 +114,23 @@ public class UI {
                 if (contextY > 600) contextY = 600;
                 redrawScreen(); drawMouse(mx, my);
                 lastBtn = btn;
-            } // Eventos con Clic Izquierdo
+            } 
+            // Eventos con Clic Izquierdo
             else if (btn == 1 && lastBtn != 1) { 
-            	if (showContextMenu) {
+                if (showContextMenu) {
                     if (mx >= contextX && mx <= contextX + 190) {
                         if (my >= contextY + 5 && my <= contextY + 25) backgroundMode = 0;
                         else if (my >= contextY + 25 && my <= contextY + 45) backgroundMode = 1;
                         else if (my >= contextY + 45 && my <= contextY + 65) backgroundMode = 2;
-                        else if (my >= contextY + 65 && my <= contextY + 85) { windowOpen = true; windowMinimized = false; }
+                        else if (my >= contextY + 65 && my <= contextY + 85) { explorer.windowOpen = true; explorer.windowMinimized = false; }
                         else if (my >= contextY + 85 && my <= contextY + 105) showAbout = true;
                     }
                     showContextMenu = false; redrawScreen(); drawMouse(mx, my);
                 } else if (showStartMenu) {
                     int menuY = 726 - 95;
                     if (mx >= 5 && mx <= 185 && my >= menuY && my <= 726) {
-                        if (my >= menuY && my < menuY + 30) { windowOpen = true; windowMinimized = false; }
-                        else if (my >= menuY + 30 && my < menuY + 60) { windowOpen = false; showAbout = false; }
+                        if (my >= menuY && my < menuY + 30) { explorer.windowOpen = true; explorer.windowMinimized = false; }
+                        else if (my >= menuY + 30 && my < menuY + 60) { explorer.windowOpen = false; showAbout = false; }
                         else if (my >= menuY + 60 && my <= 726) { g.clearScreen(); shutdown(); }
                     }
                     showStartMenu = false; redrawScreen(); drawMouse(mx, my);
@@ -129,63 +142,55 @@ public class UI {
                     }
                 } else if (my >= 726) { // Taskbar
                     if (mx >= 5 && mx <= 85) { showStartMenu = !showStartMenu; redrawScreen(); drawMouse(mx, my); }
-                    else if (windowOpen && mx >= 95 && mx <= 235) { windowMinimized = !windowMinimized; redrawScreen(); drawMouse(mx, my); }
-                } else if (windowOpen && !windowMinimized) {
-                    int btnX = winX + winW - 23, btnY = winY + 5;
-                    if (mx >= btnX && mx <= btnX + 18 && my >= btnY && my <= btnY + 18) {
-                        windowOpen = false; redrawScreen(); drawMouse(mx, my);
-                    } else if (mx >= winX && mx <= winX + winW - 30 && my >= winY && my <= winY + 27) {
-                        isDragging = true; dragOffsetX = mx - winX; dragOffsetY = my - winY;
-                    } else if (mx >= winX + 10 && mx <= winX + 190 && my >= winY + 35 && my <= winY + winH - 45) { // Desplazamiento en el explorador
-                        int nodeY = winY + 55;
-                        if (my >= nodeY - 10 && my <= nodeY + 10) { currentDir = root; redrawScreen(); drawMouse(mx, my); }
-                        nodeY += 25;
-                        for (int i = 0; i < root.childCount; i++) {
-                            Node child = root.children[i];
-                            if (child.isDir) {
-                                if (my >= nodeY - 10 && my <= nodeY + 10) { currentDir = child; redrawScreen(); drawMouse(mx, my); }
-                                nodeY += 20;
-                            }
-                        }
-                    } else if (mx >= winX + 195 && mx <= winX + winW - 10 && my >= winY + 35 && my <= winY + winH - 45) { // Desplazamiento en el explorador
-                        int iconX = winX + 215, iconY = winY + 55;
-                        if (currentDir.parent != null) {
-                            if (mx >= iconX && mx <= iconX + 60 && my >= iconY && my <= iconY + 50) { currentDir = currentDir.parent; redrawScreen(); drawMouse(mx, my); }
-                            iconX += 90;
-                        }
-                        for (int i = 0; i < currentDir.childCount; i++) {
-                            Node child = currentDir.children[i];
-                            if (child != null && child.isDir) {
-                                if (mx >= iconX && mx <= iconX + 60 && my >= iconY && my <= iconY + 50) { currentDir = child; redrawScreen(); drawMouse(mx, my); }
-                                iconX += 90;
-                                if (iconX > winX + winW - 80) { iconX = winX + 215; iconY += 60; }
-                            }
-                        }
+                    else if (explorer.windowOpen && mx >= 95 && mx <= 235) { 
+                        explorer.windowMinimized = !explorer.windowMinimized; redrawScreen(); drawMouse(mx, my); 
                     }
-                }
+                } else if (editor.windowOpen && mx >= editor.winX && mx <= editor.winX + editor.winW && my >= editor.winY && my <= editor.winY + editor.winH) {
+                    if (editor.handleMouse(mx, my, true)) {
+                        redrawScreen(); drawMouse(mx, my);
+                    }
+                } else if (explorer.windowOpen && !explorer.windowMinimized) {
+					// Evitar que el Clic Derecho de UI sobrescriba el de JExplorer si estamos dentro de su ventana
+					if (mx >= explorer.winX && mx <= explorer.winX + explorer.winW && 
+						my >= explorer.winY && my <= explorer.winY + explorer.winH) {
+						
+						if (explorer.handleMouse(mx, my, true, btn)) {
+							redrawScreen(); drawMouse(mx, my);
+							if (btn == 2) showContextMenu = false; // Suprimir el menú del escritorio
+						}
+					}
+				}
                 lastBtn = 1;
             } else if (btn == 0) {
-                isDragging = false; lastBtn = 0;
+                explorer.isDragging = false; 
+				editor.isDragging = false;
+				lastBtn = 0;
             }
 
-            if (readKeyboardKey(0) == 27) break;
+            int ascii = readKeyboardKey(0);
+            if (ascii != 0) {
+                if (ascii == 27) break;
+                if (editor.windowOpen) {
+                    editor.handleKey(ascii);
+                    editor.draw(); 
+                    drawMouse(mx, my);
+                }
+            }
             Thread.sleep(1);
         }
         g.clearScreen();
     }
 
-    // MÉTODOS DE DIBUJADO DE UI    
-    // Pintar todo el UI (repintar)
     public static void redrawScreen() {
         drawBackground();
-        drawWindow();
+        explorer.draw();
+		editor.draw();
         drawTaskbar();
         drawStartMenu();
         drawContextMenu();
         drawAboutWindow();
     }
 
-    // Fondos de pantalla (color azul entero, gradiente y mandelbrot)
     public static void drawBackground() {
         if (backgroundMode == 0) {
             g.setColor(0x00000055); g.fillRect(0, 0, 1024, 726);
@@ -218,64 +223,6 @@ public class UI {
         }
     }
 
-    // Pintar ventana de explorador de archivos (versión antigua - no funciona, sólo es para mostrar algo)
-    public static void drawWindow() {
-        if (!windowOpen || windowMinimized) return;
-
-        g.setColor(0x00C0C0C0); g.fillRect(winX, winY, winW, winH);
-        g.setColor(0x00000080); g.fillRect(winX + 3, winY + 3, winW - 6, 24);
-        g.setColor(0x00FFFFFF); drawString(winX + 10, winY + 20, "JExplorer - "); drawString(winX + 130, winY + 20, currentDir.name);
-        g.setColor(0x00FFFFFF); drawString(winX + 10, winY + 10, "JExplorer - "); drawString(winX + 130, winY + 10, currentDir.name); // Root (raiz)
-
-        int btnX = winX + winW - 23, btnY = winY + 5;
-        g.setColor(0x00FF0000); g.fillRect(btnX, btnY, 18, 18);
-        g.setColor(0x00FFFFFF); drawString(btnX + 5, btnY + 14, "X");
-        g.setColor(0x00FFFFFF); drawString(btnX + 5, btnY + 5, "X");
-
-        int treeX = winX + 10, treeY = winY + 35, treeW = 180, treeH = winH - 45;
-        int viewX = winX + 195, viewY = winY + 35, viewW = winW - 205, viewH = winH - 45;
-
-        g.setColor(0x00E0E0E0); g.fillRect(treeX, treeY, treeW, treeH);
-        g.setColor(0x00FFFFFF); g.fillRect(viewX, viewY, viewW, viewH);
-
-        g.setColor(0x00000000); int nodeY = treeY + 20;
-        drawString(treeX + 10, nodeY, "[-] / (Root)"); nodeY += 25;
-
-        for (int i = 0; i < root.childCount; i++) {
-            Node child = root.children[i];
-            if (child.isDir) {
-                if (child == currentDir) {
-                    g.setColor(0x00000080); g.fillRect(treeX + 20, nodeY - 14, 150, 18); g.setColor(0x00FFFFFF);
-                } else g.setColor(0x00000000);
-                drawString(treeX + 25, nodeY, "+-- "); drawString(treeX + 55, nodeY, child.name);
-                nodeY += 20;
-            }
-        }
-
-        int iconX = viewX + 20, iconY = viewY + 20;
-        if (currentDir.parent != null) {
-            g.setColor(0x00808080); g.fillRect(iconX, iconY, 32, 22);
-            g.setColor(0x00000000); drawString(iconX, iconY + 38, ".. (Atras)");
-            iconX += 90;
-        }
-
-        for (int i = 0; i < currentDir.childCount; i++) {
-            Node child = currentDir.children[i];
-            if (child != null) {
-                if (child.isDir) {
-                    g.setColor(0x00F0C000); g.fillRect(iconX, iconY, 32, 22); g.fillRect(iconX, iconY - 4, 12, 4);
-                } else {
-                    g.setColor(0x00A0A0A0); g.fillRect(iconX, iconY, 20, 26);
-                }
-                g.setColor(0x00000000); drawString(iconX, iconY + 38, child.name);
-
-                iconX += 90;
-                if (iconX > viewX + viewW - 80) { iconX = viewX + 20; iconY += 60; }
-            }
-        }
-    }
-
-    // Pintar barra de tareas 
     public static void drawTaskbar() {
         int taskbarY = 726;
         g.setColor(0x00C0C0C0); g.fillRect(0, taskbarY, 1024, 42);
@@ -285,14 +232,13 @@ public class UI {
         g.fillRect(5, taskbarY + 4, 80, 32);
         g.setColor(0x00FFFFFF); drawString(22, taskbarY + 24, "INICIO");
 
-        if (windowOpen) {
-            g.setColor(windowMinimized ? 0x00A0A0A0 : 0x00E0E0E0);
+        if (explorer.windowOpen) {
+            g.setColor(explorer.windowMinimized ? 0x00A0A0A0 : 0x00E0E0E0);
             g.fillRect(95, taskbarY + 4, 140, 32);
             g.setColor(0x00000000); drawString(110, taskbarY + 24, "JExplorer");
         }
     }
 
-    // Pintar elementos de la barra de menú
     public static void drawStartMenu() {
         if (!showStartMenu) return;
         int menuH = 95, menuY = 726 - menuH;
@@ -304,7 +250,6 @@ public class UI {
         drawString(35, menuY + 82, "Apagar Equipo");
     }
 
-    // Pintar elementos del menú de clic derecho
     public static void drawContextMenu() {
         if (!showContextMenu) return;
         g.setColor(0x00F0F0F0); g.fillRect(contextX, contextY, 190, 115);
@@ -315,7 +260,7 @@ public class UI {
         drawString(contextX + 15, contextY + 80, "Abrir Explorador");
         drawString(contextX + 15, contextY + 100, "Acerca de JVMOS");
     }
-    // Pintar Acerca de JVMOS-JIT
+
     public static void drawAboutWindow() {
         if (!showAbout) return;
         int ax = 262, ay = 250, aw = 500, ah = 220;
@@ -336,10 +281,10 @@ public class UI {
         drawString(ax + 20, ay + 160, "Memoria RAM: 128 MB (Estatica BIOS)");
         drawString(ax + 20, ay + 180, "Video: VBE VESA 1024x768 @ 32bpp");
     }
+
     private static void showDateTime(){
-    	// Actualizar reloj dinámico y fecha en la Barra de Tareas
         int hour = readTime(2), min = readTime(1), sec = readTime(0);
-		int day = readTime(3), month = readTime(4), year = readTime(5);
+        int day = readTime(3), month = readTime(4), year = readTime(5);
         g.setColor(0x00C0C0C0); g.fillRect(880, 728, 144, 38);
         g.setColor(0x00000000);
 
@@ -353,7 +298,6 @@ public class UI {
         drawChar(970, 750, (year / 10) + '0'); drawChar(980, 750, (year % 10) + '0');
     }
 
-    // Limpiar el rastro del cursor en la pantalla (versión antigua)
     public static void clearMouse(int x, int y) {
         if (backgroundMode == 0) {
             g.setColor(0x00000055); g.fillRect(x, y, 14, 18);
@@ -386,14 +330,15 @@ public class UI {
             }
         }
 
-        if (windowOpen && !windowMinimized && x < winX + winW && x + 14 > winX && y < winY + winH && y + 18 > winY) drawWindow();
+        // Llamadas de repintado localizadas para evitar Flickering
+        if (explorer.windowOpen && !explorer.windowMinimized && x < explorer.winX + explorer.winW && x + 14 > explorer.winX && y < explorer.winY + explorer.winH && y + 18 > explorer.winY) explorer.draw();
+		if (editor.windowOpen && x < editor.winX + editor.winW && x + 14 > editor.winX && y < editor.winY + editor.winH && y + 18 > editor.winY) editor.draw(); 
         if (showAbout && x < 262 + 500 && x + 14 > 262 && y < 250 + 220 && y + 18 > 250) drawAboutWindow();
         if (y + 18 >= 726) drawTaskbar();
         if (showStartMenu && x < 185 && y + 18 > 631) drawStartMenu();
         if (showContextMenu && x < contextX + 190 && x + 14 > contextX && y < contextY + 115 && y + 18 > contextY) drawContextMenu();
     }
 
-    // Pintar el cursor en pantalla (versión antigua - actualmente un rectángulo simple)
     public static void drawMouse(int x, int y) {
         g.setColor(0x00000000);
         for (int i = 0; i < 12; i++) g.fillRect(x, y + i, i + 2, 1);
