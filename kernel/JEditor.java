@@ -26,6 +26,7 @@ import java.awt.Graphics2D;
 import java.io.FileSystem;
 import java.io.File;
 
+// Funcionalidades extraídas de la implementación de JPad y shell en proyectos previos
 public class JEditor {
     private Graphics2D g;
     private FileSystem fs;
