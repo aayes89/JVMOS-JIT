@@ -24,7 +24,7 @@
 [bits 32]
 
 ; SÍMBOLOS GLOBALES EXPORTADOS
-; --- Core sistema / interrupciones ---
+; Core sistema / interrupciones 
 global sys_hardware_init
 global sys_hlt
 global sys_exit
@@ -33,7 +33,7 @@ global sys_get_ticks
 global sys_cli
 global sys_sti
 
-; --- Memoria ---
+; Memoria
 global sys_kalloc
 global sys_get_free_mem
 global sys_get_ram_size
@@ -43,24 +43,24 @@ global sys_gc_collect
 %include "boot/sys_thread.asm"
 global sys_switch_context
 
-; --- Serie (debug JVM) ---
+; Serie (debug JVM) 
 global sys_serial_init
 global sys_serial_putc
 global sys_serial_puts
 global sys_serial_print_java
 
-; --- PCI ---
+; PCI 
 global sys_pci_write_config
 global sys_pci_read_config
 
-; --- Entrada (por IRQ + FIFO) ---
+; Entrada (por IRQ + FIFO) 
 global sys_init_keyboard
 global sys_read_keyboard_scancode
 global sys_set_keyboard_layout
 global sys_init_mouse
 global sys_read_mouse
 
-; --- Gráficos VBE ---
+; Gráficos VBE 
 global sys_set_color
 global sys_draw_pixel
 global sys_get_pixel
@@ -77,36 +77,36 @@ global sys_draw_string
 global current_color
 global sys_scroll_vram
 
-; --- Disco ATA IDE LBA28 ---
+; Disco ATA IDE LBA28 
 global sys_disk_read_sector
 global sys_disk_write_sector
 
-; --- Tiempo CMOS ---
+; Tiempo CMOS 
 global sys_get_time
 
-; --- Audio PC Speaker ---
+; Audio PC Speaker 
 global sys_beep
 global sys_nosound
 
-; --- Red RTL8139 ---
+; Red RTL8139 
 %include "driver/network/sys_rtl8139.asm"
 global sys_rtl8139_init
 global sys_rtl8139_send_packet
 global sys_net_receive_packet
 
-; --- PCnet Driver ---
+; PCnet Driver 
 %include "driver/network/sys_pcnet.asm"
 global sys_pcnet_init
 global sys_pcnet_send_packet
 global sys_net_receive_packet_pcnet
 
-; --- Red RTL8111/8168 ---
+; Red RTL8111/8168 
 %include "driver/network/sys_rtl8168.asm"
 global sys_rtl8168_init
 global sys_rtl8168_send_packet
 global sys_net_receive_packet_rtl8168
 
-; --- Puertos I/O ---
+; Puertos I/O 
 global sys_inb
 global sys_outb
 global sys_inw
@@ -149,10 +149,10 @@ current_color       resd 1
 
 disk_sector_buf     resb 512
 
-; SECCIÓN TEXT (CÓDIGO EJECUTABLE)
+; Sección TEXT (Código ejecutable)
 section .text
 
-; INICIALIZACIÓN DE HARDWARE CENTRALIZADA
+; Inicialización de HARDWARE
 sys_hardware_init:
     cli
 
@@ -170,8 +170,8 @@ sys_hardware_init:
     mov dword [mouse_y], 384
     mov dword [mouse_btn], 0
     mov dword [sys_ticks], 0
-    mov dword [heap_curr_ptr], 0x00400000
-    mov dword [heap_start_ptr], 0x00400000
+    mov dword [heap_curr_ptr], 0x02000000
+    mov dword [heap_start_ptr], 0x02000000
     mov dword [current_color], 0xFFFFFFFF
 	mov dword [free_list_head], 0       
     mov [stack_bottom], ebp    ; Guardar la base inicial de la pila del kernel
@@ -190,8 +190,7 @@ sys_sti:
     ret
 
 
-; PUERTO SERIE UART 16550 (COM1 @ 0x3F8)
-
+; Puerto serie UART 16550 (COM1 @ 0x3F8)
 sys_serial_init:
     mov dx, 0x3F9
     mov al, 0x00
@@ -221,6 +220,7 @@ sys_serial_init:
     out dx, al
     ret
 
+; Imprimir caracter en consola
 sys_serial_putc:
     push ebp
     mov ebp, esp
@@ -235,6 +235,7 @@ sys_serial_putc:
     pop ebp
     ret
 
+; Imprimir cadena de caracteres en consola
 sys_serial_puts:
     push ebp
     mov ebp, esp
@@ -256,7 +257,7 @@ sys_serial_puts:
     pop ebp
     ret
 
-; IMPRESIÓN EN CONSOLA SERIE
+; Impresión en consola serial
 sys_serial_print_java:
     push ebp
     mov ebp, esp
@@ -291,8 +292,7 @@ sys_serial_print_java:
     ret
 
 
-; CONTROLADOR DE INTERRUPCIONES PIC 8259A
-
+; Controlador de interrupciones PIC 8259A
 sys_init_pic:
     mov al, 0x11
     out 0x20, al
@@ -318,9 +318,7 @@ sys_init_pic:
     out 0xA1, al
     ret
 
-
-; TEMPORIZADOR PIT (1000 Hz)
-
+; Temporizador PIT (1000 Hz)
 sys_init_pit:
     mov al, 0x36
     out 0x43, al
@@ -330,9 +328,7 @@ sys_init_pit:
     out 0x40, al
     ret
 
-
-; IDT Y MANEJADORES DE INTERRUPCIÓN
-
+; IDT y Manejadores de interrupción
 sys_setup_idt:
     mov dword [idtr_base], idt_entries
     mov word  [idtr_limit], 2047
@@ -393,7 +389,7 @@ irq0_timer_handler:
     popa
     iret
 
-; IRQ1: MANEJADOR DE TECLADO PS/2 MEJORADO
+; IRQ1: Manejador de teclado PS/2
 irq1_keyboard_handler:
     pusha
     in al, 0x60
@@ -521,13 +517,11 @@ exception_stub:
 exception_msg:
     db 13, 10, "[HAL Panic] CPU Exception! System Halted.", 13, 10, 0
 
-; TEMPORIZACIÓN Y MEMORIA
+; Temporización y Memoria
 ; Obtener contador de Ticks (ms desde el arranque)
-
 sys_get_ticks:
     mov eax, [sys_ticks]
     ret
-
 
 ; Suspender ejecución por N milisegundos (Latencia ultra-baja)
 sys_sleep:
@@ -556,7 +550,6 @@ sys_sleep:
     pop ebp
     ret
 
-
 ; Asignador de Memoria Kernel preparado para GC (Cabecera de 16 bytes)
 sys_kalloc:
     push ebp
@@ -564,70 +557,89 @@ sys_kalloc:
     push ebx
     push esi
     push edi
+    push edx
+
+    xor edx, edx                ; Bandera OOM (0 = GC no ejecutado)
 
     mov ecx, [ebp + 8]          ; Tamaño solicitado
     test ecx, ecx
     jz .fail
 
-    ; Calcular tamaño real (Payload + 16 bytes de cabecera alineados a 16)
-    add ecx, 16                 
-    add ecx, 15                 
-    and ecx, 0xFFFFFFF0         ; ECX = Tamaño total alineado
+    ; Calcular tamaño real (Payload + 16 bytes cabecera alineados a 16)
+    add ecx, 31                 
+    and ecx, 0xFFFFFFF0         
 
 .try_alloc:
-    ; Buscar en la free_list (First-Fit)
     mov ebx, free_list_head
-    mov esi, [ebx]              ; ESI = Nodo actual
+    mov esi, [ebx]              
 .search_free_list:
     test esi, esi
-    jz .bump_alloc              ; Si es NULL, no hay bloques reciclados grandes, usar el heap residual
+    jz .bump_alloc
 
-    mov eax, [esi]              ; Leer tamaño del bloque libre
+    mov eax, [esi]              ; EAX = Tamaño libre
     cmp eax, ecx
-    jae .found_free_block       ; Si el bloque es suficientemente grande, se usa
+    jae .found_free_block
 
-    lea ebx, [esi + 8]          ; Avanzar al siguiente nodo (Offset 8 es 'next')
+    lea ebx, [esi + 8]          ; Siguiente nodo
     mov esi, [ebx]
     jmp .search_free_list
 
 .found_free_block:
-    ; Desvincular de la free_list
-    mov edi, [esi + 8]          ; Leer 'next' del nodo actual
-    mov [ebx], edi              ; Padre->next = Nodo->next
+    sub eax, ecx                ; EAX = Espacio sobrante
+    cmp eax, 32                 ; Mínimo 32 bytes para dividir bloque
+    jb .no_split
 
-    ; Marcar como asignado (Bit 0 = 1, Bit 1 = 0)
-    mov dword [esi + 4], 1      
+    ; --- SPLIT (Cortar un pedazo del bloque libre) ---
+    mov [esi], ecx              
+    
+    mov edi, esi
+    add edi, ecx                ; EDI = Nuevo bloque sobrante
+    mov [edi], eax              
+    mov dword [edi + 4], 0      
+    
+    mov eax, [esi + 8]          
+    mov [edi + 8], eax          
+    mov [ebx], edi              
+    jmp .split_done
+
+.no_split:
+    ; --- SIN SPLIT (Usar bloque entero) ---
+    mov edi, [esi + 8]
+    mov [ebx], edi              
+    mov ecx, [esi]              ; ECX = Tamaño TOTAL del bloque
+    
+.split_done:
+    mov dword [esi + 4], 1      ; Marcar como asignado
     mov eax, esi
-    add eax, 16                 ; Retornar puntero al payload
+    add eax, 16                 ; Puntero al payload
     jmp .clear_mem
 
 .bump_alloc:
-    ; Asignación lineal si no hay reciclaje
     mov eax, [heap_curr_ptr]
     mov ebx, eax
-    add ebx, ecx                ; EBX = Nuevo tope del Heap
+    add ebx, ecx                
     
-    cmp ebx, 0x08000000         ; mayor que 128 MB?
+    cmp ebx, 0x08000000         ; Límite 128 MB
     ja .trigger_gc
 
     mov [heap_curr_ptr], ebx
-    mov [eax], ecx              ; Cabecera Offset 0: Tamaño total
-    mov dword [eax + 4], 1      ; Cabecera Offset 4: Flags (1 = Asignado)
-    mov dword [eax + 8], 0      ; Cabecera Offset 8: Puntero Next
+    mov [eax], ecx              
+    mov dword [eax + 4], 1      
+    mov dword [eax + 8], 0      
 
-    add eax, 16                 ; Retornar puntero al payload
+    add eax, 16                 
     jmp .clear_mem
 
 .clear_mem:	
-	push edi
+    push edi
     push ecx
     push eax
     
     mov edi, eax                ; Destino = Inicio del Payload
-    sub ecx, 16                 ; Restar la cabecera para limpiar sólo el Payload
-    xor al, al                  ; Valor a escribir = 0
-    cld                         ; Dirección hacia adelante
-    rep stosb                   ; Llenar toda la memoria asignada con ceros
+    sub ecx, 16                 ; Restar la cabecera
+    xor al, al                  ; Llenar con ceros
+    cld                         
+    rep stosb                   
     
     pop eax
     pop ecx
@@ -635,37 +647,39 @@ sys_kalloc:
     jmp .done
 
 .trigger_gc:
-    ; Invocar Recolector de Basura y reintentar una sola vez
+    test edx, edx               
+    jnz .fail                   ; Abortar si ya intentamos GC
+    
+    mov edx, 1                  ; Bandera: GC ejecutado
     call sys_gc_collect
-    ; Tras el barrido, intentar allocation temporalmente
-    ; Para evitar bucle infinito, aquí va un flag, pero por ahora lo simplifico así:
-    ; Si tras el GC el bump pointer bajó o hay bloques libres, funcionará arriba.
     jmp .try_alloc
 
 .fail:
     xor eax, eax
 .done:
+    pop edx
     pop edi
     pop esi
     pop ebx
     pop ebp
     ret
-	
-; Recolector de basura GC (método MARK AND SWEEP)
-sys_gc_collect:
-    pusha
 
-    ; FASE 1: MARCADOR (MARK)
-    ; 1A. Escanear Variables Estáticas Globales de Java (4096 DWORDs)
+; ====================================================================
+; GC MARK & SWEEP (CON FUSIÓN DE BLOQUES ANTI-FRAGMENTACIÓN)
+; ====================================================================
+sys_gc_collect:
+    pusha			
+
+    ; FASE 1: Marcador (MARK)
     mov esi, java_static_vars
     mov ecx, 4096
 .mark_statics:
-    mov edi, [esi]              ; Leer valor de la variable
+    mov edi, [esi]              
     call gc_mark_object
     add esi, 4
-    loop .mark_statics
+    dec ecx
+    jnz .mark_statics
 
-    ; 1B. Escaneo Conservador de la Pila (Stack)
     mov esi, esp
     mov ecx, [stack_bottom]
 .mark_stack:
@@ -676,107 +690,119 @@ sys_gc_collect:
     add esi, 4
     jmp .mark_stack
 
-    ; FASE 2: BARRIDO (SWEEP) 
+    ; FASE 2: Barrido y Fusión (SWEEP & COALESCE)
 .phase2:
     mov esi, [heap_start_ptr]
-    mov dword [free_list_head], 0   ; Reiniciar free_list
+    mov dword [free_list_head], 0   
 
 .sweep_loop:
     cmp esi, [heap_curr_ptr]
-    jae .gc_done                ; Fin del heap utilizado
+    jae .gc_done                
 
-    mov eax, [esi]              ; EAX = Tamaño del bloque
-    mov ebx, [esi + 4]          ; EBX = Flags (Bit 0: Asignado, Bit 1: Marcado)
+    mov eax, [esi]              
+    mov ebx, [esi + 4]          
 
-    test ebx, 4                 ; Es inmortal? (Bit 2)
+    test ebx, 4                 
     jnz .keep_immortal
-	
-	test ebx, 2					; Está marcado? (Bit 1)
-	jnz .keep_object
+    test ebx, 2					
+    jnz .keep_object
 
-    ; Objeto Muerto o Libre: Añadir a free_list
-    mov dword [esi + 4], 0      ; Limpiar flags (Desasignado)
+    ; FUSIONAR BLOQUES MUERTOS
+    mov dword [esi + 4], 0      
+    mov edi, esi
+    add edi, eax                
+
+.coalesce_next:
+    cmp edi, [heap_curr_ptr]
+    jae .link_free_block        
+
+    mov ecx, [edi + 4]          
+    test ecx, 4                 
+    jnz .link_free_block        
+    test ecx, 2                 
+    jnz .link_free_block        
+
+    mov edx, [edi]              
+    test edx, edx               ; PROTECCIÓN: Evitar bucle si tamaño es 0
+    jz .link_free_block
+
+    add eax, edx                
+    mov [esi], eax              
+    add edi, edx                
+    jmp .coalesce_next
+
+.link_free_block:
     mov edx, [free_list_head]
-    mov [esi + 8], edx          ; block->next = free_list_head
-    mov [free_list_head], esi   ; free_list_head = block
-    jmp .next_block
+    mov [esi + 8], edx          
+    mov [free_list_head], esi   
+    
+    add esi, eax                
+    jmp .sweep_loop
 
 .keep_immortal:
-	jmp .next_block				; Saltar sin tocar flags
+    add esi, eax
+    jmp .sweep_loop
 
 .keep_object:
-    ; Quitar marca para el siguiente ciclo de GC (está vivo)
-    and dword [esi + 4], ~2     ; Apagar Bit 1
-
-.next_block:
-    add esi, eax                ; Saltar al siguiente bloque físico
+    and dword [esi + 4], 0xFFFFFFFD 
+    add esi, eax
     jmp .sweep_loop
 
 .gc_done:
     popa
     ret
 
-; Subrutina: Marca un objeto y escanea recursivamente sus campos
-; Entrada: EDI = Posible puntero a objeto (Payload)
-gc_mark_object:
-	; Filtro de seguridad
-	test edi, 15
-	jnz .done
-	
-    ; Verificar límites (Rango del Heap)
+; Subrutina: Marca un objeto (Aislamiento Total)
+gc_mark_object:    
+    pusha            
+    test edi, edi
+    jz .done
+    test edi, 15
+    jnz .done
+    
     cmp edi, [heap_start_ptr]
     jb .done
     cmp edi, [heap_curr_ptr]
     jae .done
 
-    ; Calcular inicio de la cabecera (Puntero - 16 bytes)
     mov eax, edi
     sub eax, 16
     
-    ; Verificar si está asignado (Bit 0 de Flags en [eax + 4])
     mov ebx, [eax + 4]
     test ebx, 1
     jz .done
-	
-	; Es inmortal? No seguir escaneo (Bit 2)
-	test ebx, 4		
-	jnz .done
-	
-    ; Verificar si ya está marcado (Bit 1) 
-	; (Para evitar bucles infinitos en referencias cíclicas)
+    test ebx, 4        
+    jnz .done
     test ebx, 2
     jnz .done
 
-    ; Marcar el objeto (Encender Bit 1)
+    mov edx, [eax]                
+    cmp edx, 16                   
+    jl .done
+    
+    mov ebx, eax
+    add ebx, edx                
+    cmp ebx, [heap_curr_ptr]     
+    ja .done
+    
     or dword [eax + 4], 2
 
-    ; Escaneo recursivo del payload (conservador)
-    mov ecx, [eax]          ; Leer tamaño total del bloque
-    sub ecx, 16             ; Descontar la cabecera para obtener tamaño del payload
-    shr ecx, 2              ; Dividir entre 4 para obtener cantidad de DWORDs a escanear
-    jz .done                ; Si el payload es 0, terminar
+    mov ecx, edx            
+    sub ecx, 16             
+    shr ecx, 2              
+    jz .done                
 
-    ; Guardar contexto antes de la recursión
-    push esi                
-    push edi                  
-    mov esi, edi            ; ESI = Inicio del payload a escanear
+    mov esi, edi            
     
 .scan_fields:
-    push ecx                ; Guardar el contador del bucle actual
-    
-    mov edi, [esi]          ; Leer el DWORD actual (potencial puntero)
-    call gc_mark_object     ; Recursión 
-    
-    pop ecx                 ; Restaurar contador
-    add esi, 4              ; Avanzar al siguiente DWORD
+    mov edi, [esi]          
+    call gc_mark_object         
+    add esi, 4              
     dec ecx
     jnz .scan_fields
     
-    ; Restaurar contexto original
-    pop edi                 
-    pop esi                 
-    
 .done:
+    popa        
     ret
     
 ; Obtener Memoria Disponible en el Heap
@@ -792,14 +818,11 @@ sys_get_free_mem:
 
 
 ; Obtener tamaño total de la memoria RAM (128 MB)
-
 sys_get_ram_size:
     mov eax, 0x08000000         ; 128 MB en bytes
     ret
 
-
 ; Copia de bloques de memoria byte a byte segura
-
 sys_memcpy:
     push ebp
     mov ebp, esp
@@ -823,9 +846,7 @@ sys_memcpy:
     pop ebp
     ret
 
-
 ; Relleno de bloques de memoria
-
 sys_memset:
     push ebp
     mov ebp, esp
@@ -847,14 +868,11 @@ sys_memset:
     pop ebp
     ret
 
-
 ; Detención temporal de la CPU (HLT)
-
 sys_hlt:
     sti
     hlt
     ret
-
 
 ; Apagado / Salida del Sistema Operativo (QEMU / Bochs / ACPI)
 sys_exit:
@@ -877,7 +895,7 @@ sys_exit:
     jmp .hang
 
 
-; BUS PCI
+; Bus PCI
 sys_pci_write_config:
     push ebp
     mov ebp, esp
@@ -956,8 +974,7 @@ sys_pci_read_config:
     ret
 
 
-; DRIVERS DE TECLADO Y RATÓN
-
+; Driver de Teclado y Mouse
 sys_init_keyboard:  
     ; Habilitar puerto PS/2 primario
     mov al, 0xAE
@@ -1045,18 +1062,15 @@ sys_read_keyboard_scancode:
     pop ebx
     ret
 
-; =====================================================================
-; CORRECCIÓN EN: sys_api.asm
-; =====================================================================
 sys_init_mouse:
     push eax
     
-    ; 1. Habilitar dispositivo auxiliar en el PS/2
+    ; Habilitar dispositivo auxiliar en el PS/2
     mov al, 0xA8
     out 0x64, al
     call .wait_write
 
-    ; 2. Habilitar IRQ12 en el Command Configuration Byte (CCB)
+    ; Habilitar IRQ12 en el Command Configuration Byte (CCB)
     mov al, 0x20
     out 0x64, al
     call .wait_read
@@ -1070,7 +1084,7 @@ sys_init_mouse:
     out 0x60, al
     call .wait_write
 
-    ; 3. Habilitar el reporte de datos hacia el mouse
+    ; Habilitar el reporte de datos hacia el mouse
     mov al, 0xD4
     out 0x64, al
     call .wait_write
@@ -1124,8 +1138,7 @@ sys_read_mouse:
     ret
 
 
-; RENDERIZADOR Y DRIVER GRÁFICO VBE VESA
-
+; Renderizador y driver gráfico VBE VESA
 sys_set_color:
     push ebp
     mov ebp, esp
@@ -1338,7 +1351,7 @@ sys_draw_polygon:
 sys_fill_polygon:
     ret
 
-; IMPRESIÓN DE CADENAS DE TEXTO
+; Impresión de cadenas de texto
 sys_draw_string:
     push ebp
     mov ebp, esp
@@ -1419,7 +1432,7 @@ sys_draw_string:
     pop ebp
     ret
 
-; DESPLAZAMIENTO DE PANTALLA (SCROLL)
+; Desplazamiento de pantalla (SCROLL)
 sys_scroll_vram:
     push ebp
     mov ebp, esp
@@ -1453,8 +1466,7 @@ sys_scroll_vram:
     pop ebp
     ret
 
-; CMOS RELOJ REAL (RTC)
-
+; CMOS Reloj real (RTC)
 sys_get_time:
     push ebp
     mov ebp, esp
@@ -1507,7 +1519,7 @@ sys_get_time:
     ret
 
 
-; PARLANTE PC SPEAKER
+; Bocinas de PC y Buzzer
 sys_beep:
     push ebp
     mov ebp, esp
@@ -1552,8 +1564,8 @@ sys_nosound:
     out 0x61, al
     ret
 
-; DISCO ATA IDE LBA28 (CON TIMEOUT Y RETARDO 400ns)
-; --- Subrutina: Esperar a que el disco se libere (BSY = 0) ---
+; Disco ATA IDE LBA28 (TIMEOUT Y RETARDO 400ns)
+; Subrutina: Esperar a que el disco se libere (BSY = 0)
 ata_wait_bsy:
     push ecx
     push edx
@@ -1579,7 +1591,7 @@ ata_wait_bsy:
     pop ecx
     ret
 
-; --- Subrutina: Esperar a que el disco pida datos (DRQ = 1) ---
+; Subrutina: Esperar a que el disco pida datos (DRQ = 1)
 ata_wait_drq:
     push ecx
     push edx
@@ -1611,8 +1623,7 @@ ata_wait_drq:
     pop ecx
     ret
 
-; ---------------------------------------------------------
-
+; Leer sector
 sys_disk_read_sector:
     push ebp
     mov ebp, esp
@@ -1623,8 +1634,12 @@ sys_disk_read_sector:
     cmp edi, 0                  
     jne .skip_default_r
     mov edi, disk_sector_buf    
+	jmp .read_ready
+	
 .skip_default_r:  
-    
+    add edi, 4					; protección GC
+	
+.read_ready:	
     call ata_wait_bsy           
     jc .disk_error
 
@@ -1676,6 +1691,7 @@ sys_disk_read_sector:
     pop ebp
     ret
 
+; Escribir sector
 sys_disk_write_sector:
     push ebp
     mov ebp, esp
@@ -1685,9 +1701,13 @@ sys_disk_write_sector:
     mov esi, [ebp + 12]         
     cmp esi, 0                  
     jne .skip_default_w
-    mov esi, disk_sector_buf    
-.skip_default_w:
+    mov esi, disk_sector_buf
+	jmp .write_ready    
 
+.skip_default_w:
+	add esi, 4					; protección GC
+	
+.write_ready:
     call ata_wait_bsy           
     jc .disk_error
 
@@ -1747,8 +1767,7 @@ sys_disk_write_sector:
     ret
 
 
-; PUERTOS DEDICADOS I/O
-
+; Puertos dedicados I/O
 sys_inb:
     push ebp
     mov ebp, esp
@@ -1798,7 +1817,7 @@ sys_wait_io:
     out 0x80, al
     ret
 
-; SECCIÓN DATA Y RODATA
+; Sección DATA y RODATA
 section .data
 align 16
 
