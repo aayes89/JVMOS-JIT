@@ -282,6 +282,12 @@ public class Graphics2D {//extends Graphics{
 			}
 		}
 	}
+
+	// Limpiar pantalla (sólo pintar de negro)
+	public void clearScreen(){
+		setColor(Color.BLACK);
+		fillRect(0,0,1024,768);
+	}
 	
 	// Faltan por añadir otros pero con los que hay, creo que es suficiente por ahora.
 	
