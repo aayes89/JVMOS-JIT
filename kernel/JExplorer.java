@@ -67,6 +67,7 @@ public class JExplorer {
         this.currentDirPath = "/";
         this.viewFiles = new File[128];
         this.viewFileCount = 0;
+		this.refreshView();
     }
 
     public void refreshView() {
