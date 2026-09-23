@@ -63,6 +63,7 @@ section .text
     global jit_emit_dword
     global jit_buffer_ptr	
 	global jit_flush_icache
+	global java_static_vars
 
     global sys_native_dispatch
     extern resolve_and_compile_java_method
