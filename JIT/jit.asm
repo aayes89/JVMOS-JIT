@@ -61,9 +61,9 @@ section .text
     global jit_runtime_trampoline
     global jit_emit_byte
     global jit_emit_dword
-    global jit_buffer_ptr	
-	global jit_flush_icache
-	global java_static_vars
+    global jit_buffer_ptr   
+    global jit_flush_icache
+    global java_static_vars
 
     global sys_native_dispatch
     extern resolve_and_compile_java_method
@@ -72,19 +72,22 @@ section .text
     extern cp_offsets
     extern current_param_count
     extern current_class_ptr
-	
+    
 
     extern sys_arg_id, sys_arg_a, sys_arg_b, sys_arg_c, sys_arg_d           
     extern draw_char_vram, sys_draw_string, sys_serial_puts, sys_serial_putc, sys_serial_print_java, sys_scroll_vram
     extern current_color
-	extern sys_switch_context
+    extern sys_switch_context
     extern sys_read_keyboard_scancode, sys_set_keyboard_layout, sys_read_mouse
     extern sys_draw_rect, sys_fill_rect, sys_draw_line, sys_get_pixel, sys_draw_pixel
+	extern sys_draw_pixel_alpha, sys_draw_polygon, sys_fill_polygon
+    extern sys_draw_oval, sys_fill_oval, sys_draw_arc, sys_fill_arc
+    extern sys_swap_buffers
     extern sys_beep, sys_nosound, sys_get_free_mem, sys_get_ram_size
     extern sys_pci_write_config, sys_pci_read_config, sys_disk_read_sector, sys_disk_write_sector
     extern sys_rtl8139_init, sys_rtl8139_send_packet, sys_net_receive_packet
-	extern sys_rtl8168_init, sys_rtl8168_send_packet, sys_net_receive_packet_rtl8168
-	extern sys_pcnet_init, sys_pcnet_send_packet, sys_net_receive_packet_pcnet
+    extern sys_rtl8168_init, sys_rtl8168_send_packet, sys_net_receive_packet_rtl8168
+    extern sys_pcnet_init, sys_pcnet_send_packet, sys_net_receive_packet_pcnet
     extern sys_inb, sys_outb, sys_inw, sys_outw, sys_indw, sys_outdw, sys_get_ticks
     extern sys_get_time, sys_sleep, sys_exit
     extern sys_exec_jit
@@ -358,22 +361,38 @@ sys_native_dispatch:
     je .sys_pci_write
     cmp eax, 30 
     je .sys_exec_jit
-	cmp eax, 31
-	je .sys_pcnet_init_call
-	cmp eax, 32
-	je .sys_pcnet_send_packet
-	cmp eax, 33
-	je .sys_net_receive_packet_pcnet
-	cmp eax, 34
-	je .sys_switch_context
-	cmp eax, 35
-	je .sys_mem_write_dword
-	cmp eax, 36
+    cmp eax, 31
+    je .sys_pcnet_init_call
+    cmp eax, 32
+    je .sys_pcnet_send_packet
+    cmp eax, 33
+    je .sys_net_receive_packet_pcnet
+    cmp eax, 34
+    je .sys_switch_context
+    cmp eax, 35
+    je .sys_mem_write_dword
+    cmp eax, 36
     je .sys_rtl8168_init
     cmp eax, 37
     je .sys_rtl8168_send_packet
     cmp eax, 38
     je .sys_rtl8168_receive_packet
+	cmp eax, 39
+	je .sys_draw_pixel_alpha
+	cmp eax, 40
+	je .sys_draw_polygon
+	cmp eax, 41
+	je .sys_fill_polygon
+	cmp eax, 42
+	je .sys_draw_oval
+	cmp eax, 43
+	je .sys_fill_oval
+	cmp eax, 44
+    je .sys_swap_buffers
+    cmp eax, 45
+    je .sys_draw_arc
+    cmp eax, 46
+    je .sys_fill_arc
 
     xor eax, eax
     jmp .done
@@ -593,7 +612,7 @@ sys_native_dispatch:
     mov ebx, [sys_arg_b]  ; Valor de 32 bits a escribir
     mov dword [eax], ebx
     xor eax, eax
-    jmp .done	
+    jmp .done   
 
 .sys_scroll_vram:
     push dword [sys_arg_a]  ; Píxeles a desplazar
@@ -609,28 +628,28 @@ sys_native_dispatch:
     jmp .done
 
 .sys_pcnet_init_call:
-	push dword [sys_arg_a]	; Puerto I/O
-	call sys_pcnet_init
-	add esp, 4
-	jmp .done
+    push dword [sys_arg_a]  ; Puerto I/O
+    call sys_pcnet_init
+    add esp, 4
+    jmp .done
 
 .sys_pcnet_send_packet:
-	push dword [sys_arg_b]
+    push dword [sys_arg_b]
     push dword [sys_arg_c]
     call sys_pcnet_send_packet
     add esp, 8
     xor eax, eax
-    jmp .done	
+    jmp .done   
 
-.sys_net_receive_packet_pcnet:	
-	push dword [sys_arg_b]
+.sys_net_receive_packet_pcnet:  
+    push dword [sys_arg_b]
     push dword [sys_arg_c]
     call sys_net_receive_packet_pcnet
     add esp, 8
     jmp .done   
 
 .sys_switch_context:
-	push dword [sys_arg_b]
+    push dword [sys_arg_b]
     push dword [sys_arg_a]
     call sys_switch_context
     add esp, 8
@@ -656,7 +675,71 @@ sys_native_dispatch:
     push dword [sys_arg_c]  ; Arreglo de bytes destino
     call sys_net_receive_packet_rtl8168
     add esp, 8
-    jmp .done	
+    jmp .done 
+
+.sys_draw_pixel_alpha:
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_draw_pixel_alpha
+    add esp, 8
+    jmp .done
+
+.sys_draw_polygon:
+    push dword [sys_arg_c]      ; nPoints
+    push dword [sys_arg_b]      ; yPoints (puntero array)
+    push dword [sys_arg_a]      ; xPoints (puntero array)
+    call sys_draw_polygon
+    add esp, 12
+    jmp .done
+
+.sys_fill_polygon:
+    push dword [sys_arg_c]      ; nPoints
+    push dword [sys_arg_b]      ; yPoints
+    push dword [sys_arg_a]      ; xPoints
+    call sys_fill_polygon
+    add esp, 12
+    jmp .done
+
+.sys_draw_oval:
+    push dword [sys_arg_d]      ; h
+    push dword [sys_arg_c]      ; w
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_draw_oval
+    add esp, 16
+    jmp .done
+
+.sys_fill_oval:
+    push dword [sys_arg_d]      ; h
+    push dword [sys_arg_c]      ; w
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_fill_oval
+    add esp, 16
+    jmp .done
+
+.sys_swap_buffers:
+    call sys_swap_buffers
+    xor eax, eax                ; Retorna 0 / void
+    jmp .done
+
+.sys_draw_arc:
+    push dword [sys_arg_d]      ; h (Para alias del óvalo)
+    push dword [sys_arg_c]      ; w
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_draw_arc
+    add esp, 16
+    jmp .done
+
+.sys_fill_arc:
+    push dword [sys_arg_d]      ; h (Para alias del óvalo)
+    push dword [sys_arg_c]      ; w
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_fill_arc
+    add esp, 16
+    jmp .done
 
 .done:
     pop edx
@@ -908,7 +991,7 @@ jit_op_ldc:
     push edx
     call sys_kalloc
     add esp, 4
-	or dword [eax - 12], 4 		; hacer el byte[] interno Inmortal (Bit 2)
+    or dword [eax - 12], 4      ; hacer el byte[] interno Inmortal (Bit 2)
 
     mov esi, [esp + 28]         
     movzx ecx, byte [esi - 2]
@@ -966,7 +1049,7 @@ jit_op_ldc:
     push 4096
     call sys_kalloc
     add esp, 4
-	or dword [eax - 12], 4			; Hacer el String Inmortal (Bit 2)
+    or dword [eax - 12], 4          ; Hacer el String Inmortal (Bit 2)
 
     mov ebx, [esp + 16]         
     mov edi, eax
@@ -1031,7 +1114,7 @@ jit_op_ldc_w:
     push edx
     call sys_kalloc
     add esp, 4
-	or dword [eax - 12], 4 		; hacer el byte[] interno Inmortal (Bit 2)
+    or dword [eax - 12], 4      ; hacer el byte[] interno Inmortal (Bit 2)
     
     mov esi, [esp + 28]         
     movzx ecx, byte [esi - 2]
@@ -1089,7 +1172,7 @@ jit_op_ldc_w:
     push 4096
     call sys_kalloc
     add esp, 4
-	or dword [eax - 12], 4			; Hacer el String Inmortal (Bit 2)
+    or dword [eax - 12], 4          ; Hacer el String Inmortal (Bit 2)
     
     mov ebx, [esp + 16]         
     mov edi, eax
@@ -1230,7 +1313,7 @@ jit_op_getfield:
     inc esi
     shl eax, 8
     or eax, ebx
-	; offset simple en 4 palabras
+    ; offset simple en 4 palabras
     mov ecx, eax
     shl ecx, 2
     add ecx, 8
@@ -1412,7 +1495,7 @@ jit_op_wide:
     mov al, 0xE0
     call jit_emit_byte
     ret
-	
+    
 ; Opcode: 0xA8
 jit_op_jsr:
     movzx eax, byte [esi]
@@ -4877,7 +4960,7 @@ jit_flush_icache:
     pop ebx
     pop eax
     ret
-	
+    
 section .rodata
 align 4
 
