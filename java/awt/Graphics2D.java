@@ -144,6 +144,20 @@ public class Graphics2D {//extends Graphics{
 		fillRect(x,y,1,1);
 	}
 	
+	public void drawPixelAlpha(int x, int y) {		
+		// syscall 39: SYS_DRAW_PIXEL_ALPHA
+		Native.sys(Native.SYS_DRAW_PIXEL_ALPHA, x, y, 0, 0); 
+	}
+
+	public void fillRectAlpha(int x, int y, int w, int h) {		
+		for (int i = 0; i < w; i++) {
+			for (int j = 0; j < h; j++) {
+				// syscall 39: SYS_DRAW_PIXEL_ALPHA
+				Native.sys(Native.SYS_DRAW_PIXEL_ALPHA, x + i, y + j, 0, 0);
+			}
+		}
+	}
+	
 	//@Override
 	public void drawTriangle(int x0, int y0,int x1, int y1,	int x2, int y2) {
 		drawLine(x0, y0, x1, y1);
@@ -227,68 +241,73 @@ public class Graphics2D {//extends Graphics{
 		if (radius < 0) {
 			return;
 		}
-		int x = radius;
-		int y = 0;
-		int decision = 1 - radius;
-		// Variación del algoritmo de Bresenham
-		while (x >= y) {
-			// Octante 1
-			drawPixel(centerX + x, centerY + y);
-			// Octante 2
-			drawPixel(centerX + y, centerY + x);
-			// Octante 3
-			drawPixel(centerX - y, centerY + x);
-			// Octante 4
-			drawPixel(centerX - x, centerY + y);
-			// Octante 5
-			drawPixel(centerX - x, centerY - y);
-			// Octante 6
-			drawPixel(centerX - y, centerY - x);
-			// Octante 7
-			drawPixel(centerX + y, centerY - x);
-			// Octante 8
-			drawPixel(centerX + x, centerY - y);
-			y++;
-			if (decision <= 0) {
-				decision = decision + (y << 1) + 1;
-			} else {
-				x--;
-				decision = decision + ((y - x) << 1) + 1;
-			}
-		}
+		// Syscall 42: SYS_DRAW_OVAL
+		Native.sys(Native.SYS_DRAW_OVAL, centerX -radius, centerY -radius, radius * 2, radius * 2);
 	}
 
 	//@Override
 	public void fillCircle(int centerX, int centerY, int radius) {
-		if (radius < 0) {
+		if (radius <= 0) {
 			return;
 		}
-		int x = radius;
-		int y = 0;
-		int decision = 1 - radius;
-		while (x >= y) {
-			// Parte superior e inferior
-			fillRect(centerX - x,centerY + y,(x << 1) + 1,1);
-			fillRect(centerX - x,centerY - y,(x << 1) + 1,1);
-			// Laterales
-			fillRect(centerX - y,centerY + x,(y << 1) + 1,1);
-			fillRect(centerX - y,centerY - x,(y << 1) + 1,1);
-			y++;
-			if (decision <= 0) {
-				decision = decision	+ (y << 1) + 1;
-			} else {
-				x--;
-				decision = decision + ((y - x) << 1) + 1;
-			}
-		}
-	}
-
+		// Syscall 43: SYS_FILL_OVAL
+		Native.sys(Native.SYS_FILL_OVAL, centerX - radius, centerY - radius, radius * 2, radius * 2);
+    }
+	
 	// Limpiar pantalla (sólo pintar de negro)
 	public void clearScreen(){
 		setColor(Color.BLACK);
 		fillRect(0,0,1024,768);
 	}
 	
-	// Faltan por añadir otros pero con los que hay, creo que es suficiente por ahora.
+	//@Override
+    public void drawPolygon(int[] xPoints, int[] yPoints, int nPoints) {
+        if (xPoints == null || yPoints == null || nPoints < 2) return;
+        // Syscall 40: drawPolygon
+        // Pasamo la REFERENCIA a los arreglos directamente al HAL en ASM
+        Native.sys(Native.SYS_DRAW_POLYGON, xPoints, yPoints, nPoints, 0);
+    }
+
+    //@Override
+    public void fillPolygon(int[] xPoints, int[] yPoints, int nPoints) {
+        if (xPoints == null || yPoints == null || nPoints < 3) return;
+        // Syscall 41: fillPolygon
+        Native.sys(Native.SYS_FILL_POLYGON, xPoints, yPoints, nPoints, 0);
+    }
+
+    //@Override
+    public void drawOval(int x, int y, int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        // Syscall 42: drawOval
+        Native.sys(Native.SYS_DRAW_OVAL, x, y, width, height);
+    }
+
+    //@Override
+    public void fillOval(int x, int y, int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        // Syscall 43: fillOval
+        Native.sys(Native.SYS_FILL_OVAL, x, y, width, height);
+    }
+
+    //@Override
+    public void drawArc(int x, int y, int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        // Syscall 45: drawArc
+        Native.sys(Native.SYS_DRAW_ARC, x, y, width, height);
+    }
+
+    //@Override
+    public void fillArc(int x, int y, int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        // Syscall 46: fillArc
+        Native.sys(Native.SYS_FILL_ARC, x, y, width, height);
+    }
+
+    //@Override
+    public void swapBuffers() {
+        // Syscall 44: Ejecutar blitting VSYNC
+        Native.sys(Native.SYS_SWAP_BUFFERS, 0, 0, 0, 0);
+    }
 	
+	// Faltan por añadir otros pero con los que hay, creo que es suficiente por ahora.
 }
