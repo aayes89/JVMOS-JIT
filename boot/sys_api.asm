@@ -1662,7 +1662,7 @@ sys_draw_polygon:
     jl .poly_done           ; Mínimo 2 puntos
     
     add esi, 4              ; Saltar cabecera 'length' de Java
-    add edi, 4
+    add edi, 4				; Apuntar a yPoints[0]
     
     xor ebx, ebx            ; Índice i = 0
 .poly_loop:
@@ -1704,8 +1704,8 @@ sys_fill_polygon:
     cmp ecx, 3
     jl .fill_poly_done
     
-    add esi, 4
-    add edi, 4
+    add esi, 4				; Saltar la cabecera/length	
+    add edi, 4				; Apuntar al índice 0
     
     mov ebx, 1              ; Iniciar Convex-Fan desde el segundo punto
 .fill_loop:
