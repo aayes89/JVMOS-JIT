@@ -43,5 +43,14 @@ public abstract class Graphics {
 	public abstract void fillTriangle(int x0, int y0,int x1, int y1, int x2, int y2);	
 	public abstract void drawCircle(int centerX, int centerY, int radius);
 	public abstract void fillCircle(int centerX, int centerY, int radius);
+	public abstract void drawPixelAlpha(int x, int y);
+	public abstract void fillRectAlpha(int x, int y, int w, int h); 
+	public abstract void drawPolygon(int[] xPoints, int[] yPoints, int nPoints);
+    public abstract void fillPolygon(int[] xPoints, int[] yPoints, int nPoints);
+    public abstract void drawOval(int x, int y, int width, int height);
+    public abstract void fillOval(int x, int y, int width, int height);
+    public abstract void drawArc(int x, int y, int width, int height);
+    public abstract void fillArc(int x, int y, int width, int height);
+    public abstract void swapBuffers();	
     
 }
