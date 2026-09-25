@@ -20,14 +20,15 @@
 ; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ; SOFTWARE.
 
-; Driver para Fuentes Baremetal
+; Driver para Fuentes Baremetal con Double Buffer y Alpha Blending
 ; Copyright (c) 2026 Allan (Slam)
 
 [bits 32]
 
 global draw_char_vram
 
-extern g_framebuffer
+; Referencia al backbuffer en lugar del framebuffer
+extern g_backbuffer 
 extern g_pitch
 
 section .rodata
@@ -35,10 +36,10 @@ align 4
 
 ; Matriz de caracteres ASCII 8x16 (Alineación estricta de 16 bytes por glifo)
 g_font_8x16:
-    ; --- 0 a 31: Control / Relleno ---
+    ;  0 a 31: Control / Relleno 
     times 32 * 16 db 0
 
-    ; --- 32 a 47: Espacio y Puntuación inicial ---
+    ;  32 a 47: Espacio y Puntuación inicial 
     ; 32 ' '
     times 16 db 0
     ; 33 '!'
@@ -72,7 +73,7 @@ g_font_8x16:
     ; 47 '/'
     db 0x00,0x00,0x00,0x03,0x06,0x0C,0x18,0x30,0x60,0x40,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- 48 a 57: Números '0' - '9' ---
+    ;  48 a 57: Números '0' - '9' 
     ; 48 '0'
     db 0x00,0x00,0x3C,0x66,0x6E,0x76,0x66,0x66,0x3C,0x00,0x00,0x00,0x00,0x00,0x00,0x00
     ; 49 '1'
@@ -94,7 +95,7 @@ g_font_8x16:
     ; 57 '9'
     db 0x00,0x00,0x3C,0x66,0x66,0x3E,0x06,0x66,0x3C,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- 58 a 64: Puntuación intermedia ---
+    ;  58 a 64: Puntuación intermedia 
     ; 58 ':'
     db 0x00,0x00,0x00,0x18,0x18,0x00,0x00,0x18,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00
     ; 59 ';'
@@ -110,7 +111,7 @@ g_font_8x16:
     ; 64 '@'
     db 0x00,0x00,0x3C,0x66,0x6E,0x6E,0x60,0x3E,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- 65 a 90: Mayúsculas 'A' - 'Z' ---
+    ;  65 a 90: Mayúsculas 'A' - 'Z' 
     ; 65 'A'
     db 0x00,0x00,0x18,0x3C,0x66,0x66,0x7E,0x66,0x66,0x00,0x00,0x00,0x00,0x00,0x00,0x00
     ; 66 'B'
@@ -164,7 +165,7 @@ g_font_8x16:
     ; 90 'Z'
     db 0x00,0x00,0x7E,0x06,0x0C,0x18,0x30,0x60,0x7E,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- 91 a 96: Símbolos especiales ---
+    ;  91 a 96: Símbolos especiales 
     ; 91 '['
     db 0x00,0x00,0x3C,0x30,0x30,0x30,0x30,0x30,0x3C,0x00,0x00,0x00,0x00,0x00,0x00,0x00
     ; 92 '\'
@@ -178,7 +179,7 @@ g_font_8x16:
     ; 96 '`'
     db 0x00,0x18,0x0C,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- 97 a 122: Minúsculas 'a' - 'z' ---
+    ;  97 a 122: Minúsculas 'a' - 'z' 
     ; 97 'a'
     db 0x00,0x00,0x00,0x00,0x3C,0x06,0x3E,0x66,0x3E,0x00,0x00,0x00,0x00,0x00,0x00,0x00
     ; 98 'b'
@@ -232,7 +233,7 @@ g_font_8x16:
     ; 122 'z'
     db 0x00,0x00,0x00,0x00,0x7E,0x0C,0x18,0x30,0x7E,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- 123 a 126: Puntuación final ---
+    ;  123 a 126: Puntuación final 
     ; 123 '{'
     db 0x00,0x00,0x0E,0x18,0x18,0x30,0x18,0x18,0x0E,0x00,0x00,0x00,0x00,0x00,0x00,0x00
     ; 124 '|'
@@ -242,104 +243,173 @@ g_font_8x16:
     ; 126 '~'
     db 0x00,0x00,0x3B,0x6E,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 	
-	; --- Relleno vacío hasta la Ñ (127 a 128) ---
+	;  Relleno vacío hasta la Ñ (127 a 128) 
 	times (209 - 127) * 16 db 0
 	
 	; 209 'Ñ' (ISO-8859-1)
     db 0x00,0x36,0x6C,0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- Relleno vacío hasta la 'á' (Índices 210 a 224) ---
+    ;  Relleno vacío hasta la 'á' (Índices 210 a 224) 
     times (225 - 210) * 16 db 0
 
     ; 225 'á'
     db 0x00,0x0C,0x18,0x00,0x3C,0x06,0x3E,0x66,0x3E,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- Relleno vacío hasta la 'é' (Índices 226 a 232) ---
+    ;  Relleno vacío hasta la 'é' (Índices 226 a 232) 
     times (233 - 226) * 16 db 0
 
     ; 233 'é'
     db 0x00,0x0C,0x18,0x00,0x3C,0x66,0x7E,0x60,0x3C,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- Relleno vacío hasta la 'í' (Índices 234 a 236) ---
+    ;  Relleno vacío hasta la 'í' (Índices 234 a 236) 
     times (237 - 234) * 16 db 0
 
     ; 237 'í'
     db 0x00,0x0C,0x18,0x00,0x38,0x18,0x18,0x18,0x3C,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- Relleno vacío hasta la 'ñ' (Índices 238 a 240) ---
+    ;  Relleno vacío hasta la 'ñ' (Índices 238 a 240) 
     times (241 - 238) * 16 db 0
 
     ; 241 'ñ'
     db 0x00,0x36,0x6C,0x00,0x7C,0x66,0x66,0x66,0x66,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- Relleno vacío hasta la 'ó' (Índice 242) ---
+    ;  Relleno vacío hasta la 'ó' (Índice 242) 
     times (243 - 242) * 16 db 0
 
     ; 243 'ó'
     db 0x00,0x0C,0x18,0x00,0x3C,0x66,0x66,0x66,0x3C,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- Relleno vacío hasta la 'ú' (Índices 244 a 249) ---
+    ; Relleno vacío hasta la 'ú' (Índices 244 a 249) 
     times (250 - 244) * 16 db 0
 
     ; 250 'ú'
     db 0x00,0x0C,0x18,0x00,0x66,0x66,0x66,0x66,0x3E,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 
-    ; --- Relleno final para completar el estándar de 256 caracteres (Índices 251 a 255) ---
+    ; Relleno final para completar el estándar de 256 caracteres (Índices 251 a 255) 
     times (256 - 251) * 16 db 0
 
 section .text
 
-; draw_char_vram(char c, int x, int y, int color)
 draw_char_vram:
     push ebp
     mov ebp, esp
+    sub esp, 12                 ; [ebp-4]=InvAlpha, [ebp-8]=GlyphPtr, [ebp-12]=Alpha
     pusha
 
-    movzx eax, byte [ebp + 8]   ; Carácter ASCII
-    mov ebx, [ebp + 12]         ; X
-    mov ecx, [ebp + 16]         ; Y
-    mov edx, [ebp + 20]         ; Color
+    ; Extraer Alpha 
+    mov edx, [ebp + 20]         ; EDX = Color
+    mov eax, edx
+    shr eax, 24                 ; EAX = Alpha
+    test eax, eax
+    jz .done                    ; Si es 0 (totalmente transparente), salir
+    mov [ebp - 12], eax         ; Guardar Alpha
 
-    ; offset = g_font_8x16 + (c * 16)
+    ; Calcular InvAlpha 
+    mov ebx, 255
+    sub ebx, eax
+    mov [ebp - 4], ebx          ; Guardar InvAlpha
+
+    ; Puntero a la letra segura 
+    movzx eax, byte [ebp + 8]
     shl eax, 4
     add eax, g_font_8x16
+    mov [ebp - 8], eax          ; GUARDAR EL PUNTERO SEGURO DE LA LETRA
 
-    ; PhysAddr = g_framebuffer + (y * pitch) + (x * 4)
-    mov edi, [g_framebuffer]
+    ; Dirección física del lienzo 
+    mov ebx, [ebp + 12]         ; X
+    mov ecx, [ebp + 16]         ; Y
+    mov edi, [g_backbuffer]     ; Backbuffer
     imul ecx, [g_pitch]
     shl ebx, 2
     add edi, ecx
-    add edi, ebx
+    add edi, ebx                ; EDI = Destino Base
 
-    mov ecx, 0                  ; Fila 0 a 15
+    mov ecx, 0                  ; ECX = Contador de Fila (0 a 15)
+
 .row_loop:
     cmp ecx, 16
     jge .done
 
-    mov bl, [eax + ecx]         ; Byte con los 8 píxeles
-    mov esi, 0                  ; Bit 0 a 7
+    mov eax, [ebp - 8]          ; EAX = Puntero a la letra
+    mov bl, [eax + ecx]         ; BL = Los 8 bits de esta fila
+    mov esi, 0                  ; ESI = Columna (0 a 7)
 
 .bit_loop:
     cmp esi, 8
     jge .next_row
 
-    test bl, 0x80
-    jz .skip_pixel
+    test bl, 0x80               ; ¿Hay un pixel dibujado en este bit?
+    jz .skip_pixel              ; No -> saltar
 
-    mov [edi + esi * 4], edx     ; Pintar píxel en VRAM
+    ; El pixel existe, verificar si es sólido o transparente 
+    mov eax, [ebp - 12]         ; Cargar Alpha de la variable local
+    cmp eax, 255
+    je .draw_solid
+
+    ; Alpha Blending 
+    push ebx                    ; Guardar BL (fila de la letra)
+    push ecx                    ; Guardar ECX (contador de fila)
+    
+    mov ecx, [edi + esi * 4]    ; ECX = Color Destino (Fondo)
+    mov ebx, [ebp - 4]          ; EBX = InvAlpha
+    
+    push ebx                    ; [esp+4] = InvAlpha
+    push eax                    ; [esp] = Alpha
+    
+    ; Mezclar Rojo_Azul
+    mov eax, ecx
+    and eax, 0x00FF00FF
+    imul eax, ebx               ; DestR_B * InvAlpha
+    
+    mov ebx, edx
+    and ebx, 0x00FF00FF
+    imul ebx, [esp]             ; OrigR_B * Alpha
+    
+    add eax, ebx
+    shr eax, 8
+    and eax, 0x00FF00FF
+    push eax                    ; Guardar Resultado Rojo_Azul en [esp]
+    
+    ; Mezclar Verde
+    mov eax, ecx
+    and eax, 0x0000FF00
+    imul eax, [esp+8]           ; DestG * InvAlpha
+    
+    mov ecx, edx
+    and ecx, 0x0000FF00
+    imul ecx, [esp+4]           ; OrigG * Alpha
+    
+    add eax, ecx
+    shr eax, 8
+    and eax, 0x0000FF00
+    
+    pop ecx                     ; ECX = Resultado Rojo_Azul
+    or eax, ecx                 ; EAX = Color Final
+    
+    add esp, 8                  ; Limpiar Alpha e InvAlpha de la pila
+    
+    mov [edi + esi * 4], eax    ; Escribir el pixel calculado
+    
+    pop ecx                     ; Restaurar contador de fila
+    pop ebx                     ; Restaurar la fila de la letra
+    jmp .skip_pixel
+    
+.draw_solid:
+    mov [edi + esi * 4], edx    ; Escribir pixel solido (sin mezclar)
 
 .skip_pixel:
-    shl bl, 1
+    shl bl, 1                   ; Mover al siguiente bit de la letra
     inc esi
     jmp .bit_loop
 
 .next_row:
-    add edi, [g_pitch]
+    add edi, [g_pitch]          ; Bajar una linea en la pantalla
     inc ecx
     jmp .row_loop
 
 .done:
     popa
+    add esp, 12                 ; Limpiar variables locales
     mov esp, ebp
     pop ebp
     ret
