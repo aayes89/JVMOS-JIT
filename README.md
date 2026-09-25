@@ -76,6 +76,7 @@ It is an improved fork of the repository: https://github.com/aayes89/JVMOS.
 
 
 # TODO
+* Alpha Blending
 * Test useful apps (Notepad, Paint, Calculator)
 * Sound support
 * Full Network support (Parcial done)
