@@ -64,6 +64,7 @@ global sys_read_mouse
 global sys_set_color
 global sys_draw_pixel
 global sys_get_pixel
+global sys_draw_pixel_alpha
 global sys_fill_rect
 global sys_draw_rect
 global sys_draw_line
@@ -76,6 +77,7 @@ global sys_fill_polygon
 global sys_draw_string
 global current_color
 global sys_scroll_vram
+global sys_swap_buffers
 
 ; Disco ATA IDE LBA28 
 global sys_disk_read_sector
@@ -127,6 +129,7 @@ section .bss
 alignb 16
 
 sys_ticks           resd 1
+g_backbuffer		resd 1	; Puntero al liezo en RAM
 
 heap_curr_ptr       resd 1
 heap_start_ptr      resd 1
@@ -185,10 +188,44 @@ sys_hardware_init:
 sys_cli:
     cli
     ret
+	
 sys_sti:
     sti
     ret
 
+; Doble buffer 3MB
+sys_init_double_buffer:
+    ; Reservar 3,145,728 bytes (1024 * 768 * 4) para el backbuffer
+    push dword 3145728
+    call sys_kalloc
+    add esp, 4
+    mov [g_backbuffer], eax
+    ret
+
+sys_swap_buffers:
+    pusha
+
+    mov dx, 0x3DA
+.wait_not_vblank:
+    in al, dx
+    test al, 8
+    jnz .wait_not_vblank     ; Espera a que termine el VSYNC actual
+
+.wait_vblank:
+    in al, dx
+    test al, 8
+    jz .wait_vblank          ; Espera a que comience un nuevo VSYNC
+
+    ; Iniciar la transferencia de memoria (Blitting)
+    mov esi, [g_backbuffer]  ; Origen: RAM
+    mov edi, [g_framebuffer] ; Destino: VRAM
+    mov ecx, 786432          ; 1024 * 768 = 786432 dwords (32 bits)
+    
+    cld                      ; Asegurar incremento hacia adelante
+    rep movsd                ; Copiar 3MB a la velocidad del bus de memoria
+
+    popa
+    ret	
 
 ; Puerto serie UART 16550 (COM1 @ 0x3F8)
 sys_serial_init:
@@ -1143,7 +1180,7 @@ sys_set_color:
     push ebp
     mov ebp, esp
     mov eax, [ebp + 8]
-    or eax, 0xFF000000          ; Forzar canal Alpha opaco (24bpp / 32bpp)
+    ;or eax, 0xFF000000          ; Forzar canal Alpha opaco (24bpp / 32bpp)
     mov [current_color], eax
     pop ebp
     ret
@@ -1153,11 +1190,13 @@ sys_draw_pixel:
     mov ebp, esp
     mov eax, [ebp + 8]          ; x
     mov ecx, [ebp + 12]         ; y
-    mov edx, [current_color]
+    mov edx, [current_color]	; color
     imul ecx, [g_pitch]
     shl eax, 2
     add ecx, eax
-    mov eax, [g_framebuffer]
+	
+    ;mov eax, [g_framebuffer] ; antes
+	mov eax, [g_backbuffer]	  ; ahora	
     add eax, ecx
     mov [eax], edx
     pop ebp
@@ -1166,16 +1205,98 @@ sys_draw_pixel:
 sys_get_pixel:
     push ebp
     mov ebp, esp
+    mov eax, [ebp + 8]		; x
+    mov ecx, [ebp + 12]		; y
+    imul ecx, [g_pitch]
+    shl eax, 2
+    add ecx, eax
+    mov eax, [g_framebuffer] ; antes
+	mov eax, [g_backbuffer]	  ; ahora	
+    add eax, ecx
+    mov eax, [eax]
+    pop ebp
+    ret
+
+sys_draw_pixel_alpha:
+    push ebp
+    mov ebp, esp
+    pusha
+
+    mov esi, [current_color]    ; ESI = 0xAARRGGBB
+    mov edx, esi
+    shr edx, 24                 ; EDX = Alpha (0 - 255)
+
+    cmp edx, 255
+    je .draw_solid              ; Opaco: Escritura rápida
+    test edx, edx
+    jz .done                    ; Transparente: No hacer nada
+
+    ; Calcular offset en el framebuffer (y * pitch + x * 4)
+    mov eax, [ebp + 8]          ; X
+    mov ecx, [ebp + 12]         ; Y
+    imul ecx, [g_pitch]
+    shl eax, 2
+    add ecx, eax
+	
+    mov edi, [g_backbuffer]
+    add edi, ecx                ; EDI = Dirección del píxel destino
+
+    mov ebx, [edi]              ; EBX = Color de fondo (0x00RRGGBB)
+    
+    mov eax, 255
+    sub eax, edx                ; EAX = InvAlpha (255 - Alpha)
+
+    ; Procesar Rojo y Azul simultáneamente
+    push eax                    ; Guardar InvAlpha para el canal Verde    
+    mov ecx, ebx
+    and ecx, 0x00FF00FF         ; ECX = Destino R_B
+    imul ecx, eax               ; Destino R_B * InvAlpha
+
+    mov eax, esi
+    and eax, 0x00FF00FF         ; EAX = Origen R_B
+    imul eax, edx               ; Origen R_B * Alpha
+
+    add ecx, eax                ; Sumar origen y destino
+    shr ecx, 8                  ; Dividir entre 256 (aproximación rápida a 255)
+    and ecx, 0x00FF00FF         ; Limpiar basura, ECX = Final R_B
+
+    ; Procesar Verde
+    pop eax                     ; EAX = InvAlpha    
+    push ecx                    ; Guardar R_B procesado
+    
+    mov ecx, ebx
+    and ecx, 0x0000FF00         ; ECX = Destino G
+    imul ecx, eax               ; Destino G * InvAlpha
+
+    mov eax, esi
+    and eax, 0x0000FF00         ; EAX = Origen G
+    imul eax, edx               ; Origen G * Alpha
+
+    add ecx, eax
+    shr ecx, 8                  ; Dividir entre 256
+    and ecx, 0x0000FF00         ; ECX = Final G
+
+    pop eax                     ; Recuperar R_B
+    or eax, ecx                 ; Combinar Canales (Final RGB)
+    mov [edi], eax              ; Escribir píxel mezclado
+    jmp .done
+
+.draw_solid:
+    ; Ruta rápida para alpha 255
     mov eax, [ebp + 8]
     mov ecx, [ebp + 12]
     imul ecx, [g_pitch]
     shl eax, 2
     add ecx, eax
-    mov eax, [g_framebuffer]
-    add eax, ecx
-    mov eax, [eax]
+	
+    mov edi, [g_backbuffer]
+    add edi, ecx
+    mov [edi], esi
+
+.done:
+    popa
     pop ebp
-    ret
+    ret	
 
 sys_fill_rect:
     push ebp
@@ -1185,7 +1306,7 @@ sys_fill_rect:
     push esi
     mov ebx, [ebp + 16]         ; w
     mov edx, [ebp + 20]         ; h
-    mov esi, [current_color]
+    mov esi, [current_color]	; color
     test ebx, ebx
     jle .done
     test edx, edx
@@ -1196,8 +1317,9 @@ sys_fill_rect:
     imul ecx, [g_pitch]
     mov eax, [ebp + 8]          ; x
     shl eax, 2
-    add ecx, eax
-    mov edi, [g_framebuffer]
+    add ecx, eax    
+	;mov edi, [g_framebuffer] ; antes
+	mov edi, [g_backbuffer]	  ; ahora	
     add edi, ecx
     mov ecx, ebx
     mov eax, esi
@@ -1332,23 +1454,286 @@ sys_draw_line:
     pop ebp
     ret
 
-sys_draw_oval:
-sys_fill_oval:
 sys_draw_arc:
+    jmp sys_draw_oval
+	
 sys_fill_arc:
+    jmp sys_fill_oval
+
+sys_draw_oval:
     push ebp
     mov ebp, esp
-    push dword [ebp + 20]
-    push dword [ebp + 16]
-    push dword [ebp + 12]
-    push dword [ebp + 8]
-    call sys_draw_rect
+    sub esp, 28             ; Espacio local
+    pusha
+    
+    ; Similar a fill_oval, pero evaluamos un anillo entre 0.85 y 1.0
+    mov eax, [ebp+16]
+    shr eax, 1
+    mov [ebp-4], eax
+    
+    mov eax, [ebp+20]
+    shr eax, 1
+    mov [ebp-8], eax
+    
+    cmp dword [ebp-4], 0
+    je .draw_o_done
+    cmp dword [ebp-8], 0
+    je .draw_o_done
+
+    mov eax, [ebp+8]
+    add eax, [ebp-4]
+    mov [ebp-12], eax
+    
+    mov eax, [ebp+12]
+    add eax, [ebp-8]
+    mov [ebp-16], eax
+    
+    mov ecx, [ebp+12]       
+.y_loop:
+    mov eax, [ebp+12]
+    add eax, [ebp+20]
+    cmp ecx, eax            
+    jge .draw_o_done
+    
+    mov ebx, [ebp+8]        
+.x_loop:
+    mov eax, [ebp+8]
+    add eax, [ebp+16]
+    cmp ebx, eax            
+    jge .x_end
+    
+    mov eax, ebx
+    sub eax, [ebp-12]
+    mov [ebp-20], eax
+    
+    mov eax, ecx
+    sub eax, [ebp-16]
+    mov [ebp-24], eax
+    
+    fild dword [ebp-20]
+    fild dword [ebp-4]
+    fdivp st1, st0
+    fmul st0, st0
+    
+    fild dword [ebp-24]
+    fild dword [ebp-8]
+    fdivp st1, st0
+    fmul st0, st0
+    
+    faddp st1, st0          ; Suma actual
+    
+    ; Umbral inferior (aprox 0.85). Valor en float (32-bit IEEE) = 0x3F59999A
+    mov dword [ebp-28], 0x3F59999A
+    fld dword [ebp-28]      ; st0 = 0.85, st1 = Suma
+    fcomp st1               ; Comparar 0.85 y Suma
+    fnstsw ax
+    sahf
+    ja .cleanup_st0         ; Si Suma < 0.85, limpiar st0 y saltar
+
+    fld1                    ; st0 = 1.0, st1 = Suma
+    fcomp st1               ; Comparar 1.0 y Suma
+    fnstsw ax
+    sahf
+    jb .cleanup_st0         ; Si Suma > 1.0, limpiar st0 y saltar
+    
+    ; Si está en el anillo, limpiar suma y dibujar
+    fstp st0
+    push ecx
+    push ebx
+    call sys_draw_pixel
+    add esp, 8
+    jmp .skip_pixel
+    
+.cleanup_st0:
+    fstp st0                ; Limpiar la suma descartada
+.skip_pixel:
+    inc ebx
+    jmp .x_loop
+.x_end:
+    inc ecx
+    jmp .y_loop
+    
+.draw_o_done:
+    popa
+    mov esp, ebp
+    pop ebp
+    ret	
+
+sys_fill_oval:
+    push ebp
+    mov ebp, esp
+    sub esp, 28             ; Espacio local para cálculos FPU
+    pusha
+    
+    ; Variables locales: [ebp-4]=rx, [ebp-8]=ry, [ebp-12]=xc, [ebp-16]=yc, [ebp-20]=dx, [ebp-24]=dy
+    mov eax, [ebp+16]       ; w
+    shr eax, 1              ; rx = w/2
+    mov [ebp-4], eax
+    
+    mov eax, [ebp+20]       ; h
+    shr eax, 1              ; ry = h/2
+    mov [ebp-8], eax
+    
+    ; Protección división por cero
+    cmp dword [ebp-4], 0
+    je .fill_o_done
+    cmp dword [ebp-8], 0
+    je .fill_o_done
+
+    mov eax, [ebp+8]
+    add eax, [ebp-4]        ; xc = x + rx
+    mov [ebp-12], eax
+    
+    mov eax, [ebp+12]
+    add eax, [ebp-8]        ; yc = y + ry
+    mov [ebp-16], eax
+    
+    ; Y Loop
+    mov ecx, [ebp+12]       ; py = y
+.y_loop:
+    mov eax, [ebp+12]
+    add eax, [ebp+20]
+    cmp ecx, eax            ; py < y+h ?
+    jge .fill_o_done
+    
+    ; X Loop
+    mov ebx, [ebp+8]        ; px = x
+.x_loop:
+    mov eax, [ebp+8]
+    add eax, [ebp+16]
+    cmp ebx, eax            ; px < x+w ?
+    jge .x_end
+    
+    ; Evaluar ((px-xc)/rx)^2 + ((py-yc)/ry)^2 <= 1.0 mediante FPU
+    mov eax, ebx
+    sub eax, [ebp-12]
+    mov [ebp-20], eax       ; dx
+    
+    mov eax, ecx
+    sub eax, [ebp-16]
+    mov [ebp-24], eax       ; dy
+    
+    fild dword [ebp-20]     ; Cargar dx
+    fild dword [ebp-4]      ; Cargar rx
+    fdivp st1, st0          ; (dx/rx)
+    fmul st0, st0           ; (dx/rx)^2
+    
+    fild dword [ebp-24]     ; Cargar dy
+    fild dword [ebp-8]      ; Cargar ry
+    fdivp st1, st0          ; (dy/ry)
+    fmul st0, st0           ; (dy/ry)^2
+    
+    faddp st1, st0          ; Suma
+    
+    fld1                    ; Cargar 1.0
+    fcompp                  ; Comparar 1.0 con la Suma (Saca ambos de la pila)
+    fnstsw ax               ; Extraer status FPU
+    sahf
+    jb .skip_pixel          ; Si 1.0 < suma, está fuera del óvalo
+    
+    push ecx
+    push ebx
+    call sys_draw_pixel
+    add esp, 8
+    
+.skip_pixel:
+    inc ebx
+    jmp .x_loop
+.x_end:
+    inc ecx
+    jmp .y_loop
+    
+.fill_o_done:
+    popa
+    mov esp, ebp
+    pop ebp
+    ret	
+
+sys_draw_polygon:
+    push ebp
+    mov ebp, esp
+    pusha
+    
+    mov esi, [ebp + 8]      ; xPoints (Puntero al array Java)
+    mov edi, [ebp + 12]     ; yPoints (Puntero al array Java)
+    mov ecx, [ebp + 16]     ; nPoints
+    
+    cmp ecx, 2
+    jl .poly_done           ; Mínimo 2 puntos
+    
+    add esi, 4              ; Saltar cabecera 'length' de Java
+    add edi, 4
+    
+    xor ebx, ebx            ; Índice i = 0
+.poly_loop:
+    mov eax, ebx
+    inc eax                 ; j = i + 1
+    cmp eax, ecx
+    jne .no_wrap
+    xor eax, eax            ; j = 0 (Cerrar el polígono)
+.no_wrap:
+    push ecx                ; Preservar nPoints
+    
+    ; Empujar argumentos para sys_draw_line (y2, x2, y1, x1)
+    push dword [edi + eax*4]
+    push dword [esi + eax*4]
+    push dword [edi + ebx*4]
+    push dword [esi + ebx*4]
+    call sys_draw_line
     add esp, 16
+    
+    pop ecx
+    inc ebx
+    cmp ebx, ecx
+    jl .poly_loop
+    
+.poly_done:
+    popa
     pop ebp
     ret
 
-sys_draw_polygon:
 sys_fill_polygon:
+    push ebp
+    mov ebp, esp
+    pusha
+    
+    mov esi, [ebp + 8]      ; xPoints
+    mov edi, [ebp + 12]     ; yPoints
+    mov ecx, [ebp + 16]     ; nPoints
+    
+    cmp ecx, 3
+    jl .fill_poly_done
+    
+    add esi, 4
+    add edi, 4
+    
+    mov ebx, 1              ; Iniciar Convex-Fan desde el segundo punto
+.fill_loop:
+    push ecx
+    
+    ; Rellenar trazando un abanico desde el punto 0
+    push dword [edi + ebx*4]
+    push dword [esi + ebx*4]
+    push dword [edi]        ; y0
+    push dword [esi]        ; x0
+    call sys_draw_line
+    add esp, 16
+    
+    pop ecx
+    inc ebx
+    cmp ebx, ecx
+    jl .fill_loop
+    
+    ; Redibujar el contorno exterior
+    push dword [ebp + 16]
+    push dword [ebp + 12]
+    push dword [ebp + 8]
+    call sys_draw_polygon
+    add esp, 12
+    
+.fill_poly_done:
+    popa
+    pop ebp
     ret
 
 ; Impresión de cadenas de texto
@@ -1442,8 +1827,8 @@ sys_scroll_vram:
     mov eax, [ebp + 8]
     imul eax, [g_pitch]         ; eax = offset en bytes a desplazar
 
-    mov edi, [g_framebuffer]    ; Destino: Inicio de la pantalla
-    mov esi, [g_framebuffer]
+    mov edi, [g_backbuffer]    ; Destino: Inicio de la pantalla
+    mov esi, [g_backbuffer]
     add esi, eax                ; Origen: Pantalla desplazada
 
     ; Calcular cuántos dwords (4 bytes) mover: ((768 * pitch) - offset) / 4
