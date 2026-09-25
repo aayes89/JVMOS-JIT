@@ -90,6 +90,8 @@ public class RenderDemos {
             }
 
             for (int i = 0; i < 8; i++) { oldProjX[i] = projX[i]; oldProjY[i] = projY[i]; }
+			// Volcar bacbuffer a la pantalla
+			g.swapBuffers();
 
             angleX = (angleX + 2) % 360; angleY = (angleY + 3) % 360; angleZ = (angleZ + 1) % 360;
             try{Thread.sleep(16);}catch(Exception e){}
@@ -130,6 +132,9 @@ public class RenderDemos {
 
         while (true) {
             g.clearScreen();
+			g.setColor(Color.CYAN);
+			g.drawString("Baremetal 3D Engine - Filled Cube - ESC para salir" , 20, 20);
+			
             // Seno y Coseno
             int sinX = Math.sin(angleX);
             int cosX = Math.cos(angleX);
@@ -140,7 +145,7 @@ public class RenderDemos {
             int sinZ = Math.sin(angleZ);
             int cosZ = Math.cos(angleZ);
 
-            // Rotadr y proyectar los 8 vértices
+            // Rotar y proyectar los 8 vértices
             for (int i = 0; i < 8; i++) {
                 int x = cubeX[i];
                 int y = cubeY[i];
@@ -247,6 +252,9 @@ public class RenderDemos {
                 g.drawLine(projX[v2],projY[v2],projX[v3],projY[v3]);
                 g.drawLine(projX[v3],projY[v3],projX[v0],projY[v0]);
             }
+			
+			// Volcar backbuffer a la pantalla
+			g.swapBuffers();
 
             // Siguiente frame
             angleX = (angleX + 2) % 360;
@@ -281,6 +289,8 @@ public class RenderDemos {
         while (true) {
             // Limpiar pantalla
             g.clearScreen();
+			g.setColor(Color.CYAN);
+			g.drawString("Baremetal 3D Engine - Mesh Cube - ESC para salir",20,20);
 
             // Calcular trigonometría para los tres ejes
             int sinX = Math.sin(angleX); 
@@ -303,6 +313,9 @@ public class RenderDemos {
 
             // Renderizar la geometría final combinada
             renderer.render(cube, matrix, 200, 385, 100);
+			
+			// Volcar backbuffer a la pantalla
+			g.swapBuffers();
             
             // Avanzar rotaciones a distintas velocidades para un efecto más natural
             angleX = (angleX + 1) % 360;
