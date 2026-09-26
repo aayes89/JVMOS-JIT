@@ -23,6 +23,7 @@ SOFTWARE.*/
 package java.awt.ui;
 
 import java.awt.Graphics2D;
+import java.awt.Color;
 
 public class JTextArea extends JComponent {
     
@@ -169,11 +170,10 @@ public class JTextArea extends JComponent {
         }
     }
     
-    // Funciones auxiliares para cargar o extraer el texto al interactuar con FileSystem
+    // Getter y Setters
     public String getText() {
         return new String(textBuffer, 0, textLength);
     }
-
     public void setText(String text) {
         if (text == null) text = "";
         char[] chars = text.toCharArray();
@@ -185,9 +185,7 @@ public class JTextArea extends JComponent {
         }
         textLength = len;
         caretIndex = len; // Mover cursor al final del texto cargado
-    }
-	
-	// Getter y Setters
+    }	
 	public char[] getTextBuffer(){
 		return textBuffer;
 	}
@@ -203,11 +201,23 @@ public class JTextArea extends JComponent {
     public int getTextColor(){
 		return textColor;
 	}
+	public void setTextColor(int color){
+		this.textColor = color;
+	}
+	public void setTextColor(Color color){
+		this.textColor = color.getRGB();
+	}
     public int getFontWidth(){
 		return fontWidth;
 	}
+	public void setFontWidth(int fwidth){
+		this.fontWidth = fwidth;
+	}
     public int getFontHeight(){
 		return fontHeight;
+	}
+	public void setFontHeight(int fheight){
+		this.fontHeight = fheight;
 	}
     public int getBlinkCounter(){
 		return blinkCounter;
