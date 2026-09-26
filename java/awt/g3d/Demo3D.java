@@ -48,8 +48,10 @@ public class Demo3D {
         int angle = 0;
         
         while (true) {
-            g.setColor(Color.BLACK);
-            g.fillRect(0, 0, 1024, 768);
+            g.clearScreen();
+			g.setColor(Color.WHITE);
+            g.drawString("Demo Bare-Metal 3D: Piramide, Cubo y Esfera. ESC para salir.", 20, 20);
+
 
             int sinA = Math.sin(angle);
             int cosA = Math.cos(angle);
@@ -60,25 +62,22 @@ public class Demo3D {
             rotY.setRotationY(sinA, cosA);
             rotZ.setRotationZ(sinB, cosB);
 
-            // --- 1. PIRÁMIDE (Izquierda) X, Y, Tamaño (%) ---
+            //  PIRÁMIDE (Izquierda) X, Y, Tamaño (%) 
             matPyramid.setRotationY(sinA, cosA);             
             renderer.render(pyramid, matPyramid, 200, 384, 100);
 
-            // --- 2. CUBO (Centro) X, Y, Tamaño (%) ---
+            //  CUBO (Centro) X, Y, Tamaño (%) 
             matCube.setIdentity();
             matCube.multiply(rotX); 
             matCube.multiply(rotY);
             renderer.render(cube, matCube, 512, 384, 100);
 
-            // --- 3. ESFERA (Derecha) X, Y, Tamaño (%) ---
+            // ESFERA (Derecha) X, Y, Tamaño (%) 
             matSphere.setIdentity();
             matSphere.multiply(rotX);
             matSphere.multiply(rotZ);
             renderer.render(sphere, matSphere, 768, 384, 100);
-
-            g.setColor(Color.WHITE);
-            g.drawString("Demo Bare-Metal 3D: Piramide, Cubo y Esfera. ESC para salir.", 20, 20);
-
+			
             angle = (angle + 2) % 360;
 
             Native.sys(12, 16, 0, 0, 0); 
