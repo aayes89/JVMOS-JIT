@@ -40,6 +40,8 @@ global sys_get_ram_size
 global sys_memcpy
 global sys_memset
 global sys_gc_collect
+global sys_mark_frame
+global sys_reset_frame
 %include "boot/sys_thread.asm"
 global sys_switch_context
 
@@ -549,6 +551,22 @@ sys_sleep:
     pop ebp
     ret
 
+; Guarda el estado actual del Heap 
+sys_mark_frame:
+	mov eax, [heap_curr_ptr]
+	mov [frame_heap_checkpoint], eax
+	ret
+
+; Rebobina el Heap al estado guardado (limpiar)
+sys_reset_frame:
+	mov eax, [frame_heap_checkpoint]	
+	test eax, eax
+	jz .done_rf
+	mov [heap_curr_ptr], eax
+	mov dword [free_list_head], 0	; Reset de lista libre
+.done_rf:
+	ret	
+
 ; Asignador de Memoria Kernel preparado para GC (Cabecera de 16 bytes)
 sys_kalloc:
     push ebp
@@ -588,7 +606,7 @@ sys_kalloc:
     cmp eax, 32                 ; Mínimo 32 bytes para dividir bloque
     jb .no_split
 
-    ; --- SPLIT (Cortar un pedazo del bloque libre) ---
+    ; SPLIT (Cortar un pedazo del bloque libre) 
     mov [esi], ecx              
     
     mov edi, esi
@@ -602,13 +620,14 @@ sys_kalloc:
     jmp .split_done
 
 .no_split:
-    ; --- SIN SPLIT (Usar bloque entero) ---
+    ; SIN SPLIT (Usar bloque entero) 
     mov edi, [esi + 8]
     mov [ebx], edi              
     mov ecx, [esi]              ; ECX = Tamaño TOTAL del bloque
     
 .split_done:
     mov dword [esi + 4], 1      ; Marcar como asignado
+    mov dword [esi + 8], 0xCAFEBABE ; <--- BLINDAJE GC: FIRMA MÁGICA
     mov eax, esi
     add eax, 16                 ; Puntero al payload
     jmp .clear_mem
@@ -624,12 +643,12 @@ sys_kalloc:
     mov [heap_curr_ptr], ebx
     mov [eax], ecx              
     mov dword [eax + 4], 1      
-    mov dword [eax + 8], 0      
+    mov dword [eax + 8], 0xCAFEBABE ; <--- BLINDAJE GC: FIRMA MÁGICA
 
     add eax, 16                 
     jmp .clear_mem
 
-.clear_mem:	
+.clear_mem:    
     push edi
     push ecx
     push eax
@@ -647,11 +666,17 @@ sys_kalloc:
 
 .trigger_gc:
     test edx, edx               
-    jnz .fail                   ; Abortar si ya intentamos GC
-    
-    mov edx, 1                  ; Bandera: GC ejecutado
+    jnz .force_compaction       ; En lugar de fallar de inmediato, intentar compactar
+
+    mov edx, 1                  ; Marca que el GC ya se ejecutó
     call sys_gc_collect
     jmp .try_alloc
+
+.force_compaction:
+    ; Si la lista libre sigue vacía tras el GC, resetear el Heap si no hay objetos vivos
+    mov eax, [free_list_head]
+    test eax, eax
+    jnz .try_alloc              ; Si el GC liberó bloques, reintentar
 
 .fail:
     xor eax, eax
@@ -667,7 +692,7 @@ sys_kalloc:
 ; GC MARK & SWEEP (CON FUSIÓN DE BLOQUES ANTI-FRAGMENTACIÓN)
 ; ====================================================================
 sys_gc_collect:
-    pusha			
+    pusha            
 
     ; FASE 1: Marcador (MARK)
     mov esi, java_static_vars
@@ -703,7 +728,7 @@ sys_gc_collect:
 
     test ebx, 4                 
     jnz .keep_immortal
-    test ebx, 2					
+    test ebx, 2                    
     jnz .keep_object
 
     ; FUSIONAR BLOQUES MUERTOS
@@ -732,7 +757,7 @@ sys_gc_collect:
 
 .link_free_block:
     mov edx, [free_list_head]
-    mov [esi + 8], edx          
+    mov [esi + 8], edx          ; Nota: Al sobreescribir con la lista libre, el CAFEBABE se destruye (Perfecto)
     mov [free_list_head], esi   
     
     add esi, eax                
@@ -767,6 +792,11 @@ gc_mark_object:
     mov eax, edi
     sub eax, 16
     
+    ; --- BLINDAJE ESTRICTO CONTRA FALSOS PUNTEROS DE COORDENADAS 3D ---
+    cmp dword [eax + 8], 0xCAFEBABE
+    jne .done
+    ; ------------------------------------------------------------------
+
     mov ebx, [eax + 4]
     test ebx, 1
     jz .done
@@ -803,7 +833,7 @@ gc_mark_object:
 .done:
     popa        
     ret
-    
+	
 ; Obtener Memoria Disponible en el Heap
 sys_get_free_mem:
     cmp dword [heap_curr_ptr], 0
@@ -2364,6 +2394,8 @@ sys_wait_io:
 ; Sección DATA y RODATA
 section .data
 align 16
+
+frame_heap_checkpoint dd 0
 
 idtr:
     idtr_limit      dw 2047
