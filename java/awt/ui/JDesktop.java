@@ -23,6 +23,7 @@ SOFTWARE.*/
 package java.awt.ui;
 
 import java.awt.Graphics2D;
+import java.lang.System;
 import kernel.Native;
 import kernel.JExplorer; 
 import kernel.JEditor;
@@ -194,33 +195,6 @@ public class JDesktop {
              g.setColor(0x00000000); g.fillRect(0, 0, 1024, 726);
         }
     }
-    	
-	private static void showDateTime(){
-        int hour = readTime(2), min = readTime(1), sec = readTime(0);
-        int day = readTime(3), month = readTime(4), year = readTime(5);
-        g.setColor(0x00C0C0C0); 
-		g.fillRect(880, 728, 144, 38);
-        g.setColor(0x00000000);
-
-        // Hora Superior
-        drawChar(910, 733, (hour / 10) + '0');
-		drawChar(920, 733, (hour % 10) + '0'); 
-		drawChar(930, 733, ':');
-        drawChar(940, 733, (min / 10) + '0'); 
-		drawChar(950, 733, (min % 10) + '0'); 
-		drawChar(960, 733, ':');
-        drawChar(970, 733, (sec / 10) + '0'); 
-		drawChar(980, 733, (sec % 10) + '0');
-        // Fecha Inferior
-        drawChar(890, 750, (day / 10) + '0');
-		drawChar(900, 750, (day % 10) + '0');
-		drawChar(910, 750, '/');
-        drawChar(920, 750, (month / 10) + '0');
-		drawChar(930, 750, (month % 10) + '0');
-		drawString(940, 750, "/20");
-        drawChar(970, 750, (year / 10) + '0');
-		drawChar(980, 750, (year % 10) + '0');
-    }
 	
 	private void drawTaskbar() {
         int taskbarY = 726;
@@ -237,7 +211,42 @@ public class JDesktop {
             g.setColor(0x00000000); g.drawString("JExplorer", 110, taskbarY + 24);
         }
         
-        // Reloj simplificado (Debe integrarse bien en UI.java)
-		showDateTime();
+        // Reloj simplificado (Debe integrarse bien en UI.java)		
     }
+	
+	
+	// Getter y Setters
+	public JFrame getAboutWindow(){
+		return aboutWindow;
+	}
+	public Graphics2D getGraphics(){
+		return g;
+	}   
+    public JFrame[] getWindows(){
+		return windows;
+	}
+    public int getWindowCount(){
+		return windowCount;
+	}
+    public int getMaxWindows(){
+		return MAX_WINDOWS;
+	}    
+    public JPopupMenu getContextMenu(){
+		return contextMenu;
+	}
+    public JPopupMenu getStartMenu(){
+		return startMenu;
+	}
+    public JFrame getAboutWindow(){
+		return aboutWindow;
+	}	
+    public JExplorer getExplorer(){
+		return explorer;
+	}
+    public JEditor getEditor(){
+		return editor;
+	}    
+    public int getBackgroundMode(){
+		return backgroundMode;
+	}
 }
