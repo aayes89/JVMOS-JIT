@@ -34,6 +34,7 @@ public class JFrame extends JComponent {
     public boolean isDragging;
     public int dragOffsetX;
     public int dragOffsetY;
+	protected boolean isMinimized;
     
     private static final int MAX_CHILDREN = 32;
     private static final int TITLE_BAR_HEIGHT = 24;
@@ -123,14 +124,27 @@ public class JFrame extends JComponent {
     }
 	
 	// Getter y setters
+	public boolean isMinimized() {
+        return isMinimized;
+    }
+
+    public void setMinimized(boolean minimized) {
+        this.isMinimized = minimized;
+    }
 	public String getTitle(){
 		return title;
+	}
+	public void setTitle(String title){
+		this.title = title;
 	}
     public JComponent[] getChildren(){
 		return children;
 	}
     public int getChildCount(){
 		return childCount;
+	}
+	public void setChildCount(int ccount){
+		this.childCount = ccount;
 	}
     public boolean getIsDragging(){
 		return isDragging;
@@ -141,7 +155,13 @@ public class JFrame extends JComponent {
     public int getDragOffsetX(){
 		return dragOffsetX;
 	}
+	public void setDragOffsetX(int offset){
+		this.dragOffsetX = offset;
+	}
     public int getDragOffsetY(){
 		return dragOffsetY;
+	}
+	public void setDragOffsetY(int offset){
+		this.dragOffsetY = offset;
 	}
 }
