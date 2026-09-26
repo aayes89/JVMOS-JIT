@@ -25,6 +25,7 @@ package java.awt.ui;
 import java.awt.Graphics2D;
 import java.lang.System;
 import kernel.Native;
+import kernel.UI;
 import kernel.JExplorer; 
 import kernel.JEditor;
 
@@ -33,7 +34,7 @@ import kernel.JEditor;
  son los elementos de UI.java anterior usando las nuevas clases,
  para romper el esquema monolítico antiguo
  */
-public class JDesktop {
+public class JDesktop implements ActionCallback{
     private Graphics2D g;
     
     // Jerarquía visual
@@ -69,28 +70,16 @@ public class JDesktop {
         
     private void initMenus() {
         contextMenu = new JPopupMenu();
-        contextMenu.add(new JMenuItem("Fondo Solido", () -> backgroundMode = 0));
-        contextMenu.add(new JMenuItem("Fondo Gradiente", () -> backgroundMode = 1));
-        contextMenu.add(new JMenuItem("Fondo Fractal", () -> backgroundMode = 2));
-        contextMenu.add(new JMenuItem("Abrir Explorador", () -> {
-            explorer.refreshView();
-            explorer.setVisible(true); 
-            explorer.setMinimized(false);
-        }));
-        contextMenu.add(new JMenuItem("Acerca de JVMOS", () -> aboutWindow.setVisible(true)));
+        contextMenu.add(new JMenuItem("Fondo Solido", this, 1));
+        contextMenu.add(new JMenuItem("Fondo Gradiente", this, 2));
+        contextMenu.add(new JMenuItem("Fondo Fractal", this, 3));
+        contextMenu.add(new JMenuItem("Abrir Explorador", this, 4));
+        contextMenu.add(new JMenuItem("Acerca de JVMOS", this, 5));
         
         startMenu = new JPopupMenu();
-        startMenu.add(new JMenuItem("Abrir JExplorer", () -> {
-            explorer.refreshView();
-            explorer.setVisible(true); 
-            explorer.setMinimized(false);
-        }));
-        startMenu.add(new JMenuItem("Cerrar Ventanas", () -> {
-            explorer.setVisible(false); 
-            editor.setVisible(false); 
-            aboutWindow.setVisible(false);
-        }));
-        startMenu.add(new JMenuItem("Apagar Equipo", () -> kernel.UI.shutdown()));
+        startMenu.add(new JMenuItem("Abrir JExplorer", this, 4));
+        startMenu.add(new JMenuItem("Cerrar Ventanas", this, 6));
+        startMenu.add(new JMenuItem("Apagar Equipo", this, 7));
     }
     
     private void initAboutWindow() {		
@@ -100,13 +89,33 @@ public class JDesktop {
         aboutWindow.add(new JLabel("Hecho por: Allan Ayes Ramirez", 20, 100, 0x00000000));
         aboutWindow.add(new JLabel("Memoria RAM: 128 MB (Estatica BIOS)", 20, 130, 0x00000000));
         aboutWindow.add(new JLabel("Video: VBE VESA 1024x768 @ 32bpp", 20, 160, 0x00000000));
-        aboutWindow.add(new JButton("Aceptar", 200, 185, 100, 24, () -> aboutWindow.setVisible(false)));        
+        aboutWindow.add(new JButton("Aceptar", 200, 185, 100, 24, this, 8));      
     }
     
     public void addWindow(JFrame win) {
         if (windowCount < MAX_WINDOWS && win != null) {
             windows[windowCount++] = win;
         }
+    }
+	
+	@Override
+    public void execute(int actionId) {
+        if (actionId == 1) backgroundMode = 0;
+        else if (actionId == 2) backgroundMode = 1;
+        else if (actionId == 3) backgroundMode = 2;
+        else if (actionId == 4) {
+            explorer.refreshView();
+            explorer.setVisible(true); 
+            explorer.setMinimized(false); 
+        }
+        else if (actionId == 5) aboutWindow.setVisible(true);
+        else if (actionId == 6) {
+            explorer.setVisible(false);
+            editor.setVisible(false);
+            aboutWindow.setVisible(false);
+        }
+        else if (actionId == 7) UI.shutdown();
+        else if (actionId == 8) aboutWindow.setVisible(false);
     }
     
     // Lógica del repintado
