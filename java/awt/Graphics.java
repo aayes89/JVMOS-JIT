@@ -50,7 +50,6 @@ public abstract class Graphics {
     public abstract void drawOval(int x, int y, int width, int height);
     public abstract void fillOval(int x, int y, int width, int height);
     public abstract void drawArc(int x, int y, int width, int height);
-    public abstract void fillArc(int x, int y, int width, int height);
-    public abstract void swapBuffers();	
+    public abstract void fillArc(int x, int y, int width, int height);    
     
 }
