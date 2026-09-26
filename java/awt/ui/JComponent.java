@@ -56,11 +56,20 @@ public abstract class JComponent {
     }
 
     public boolean contains(int mx, int my) {
-        // Asume coordenadas absolutas para simplificar en la fase 1
-        return (mx >= x && mx <= x + width && my >= y && my <= y + height);
+        int absX = getAbsoluteX();
+        int absY = getAbsoluteY();
+        return (mx >= absX && mx <= absX + width && my >= absY && my <= absY + height);
     }
     
 	// Getters y Setters
+	public int getAbsoluteX(){
+		// Posición actual o centro de la pantalla
+		return (parent == null) ? x + parent.getAbsoluteX(): (width/2);
+	}
+	public int getAbsoluteY(){
+		// Posición actual o centro de la pantalla
+		return (parent == null) ? y + parent.getAbsoluteY(): (height/2);
+	}
     public void setVisible(boolean v) {
 		this.visible = v; 
 	}
