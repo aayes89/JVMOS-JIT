@@ -1,2453 +1,5182 @@
-; MIT License
+;MIT License
 ;
-; Copyright (c) 2026 Allan (Slam)
+;Copyright (c) 2026 Allan (Slam)
 ;
-; Permission is hereby granted, free of charge, to any person obtaining a copy
-; of this software and associated documentation files (the "Software"), to deal
-; in the Software without restriction, including without limitation the rights
-; to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-; copies of the Software, and to permit persons to whom the Software is
-; furnished to do so, subject to the following conditions:
+;Permission is hereby granted, free of charge, to any person obtaining a copy
+;of this software and associated documentation files (the "Software"), to deal
+;in the Software without restriction, including without limitation the rights
+;to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+;copies of the Software, and to permit persons to whom the Software is
+;furnished to do so, subject to the following conditions:
 ;
-; The above copyright notice and this permission notice shall be included in all
-; copies or substantial portions of the Software.
+;The above copyright notice and this permission notice shall be included in all
+;copies or substantial portions of the Software.
 ;
-; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-; IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-; FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-; AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-; LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-; SOFTWARE.
+;THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+;IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+;FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+;AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+;LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+;OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+;SOFTWARE.
 
-; HAL Baremetal Mejorado para JVM (x86 32-bit)
+; ============================================================================
+; JVMOS - JavaMonolitic JIT Engine (Pure Translation Unit)
+; Formato: NASM x86 32-bit (Modo Protegido Bare-Metal)
+; ============================================================================
+
 [bits 32]
 
-; SÍMBOLOS GLOBALES EXPORTADOS
-; Core sistema / interrupciones 
-global sys_hardware_init
-global sys_hlt
-global sys_exit
-global sys_sleep
-global sys_get_ticks
-global sys_cli
-global sys_sti
-
-; Memoria
-global sys_kalloc
-global sys_get_free_mem
-global sys_get_ram_size
-global sys_memcpy
-global sys_memset
-global sys_gc_collect
-global sys_mark_frame
-global sys_reset_frame
-%include "boot/sys_thread.asm"
-global sys_switch_context
-
-; Serie (debug JVM) 
-global sys_serial_init
-global sys_serial_putc
-global sys_serial_puts
-global sys_serial_print_java
-
-; PCI 
-global sys_pci_write_config
-global sys_pci_read_config
-
-; Entrada (por IRQ + FIFO) 
-global sys_init_keyboard
-global sys_read_keyboard_scancode
-global sys_set_keyboard_layout
-global sys_init_mouse
-global sys_read_mouse
-
-; Gráficos VBE 
-global sys_set_color
-global sys_draw_pixel
-global sys_get_pixel
-global sys_draw_pixel_alpha
-global sys_fill_rect
-global sys_draw_rect
-global sys_draw_line
-global sys_draw_oval
-global sys_fill_oval
-global sys_draw_arc
-global sys_fill_arc
-global sys_draw_polygon
-global sys_fill_polygon
-global sys_draw_string
-global current_color
-global sys_scroll_vram
-
-; Disco ATA IDE LBA28 
-global sys_disk_read_sector
-global sys_disk_write_sector
-
-; Tiempo CMOS 
-global sys_get_time
-
-; Audio PC Speaker 
-global sys_beep
-global sys_nosound
-
-; Red RTL8139 
-%include "driver/network/sys_rtl8139.asm"
-global sys_rtl8139_init
-global sys_rtl8139_send_packet
-global sys_net_receive_packet
-
-; PCnet Driver 
-%include "driver/network/sys_pcnet.asm"
-global sys_pcnet_init
-global sys_pcnet_send_packet
-global sys_net_receive_packet_pcnet
-
-; Red RTL8111/8168 
-%include "driver/network/sys_rtl8168.asm"
-global sys_rtl8168_init
-global sys_rtl8168_send_packet
-global sys_net_receive_packet_rtl8168
-
-; Puertos I/O 
-global sys_inb
-global sys_outb
-global sys_inw
-global sys_outw
-global sys_indw
-global sys_outdw
-global sys_wait_io
-
-; Externos del Kernel/Framebuffer/GC
-extern g_framebuffer
-extern g_pitch
-extern draw_char_vram
-extern jit_flush_icache
-extern java_static_vars
-
-; SECCIÓN BSS (MEMORIA NO INICIALIZADA)
 section .bss
-alignb 16
 
-sys_ticks           resd 1
+align 16
+    jit_buffer_base: resd 1     ; base física de memoria JIT (0x00200000)
+    jit_buffer_ptr:  resd 1     ; cursor actual
+    jit_buffer_end:  resd 1     ; límite de memoria
+    
+    align 4
+    pc_map:          resd 65536 ; hasta 64kb de bytecode por método
+    fixup_addr:      resd 1024  ; donde sobreescribir métodos nativos
+    fixup_target:    resd 1024  ; a cual PC del bytecode apuntaba
+    fixup_count:     resd 1     ; contador de saltos hacia adelante
+    method_cache:    resd 4096  ; mapea [CP_Index] -> [Dirección Nativa]
+    java_static_vars: resd 4096 ; para manejar variables estáticas
 
-heap_curr_ptr       resd 1
-heap_start_ptr      resd 1
-free_list_head		resd 1	; cabeza de la lisa de bloques reciclados
-stack_bottom		resd 1	; saber hasta donde escanear la pila
+section .data
+    jit_bytecode_base: dd 0
+    loop_start_addr:   dd 0
+    heap_ptr:          dd 0x01000000 ; 16MB de RAM física
+    
+    ; Bytecodes de prueba para fases JIT 2 a 6
+    test_bytecode_p2: db 0x10, 0x42, 0xAC
+    test_bytecode_p3: db 0x10, 0x0A, 0x3B, 0x10, 0x14, 0x3C, 0x1B, 0xAC
+    test_bytecode_p4: db 0x10, 0x0A, 0x3B, 0x10, 0x14, 0x3C, 0x1A, 0x1B, 0x60, 0xAC
+    test_bytecode_p5: db 0x1A, 0x1B, 0x60, 0xAC
+    test_bytecode_p6: db 0x03, 0x3B, 0x1A, 0x10, 0x05, 0x9F, 0x00, 0x0A, 0x1A, 0x04, 0x60, 0x3B, 0xA7, 0xFF, 0xF6, 0x1A, 0xAC
 
-kbd_fifo_buf        resb 256
-kbd_fifo_head       resd 1
-kbd_fifo_tail       resd 1
-kbd_layout          resd 1          ; 0=US, 1=LATAM
-kbd_shift_state     resb 1
-
-mouse_cycle         resb 1
-mouse_byte          resb 3
-mouse_x             resd 1
-mouse_y             resd 1
-mouse_btn           resd 1
-
-current_color       resd 1
-
-disk_sector_buf     resb 512
-
-; Sección TEXT (Código ejecutable)
 section .text
+    global jit_init
+    global jit_compile_method
+    global jit_execute_method
+    global jit_runtime_trampoline
+    global jit_emit_byte
+    global jit_emit_dword
+    global jit_buffer_ptr   
+    global jit_flush_icache
+    global java_static_vars
 
-; Inicialización de HARDWARE
-sys_hardware_init:
-    cli
-
-    call sys_serial_init
-    call sys_init_pic
-    call sys_init_pit
-    call sys_setup_idt
-
-    mov dword [kbd_fifo_head], 0
-    mov dword [kbd_fifo_tail], 0
-    mov byte  [kbd_shift_state], 0
-    mov dword [kbd_layout], 1       ; Por defecto LATAM/Español activo
-    mov byte  [mouse_cycle], 0
-    mov dword [mouse_x], 512
-    mov dword [mouse_y], 384
-    mov dword [mouse_btn], 0
-    mov dword [sys_ticks], 0
-    mov dword [heap_curr_ptr], 0x02000000
-    mov dword [heap_start_ptr], 0x02000000
-    mov dword [current_color], 0xFFFFFFFF
-	mov dword [free_list_head], 0       
-    mov [stack_bottom], ebp    ; Guardar la base inicial de la pila del kernel
-
-    call sys_init_keyboard
-    call sys_init_mouse
-    call sys_sti
-
-sys_cli:
-    cli
-    ret
-	
-sys_sti:
-    sti
-    ret
-
-; Puerto serie UART 16550 (COM1 @ 0x3F8)
-sys_serial_init:
-    mov dx, 0x3F9
-    mov al, 0x00
-    out dx, al
-
-    mov dx, 0x3FB
-    mov al, 0x80
-    out dx, al
-
-    mov dx, 0x3F8
-    mov al, 0x03                ; Divisor 3 -> 38400 baudios
-    out dx, al
-    mov dx, 0x3F9
-    mov al, 0x00
-    out dx, al
-
-    mov dx, 0x3FB
-    mov al, 0x03                ; 8N1
-    out dx, al
-
-    mov dx, 0x3FA
-    mov al, 0xC7
-    out dx, al
-
-    mov dx, 0x3FC
-    mov al, 0x0B
-    out dx, al
-    ret
-
-; Imprimir caracter en consola
-sys_serial_putc:
-    push ebp
-    mov ebp, esp
-    mov dx, 0x3FD
-.wait_thre:
-    in al, dx
-    test al, 0x20
-    jz .wait_thre
-    mov dx, 0x3F8
-    mov al, [ebp + 8]
-    out dx, al
-    pop ebp
-    ret
-
-; Imprimir cadena de caracteres en consola
-sys_serial_puts:
-    push ebp
-    mov ebp, esp
-    push esi
-    mov esi, [ebp + 8]
-    test esi, esi
-    jz .done
-.loop:
-    movzx eax, byte [esi]
-    test al, al
-    jz .done
-    push eax
-    call sys_serial_putc
-    add esp, 4
-    inc esi
-    jmp .loop
-.done:
-    pop esi
-    pop ebp
-    ret
-
-; Impresión en consola serial
-sys_serial_print_java:
-    push ebp
-    mov ebp, esp
-    pusha
-    mov esi, [ebp + 8]          ; Objeto String real
-    test esi, esi
-    jz .done
+    global sys_native_dispatch
+    extern resolve_and_compile_java_method
+    extern sys_kalloc
+    extern cp_base_ptr
+    extern cp_offsets
+    extern current_param_count
+    extern current_class_ptr
     
-    ; Extraer byte[] value
-    mov esi, [esi + 8]
-    test esi, esi
-    jz .done
 
-    ; Extraer longitud
-    mov ecx, [esi]
-    test ecx, ecx
-    jz .done
+    extern sys_arg_id, sys_arg_a, sys_arg_b, sys_arg_c, sys_arg_d           
+    extern draw_char_vram, sys_draw_string, sys_serial_puts, sys_serial_putc, sys_serial_print_java, sys_scroll_vram
+    extern current_color
+    extern sys_switch_context
+    extern sys_read_keyboard_scancode, sys_set_keyboard_layout, sys_read_mouse
+    extern sys_draw_rect, sys_fill_rect, sys_draw_line, sys_get_pixel, sys_draw_pixel
+	extern sys_draw_pixel_alpha, sys_draw_polygon, sys_fill_polygon
+    extern sys_draw_oval, sys_fill_oval, sys_draw_arc, sys_fill_arc    
+    extern sys_beep, sys_nosound, sys_get_free_mem, sys_get_ram_size
+    extern sys_pci_write_config, sys_pci_read_config, sys_disk_read_sector, sys_disk_write_sector
+    extern sys_rtl8139_init, sys_rtl8139_send_packet, sys_net_receive_packet
+    extern sys_rtl8168_init, sys_rtl8168_send_packet, sys_net_receive_packet_rtl8168
+    extern sys_pcnet_init, sys_pcnet_send_packet, sys_net_receive_packet_pcnet
+    extern sys_inb, sys_outb, sys_inw, sys_outw, sys_indw, sys_outdw, sys_get_ticks
+    extern sys_get_time, sys_sleep, sys_exit
+    extern sys_exec_jit
+	extern sys_mark_frame, sys_reset_frame
 
-    ; Apuntar a caracteres
-    add esi, 4
-.loop:
-    movzx eax, byte [esi]
+jit_init:
     push eax
-    call sys_serial_putc
-    add esp, 4
-    inc esi
-    dec ecx
-    jnz .loop
-.done:
-    popa
-    pop ebp
-    ret
-
-
-; Controlador de interrupciones PIC 8259A
-sys_init_pic:
-    mov al, 0x11
-    out 0x20, al
-    out 0xA0, al
-
-    mov al, 0x20                ; Master -> IRQ 0x20-0x27
-    out 0x21, al
-    mov al, 0x28                ; Slave -> IRQ 0x28-0x2F
-    out 0xA1, al
-
-    mov al, 0x04
-    out 0x21, al
-    mov al, 0x02
-    out 0xA1, al
-
-    mov al, 0x01
-    out 0x21, al
-    out 0xA1, al
-
-    mov al, 0xF8                ; Habilitar IRQ0, IRQ1, IRQ2
-    out 0x21, al
-    mov al, 0xEF                ; Habilitar IRQ12 (Mouse)
-    out 0xA1, al
-    ret
-
-; Temporizador PIT (1000 Hz)
-sys_init_pit:
-    mov al, 0x36
-    out 0x43, al
-    mov al, 0xA9
-    out 0x40, al
-    mov al, 0x04
-    out 0x40, al
-    ret
-
-; IDT y Manejadores de interrupción
-sys_setup_idt:
-    mov dword [idtr_base], idt_entries
-    mov word  [idtr_limit], 2047
-
-    mov edi, idt_entries
-    mov ecx, 256 * 2
-    xor eax, eax
-    rep stosd
-
-    mov eax, irq0_timer_handler
-    mov ebx, 0x20
-    call set_idt_gate
-
-    mov eax, irq1_keyboard_handler
-    mov ebx, 0x21
-    call set_idt_gate
-
-    mov eax, irq2_cascade_handler
-    mov ebx, 0x22
-    call set_idt_gate
-
-    mov eax, irq12_mouse_handler
-    mov ebx, 0x2C
-    call set_idt_gate
-
-    mov ecx, 0
-.exc_loop:
-    mov eax, exception_stub
-    mov ebx, ecx
-    push ecx
-    call set_idt_gate
-    pop ecx
-    inc ecx
-    cmp ecx, 32
-    jl .exc_loop
-
-    lidt [idtr]
-    ret
-
-set_idt_gate:
     push ebx
-    shl ebx, 3
-    add ebx, idt_entries
-    mov [ebx], ax
-    mov word [ebx + 2], 0x08
-    mov byte [ebx + 4], 0x00
-    mov byte [ebx + 5], 0x8E
-    shr eax, 16
-    mov [ebx + 6], ax
+    mov [jit_buffer_base], eax
+    mov [jit_buffer_ptr], eax
+    add eax, ebx
+    mov [jit_buffer_end], eax
     pop ebx
-    ret
-
-irq0_timer_handler:
-    pusha
-    inc dword [sys_ticks]	
-    mov al, 0x20
-    out 0x20, al
-    popa
-    iret
-
-; IRQ1: Manejador de teclado PS/2
-irq1_keyboard_handler:
-    pusha
-    in al, 0x60
-
-    ; Evaluar estados de SHIFT (0x2A / 0x36 presionado, 0xAA / 0xB6 liberado)
-    cmp al, 0x2A
-    je .shift_on
-    cmp al, 0x36
-    je .shift_on
-    cmp al, 0xAA
-    je .shift_off
-    cmp al, 0xB6
-    je .shift_off
-
-    ; Ignorar cualquier evento de liberación de tecla (bit 7)
-    test al, 0x80
-    jnz .eoi_only
-
-    ; Almacenar el Scancode en el FIFO circular
-    mov ebx, [kbd_fifo_tail]
-    mov ecx, ebx
-    inc ecx
-    and ecx, 0xFF
-    cmp ecx, [kbd_fifo_head]
-    je .eoi_only
-
-    mov [kbd_fifo_buf + ebx], al
-    mov [kbd_fifo_tail], ecx
-    jmp .eoi_only
-
-.shift_on:
-    mov byte [kbd_shift_state], 1
-    jmp .eoi_only
-.shift_off:
-    mov byte [kbd_shift_state], 0
-
-.eoi_only:
-    mov al, 0x20
-    out 0x20, al
-    popa
-    iret
-
-irq2_cascade_handler:
-    pusha
-    mov al, 0x20
-    out 0x20, al
-    popa
-    iret
-
-irq12_mouse_handler:
-    pusha
-    in al, 0x60
-
-    movzx ebx, byte [mouse_cycle]
-    cmp bl, 0
-    je .m_byte0
-    cmp bl, 1
-    je .m_byte1
-    cmp bl, 2
-    je .m_byte2
-    jmp .m_reset
-
-.m_byte0:
-    test al, 0x08
-    jz .m_reset
-    mov [mouse_byte], al
-    mov byte [mouse_cycle], 1
-    jmp .m_eoi
-.m_byte1:
-    mov [mouse_byte + 1], al
-    mov byte [mouse_cycle], 2
-    jmp .m_eoi
-.m_byte2:
-    mov [mouse_byte + 2], al
-    mov byte [mouse_cycle], 0
-
-    mov al, [mouse_byte]
-    and eax, 0x07
-    mov [mouse_btn], eax
-
-    mov al, [mouse_byte + 1]
-    movsx eax, al
-    add [mouse_x], eax
-
-    mov al, [mouse_byte + 2]
-    movsx eax, al
-    sub [mouse_y], eax
-
-    cmp dword [mouse_x], 0
-    jge .cx1
-    mov dword [mouse_x], 0
-.cx1:
-    cmp dword [mouse_x], 1016
-    jle .cy1
-    mov dword [mouse_x], 1016
-.cy1:
-    cmp dword [mouse_y], 0
-    jge .cy2
-    mov dword [mouse_y], 0
-.cy2:
-    cmp dword [mouse_y], 760
-    jle .m_eoi
-    mov dword [mouse_y], 760
-    jmp .m_eoi
-
-.m_reset:
-    mov byte [mouse_cycle], 0
-
-.m_eoi:
-    mov al, 0x20
-    out 0xA0, al
-    out 0x20, al
-    popa
-    iret
-
-exception_stub:
-    pusha
-    push exception_msg
-    call sys_serial_puts
-    add esp, 4
-.halt:
-    hlt
-    jmp .halt
-
-exception_msg:
-    db 13, 10, "[HAL Panic] CPU Exception! System Halted.", 13, 10, 0
-
-; Temporización y Memoria
-; Obtener contador de Ticks (ms desde el arranque)
-sys_get_ticks:
-    mov eax, [sys_ticks]
-    ret
-
-; Suspender ejecución por N milisegundos (Latencia ultra-baja)
-sys_sleep:
-    push ebp
-    mov ebp, esp
-    push ebx
-
-    mov eax, [ebp + 8]          ; milisegundos solicitados por Java
-    cmp eax, 0
-    jle .done                   ; Si es <= 0 ms, retornar de inmediato
-
-    mov ebx, [sys_ticks]
-    add ebx, eax                ; ebx = tick_objetivo
-
-.wait:
-    cmp dword [sys_ticks], ebx
-    jae .done
-
-    sti                         ; Asegurar interrupciones activas para despertar
-    hlt                         ; Suspender CPU hasta la siguiente IRQ
-    jmp .wait
-
-.done:
-    call jit_flush_icache
-    pop ebx
-    pop ebp
-    ret
-
-; Guarda el estado actual del Heap 
-sys_mark_frame:
-	mov eax, [heap_curr_ptr]
-	mov [frame_heap_checkpoint], eax
-	ret
-
-; Rebobina el Heap al estado guardado (limpiar)
-sys_reset_frame:
-	mov eax, [frame_heap_checkpoint]	
-	test eax, eax
-	jz .done_rf
-	mov [heap_curr_ptr], eax
-	mov dword [free_list_head], 0	; Reset de lista libre
-.done_rf:
-	ret	
-
-; Asignador de Memoria Kernel preparado para GC (Cabecera de 16 bytes)
-sys_kalloc:
-    push ebp
-    mov ebp, esp
-    push ebx
-    push esi
-    push edi
-    push edx
-
-    xor edx, edx                ; Bandera OOM (0 = GC no ejecutado)
-
-    mov ecx, [ebp + 8]          ; Tamaño solicitado
-    test ecx, ecx
-    jz .fail
-
-    ; Calcular tamaño real (Payload + 16 bytes cabecera alineados a 16)
-    add ecx, 31                 
-    and ecx, 0xFFFFFFF0         
-
-.try_alloc:
-    mov ebx, free_list_head
-    mov esi, [ebx]              
-.search_free_list:
-    test esi, esi
-    jz .bump_alloc
-
-    mov eax, [esi]              ; EAX = Tamaño libre
-    cmp eax, ecx
-    jae .found_free_block
-
-    lea ebx, [esi + 8]          ; Siguiente nodo
-    mov esi, [ebx]
-    jmp .search_free_list
-
-.found_free_block:
-    sub eax, ecx                ; EAX = Espacio sobrante
-    cmp eax, 32                 ; Mínimo 32 bytes para dividir bloque
-    jb .no_split
-
-    ; SPLIT (Cortar un pedazo del bloque libre) 
-    mov [esi], ecx              
-    
-    mov edi, esi
-    add edi, ecx                ; EDI = Nuevo bloque sobrante
-    mov [edi], eax              
-    mov dword [edi + 4], 0      
-    
-    mov eax, [esi + 8]          
-    mov [edi + 8], eax          
-    mov [ebx], edi              
-    jmp .split_done
-
-.no_split:
-    ; SIN SPLIT (Usar bloque entero) 
-    mov edi, [esi + 8]
-    mov [ebx], edi              
-    mov ecx, [esi]              ; ECX = Tamaño TOTAL del bloque
-    
-.split_done:
-    mov dword [esi + 4], 1      ; Marcar como asignado
-    mov dword [esi + 8], 0xCAFEBABE ; <--- BLINDAJE GC: FIRMA MÁGICA
-    mov eax, esi
-    add eax, 16                 ; Puntero al payload
-    jmp .clear_mem
-
-.bump_alloc:
-    mov eax, [heap_curr_ptr]
-    mov ebx, eax
-    add ebx, ecx                
-    
-    cmp ebx, 0x08000000         ; Límite 128 MB
-    ja .trigger_gc
-
-    mov [heap_curr_ptr], ebx
-    mov [eax], ecx              
-    mov dword [eax + 4], 1      
-    mov dword [eax + 8], 0xCAFEBABE ; <--- BLINDAJE GC: FIRMA MÁGICA
-
-    add eax, 16                 
-    jmp .clear_mem
-
-.clear_mem:    
-    push edi
-    push ecx
-    push eax
-    
-    mov edi, eax                ; Destino = Inicio del Payload
-    sub ecx, 16                 ; Restar la cabecera
-    xor al, al                  ; Llenar con ceros
-    cld                         
-    rep stosb                   
-    
     pop eax
+    ret
+
+jit_emit_byte:
+    push edi
+    mov edi, [jit_buffer_ptr]
+    cmp edi, [jit_buffer_end]
+    jae .overflow
+    mov [edi], al
+    inc edi
+    mov [jit_buffer_ptr], edi
+    pop edi
+    ret
+.overflow:
+    pop edi
+    cli
+    hlt
+
+jit_emit_dword:
+    push edi
+    push ecx
+    mov edi, [jit_buffer_ptr]
+    lea ecx, [edi + 4]
+    cmp ecx, [jit_buffer_end]
+    jae .overflow
+    mov [edi], eax
+    mov [jit_buffer_ptr], ecx
     pop ecx
     pop edi
-    jmp .done
+    ret
+.overflow:
+    pop ecx
+    pop edi
+    cli
+    hlt
 
-.trigger_gc:
-    test edx, edx               
-    jnz .force_compaction       ; En lugar de fallar de inmediato, intentar compactar
-
-    mov edx, 1                  ; Marca que el GC ya se ejecutó
-    call sys_gc_collect
-    jmp .try_alloc
-
-.force_compaction:
-    ; Si la lista libre sigue vacía tras el GC, resetear el Heap si no hay objetos vivos
-    mov eax, [free_list_head]
+; Preserva registros, invoca a resolve_and_compile_java_method en bootjvm y salta.
+jit_runtime_trampoline:    
+    pusha
+    call resolve_and_compile_java_method
     test eax, eax
-    jnz .try_alloc              ; Si el GC liberó bloques, reintentar
+    jz .resolve_failed
+    mov [esp + 28], eax         ; Poner dirección nativa en el EAX guardado de pusha
 
-.fail:
-    xor eax, eax
-.done:
-    pop edx
-    pop edi
-    pop esi
-    pop ebx
-    pop ebp
-    ret
-
-; ====================================================================
-; GC MARK & SWEEP (CON FUSIÓN DE BLOQUES ANTI-FRAGMENTACIÓN)
-; ====================================================================
-sys_gc_collect:
-    pusha            
-
-    ; FASE 1: Marcador (MARK)
-    mov esi, java_static_vars
-    mov ecx, 4096
-.mark_statics:
-    mov edi, [esi]              
-    call gc_mark_object
-    add esi, 4
-    dec ecx
-    jnz .mark_statics
-
-    mov esi, esp
-    mov ecx, [stack_bottom]
-.mark_stack:
-    cmp esi, ecx
-    jae .phase2
-    mov edi, [esi]
-    call gc_mark_object
-    add esi, 4
-    jmp .mark_stack
-
-    ; FASE 2: Barrido y Fusión (SWEEP & COALESCE)
-.phase2:
-    mov esi, [heap_start_ptr]
-    mov dword [free_list_head], 0   
-
-.sweep_loop:
-    cmp esi, [heap_curr_ptr]
-    jae .gc_done                
-
-    mov eax, [esi]              
-    mov ebx, [esi + 4]          
-
-    test ebx, 4                 
-    jnz .keep_immortal
-    test ebx, 2                    
-    jnz .keep_object
-
-    ; FUSIONAR BLOQUES MUERTOS
-    mov dword [esi + 4], 0      
-    mov edi, esi
-    add edi, eax                
-
-.coalesce_next:
-    cmp edi, [heap_curr_ptr]
-    jae .link_free_block        
-
-    mov ecx, [edi + 4]          
-    test ecx, 4                 
-    jnz .link_free_block        
-    test ecx, 2                 
-    jnz .link_free_block        
-
-    mov edx, [edi]              
-    test edx, edx               ; PROTECCIÓN: Evitar bucle si tamaño es 0
-    jz .link_free_block
-
-    add eax, edx                
-    mov [esi], eax              
-    add edi, edx                
-    jmp .coalesce_next
-
-.link_free_block:
-    mov edx, [free_list_head]
-    mov [esi + 8], edx          ; Nota: Al sobreescribir con la lista libre, el CAFEBABE se destruye (Perfecto)
-    mov [free_list_head], esi   
-    
-    add esi, eax                
-    jmp .sweep_loop
-
-.keep_immortal:
-    add esi, eax
-    jmp .sweep_loop
-
-.keep_object:
-    and dword [esi + 4], 0xFFFFFFFD 
-    add esi, eax
-    jmp .sweep_loop
-
-.gc_done:
+    ; Parche del call site
+    mov ebx, [esp + 32]         
+    mov ecx, eax                ; ECX = Dirección del método nativo recién compilado
+    sub ecx, ebx                ; ECX = Destino - Retorno (Offset relativo rel32)
+    mov [ebx - 4], ecx          ; Sobrescribir el offset rel32 del CALL original en la memoria JIT
     popa
-    ret
+    jmp eax                     ; Salta a la dirección nativa que acaba de devolver EAX
 
-; Subrutina: Marca un objeto (Aislamiento Total)
-gc_mark_object:    
-    pusha            
-    test edi, edi
-    jz .done
-    test edi, 15
-    jnz .done
-    
-    cmp edi, [heap_start_ptr]
-    jb .done
-    cmp edi, [heap_curr_ptr]
-    jae .done
-
-    mov eax, edi
-    sub eax, 16
-    
-    ; --- BLINDAJE ESTRICTO CONTRA FALSOS PUNTEROS DE COORDENADAS 3D ---
-    cmp dword [eax + 8], 0xCAFEBABE
-    jne .done
-    ; ------------------------------------------------------------------
-
-    mov ebx, [eax + 4]
-    test ebx, 1
-    jz .done
-    test ebx, 4        
-    jnz .done
-    test ebx, 2
-    jnz .done
-
-    mov edx, [eax]                
-    cmp edx, 16                   
-    jl .done
-    
-    mov ebx, eax
-    add ebx, edx                
-    cmp ebx, [heap_curr_ptr]     
-    ja .done
-    
-    or dword [eax + 4], 2
-
-    mov ecx, edx            
-    sub ecx, 16             
-    shr ecx, 2              
-    jz .done                
-
-    mov esi, edi            
-    
-.scan_fields:
-    mov edi, [esi]          
-    call gc_mark_object         
-    add esi, 4              
-    dec ecx
-    jnz .scan_fields
-    
-.done:
-    popa        
-    ret
-	
-; Obtener Memoria Disponible en el Heap
-sys_get_free_mem:
-    cmp dword [heap_curr_ptr], 0
-    jne .ok
-    mov dword [heap_curr_ptr], 0x00400000
-.ok:
-    ; Memoria libre = RAM total (128MB) - Puntero actual del Heap
-    mov eax, 0x08000000
-    sub eax, [heap_curr_ptr]
-    ret
-
-
-; Obtener tamaño total de la memoria RAM (128 MB)
-sys_get_ram_size:
-    mov eax, 0x08000000         ; 128 MB en bytes
-    ret
-
-; Copia de bloques de memoria byte a byte segura
-sys_memcpy:
-    push ebp
-    mov ebp, esp
-    push edi
-    push esi
-
-    mov edi, [ebp + 8]          ; destino
-    mov esi, [ebp + 12]         ; origen
-    mov ecx, [ebp + 16]         ; tamaño
-
-    test ecx, ecx
-    jz .done_memcpy
-
-    cld                         ; Limpiar Direction Flag (copiar hacia adelante)
-    rep movsb
-
-.done_memcpy:
-    mov eax, [ebp + 8]          ; Retornar puntero destino
-    pop esi
-    pop edi
-    pop ebp
-    ret
-
-; Relleno de bloques de memoria
-sys_memset:
-    push ebp
-    mov ebp, esp
-    push edi
-
-    mov edi, [ebp + 8]          ; destino
-    mov al, [ebp + 12]          ; valor (byte)
-    mov ecx, [ebp + 16]         ; tamaño
-
-    test ecx, ecx
-    jz .done_memset
-
-    cld                         ; Limpiar Direction Flag
-    rep stosb
-
-.done_memset:
-    mov eax, [ebp + 8]          ; Retornar puntero destino
-    pop edi
-    pop ebp
-    ret
-
-; Detención temporal de la CPU (HLT)
-sys_hlt:
-    sti
-    hlt
-    ret
-
-; Apagado / Salida del Sistema Operativo (QEMU / Bochs / ACPI)
-sys_exit:
+.resolve_failed:
+    popa
     cli
-    ; QEMU / Bochs Poweroff via I/O Ports
-    mov ax, 0x2000
-    mov dx, 0x604
-    out dx, ax
-    
-    mov dx, 0xB004
-    out dx, ax
-    
-    ; Cargar el puerto 0x501 en DX primero
-    mov dx, 0x0501
-    mov al, 0x00
-    out dx, al
-
-.hang:
     hlt
-    jmp .hang
 
+jit_emit_prologue:
+    mov al, 0x55                    ; push ebp
+    call jit_emit_byte
+    mov al, 0x89                    ; mov ebp, esp
+    call jit_emit_byte
+    mov al, 0xE5
+    call jit_emit_byte
+    mov al, 0x53                    ; push ebx
+    call jit_emit_byte
+    mov al, 0x56                    ; push esi
+    call jit_emit_byte
+    mov al, 0x57                    ; push edi
+    call jit_emit_byte
 
-; Bus PCI
-sys_pci_write_config:
-    push ebp
-    mov ebp, esp
-    push ebx
-    push edx
+    ; Ampliar marco de pila a 1024 bytes
+    mov al, 0x81                    ; sub esp, 1024
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    mov eax, 1024
+    call jit_emit_dword
 
-    ; EAX = bus (arg_a)
-    mov eax, [ebp + 8]    
-    and eax, 0xFF
-    shl eax, 16
+    mov ecx, [current_param_count]
+    test ecx, ecx
+    jz .no_params
+    cmp ecx, 256
+    ja .no_params
 
-    ; EBX = slot (arg_b)
-    mov ebx, [ebp + 12]   
-    and ebx, 0xFF
-    shl ebx, 11
-    or eax, ebx
+    mov al, 0xB9                    ; mov ecx, imm32
+    call jit_emit_byte
+    mov eax, ecx
+    call jit_emit_dword
 
-    ; Función siempre 0 (Ignoramos arg_c como func para ahorrar argumentos)
+    mov al, 0x8D                    ; lea esi,[ebp+8]
+    call jit_emit_byte
+    mov al, 0x75
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
     
-    ; EBX = offset (arg_c)
-    mov ebx, [ebp + 16]   
-    and ebx, 0xFC
-    or eax, ebx
+    mov eax, ecx
+    dec eax
+    shl eax, 2
+    mov al, 0x81                    ; add esi, imm32
+    call jit_emit_byte
+    mov al, 0xC6
+    call jit_emit_byte
 
-    or eax, 0x80000000    ; Habilitar Bit 31 (Enable)
+    mov eax, ecx
+    dec eax
+    shl eax, 2
+    call jit_emit_dword
 
-    ; Apuntar al registro CONFIG_ADDRESS
-    mov dx, 0xCF8
-    out dx, eax
+    mov al, 0x8D                    ; lea edi,[ebp-16]
+    call jit_emit_byte
+    mov al, 0x7D
+    call jit_emit_byte
+    mov al, 0xF0
+    call jit_emit_byte
 
-    ; Escribir el valor en CONFIG_DATA
-    mov eax, [ebp + 20]   ; value (arg_d)
-    mov dx, 0xCFC
-    out dx, eax
-
-    pop edx
-    pop ebx
-    pop ebp
+.copy_loop:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x06
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x07
+    call jit_emit_byte
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xEE
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xEF
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x49
+    call jit_emit_byte
+    mov al, 0x75
+    call jit_emit_byte
+    mov al, 0xF3
+    call jit_emit_byte
+.no_params:
     ret
 
-sys_pci_read_config:
-    push ebp
-    mov ebp, esp
-    push ebx
-    push edx
-
-    mov eax, [ebp + 8]          ; bus
-    and eax, 0xFF
-    shl eax, 16
-
-    mov ebx, [ebp + 12]         ; slot
-    and ebx, 0xFF
-    shl ebx, 11
-    or eax, ebx
-
-    mov ebx, [ebp + 16]         ; func
-    and ebx, 0xFF
-    shl ebx, 8
-    or eax, ebx
-
-    mov ebx, [ebp + 20]         ; offset
-    and ebx, 0xFC
-    or eax, ebx
-
-    or eax, 0x80000000          ; Habilitar Bit 31
-
-    mov dx, 0xCF8               ; Escribir dirección en CONFIG_ADDRESS
-    out dx, eax
-
-    mov dx, 0xCFC               ; Leer resultado en CONFIG_DATA
-    in eax, dx
-
-    pop edx                     ; Restaurar registros
-    pop ebx
-    pop ebp
-    ret
-
-
-; Driver de Teclado y Mouse
-sys_init_keyboard:  
-    ; Habilitar puerto PS/2 primario
-    mov al, 0xAE
-    out 0x64, al
-    mov al, 0x20
-    out 0x64, al
-    call .wait_read
-    in al, 0x60
-    or al, 0x01
-    push eax
-    mov al, 0x60
-    out 0x64, al
-    call .wait_write
-    pop eax
-    out 0x60, al
-    call .wait_write
+jit_emit_epilogue:
+    mov al, 0x8D                ; lea esp, [ebp - 12]
+    call jit_emit_byte
+    mov al, 0x65
+    call jit_emit_byte
     mov al, 0xF4
-    out 0x60, al
-.flush_kbd:
-    in al, 0x64
-    test al, 0x01
-    jz .done
-    in al, 0x60
-    jmp .flush_kbd
-.done:
+    call jit_emit_byte
+
+    mov al, 0x5F                ; pop edi
+    call jit_emit_byte
+    mov al, 0x5E                ; pop esi
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x5D                ; pop ebp
+    call jit_emit_byte
+
+    ; Emitir retorno con limpieza de argumentos (stdcall)
+    mov eax, [current_param_count]
+    test eax, eax
+    jz .ret_normal
+    
+    mov al, 0xC2                ; ret imm16
+    call jit_emit_byte
+    
+    mov eax, [current_param_count]
+    shl eax, 2                  ; * 4 bytes por parámetro
+    
+    push eax
+    call jit_emit_byte          ; byte bajo
+    pop eax
+    shr eax, 8
+    call jit_emit_byte          ; byte alto
     ret
-.wait_read:
-    in al, 0x64
-    test al, 0x01
-    jz .wait_read
-    ret
-.wait_write:
-    in al, 0x64
-    test al, 0x02
-    jnz .wait_write
+    
+.ret_normal:
+    mov al, 0xC3                ; ret
+    call jit_emit_byte
     ret
 
-sys_set_keyboard_layout:
+; PENDIENTE (Prioridad ALTA):
+; Actualmente están como llegaron al mundo pero,
+; tengo que ordenar los valores para que tengan un sentido correcto
+sys_native_dispatch:
     push ebp
     mov ebp, esp
-    mov eax, [ebp + 8]
-    mov [kbd_layout], eax
-    pop ebp
-    ret
-
-; Lectura de FIFO con soporte de Shift
-sys_read_keyboard_scancode:
     push ebx
     push ecx
     push edx
-    
-    xor eax, eax                ; Asegurar EAX en 0 desde el principio
-    
-    mov ebx, [kbd_fifo_head]
-    cmp ebx, [kbd_fifo_tail]
-    je .done                    ; Saltar directamente si está vacío
-    
-    mov al, byte [kbd_fifo_buf + ebx]
-    inc ebx
-    and ebx, 0xFF
-    mov [kbd_fifo_head], ebx
-    
-    cmp eax, 128
-    jge .empty                  ; Si es un scancode de liberación (>128), retornar 0
-    
-	cmp byte [kbd_shift_state], 0	; presionó Shift?
-	jne .use_shift
-	
-    mov al, [kbd_ascii_map_normal + eax]
-    jmp .finish_map
-	
-.use_shift:
-	mov al, [kbd_ascii_map_shift + eax]	
 
-.finish_map:
-	movzx eax, al
-	jmp .done
+    mov eax, [sys_arg_id]
 
-.empty:    
-	xor eax, eax
-	
-.done:
-    pop edx
-    pop ecx
-    pop ebx
-    ret
+    cmp eax, 0
+    je .sys_kalloc
+    cmp eax, 1
+    je .sys_set_color
+    cmp eax, 2
+    je .sys_fill_rect
+    cmp eax, 3
+    je .sys_draw_rect
+    cmp eax, 4
+    je .sys_draw_line
+    cmp eax, 5
+    je .sys_draw_string
+    cmp eax, 6
+    je .sys_read_keyboard
+    cmp eax, 7
+    je .sys_read_mouse
+    cmp eax, 8
+    je .sys_disk_read
+    cmp eax, 9
+    je .sys_disk_write      
+    cmp eax, 10
+    je .sys_inb
+    cmp eax, 11
+    je .sys_outb
+    cmp eax, 12
+    je .sys_sleep
+    cmp eax, 13
+    je .sys_get_time
+    cmp eax, 14
+    je .sys_get_pixel
+    cmp eax, 15
+    je .sys_draw_char
+    cmp eax, 16
+    je .sys_set_kbd_layout
+    cmp eax, 17
+    je .sys_exit
+    cmp eax, 18
+    je .sys_get_ticks
+    cmp eax, 19
+    je .sys_serial_putc
+    cmp eax, 20
+    je .sys_serial_puts
+    cmp eax, 21
+    je .sys_pci_read
+    cmp eax, 22
+    je .sys_beep
+    cmp eax, 23
+    je .sys_rtl8139_init
+    cmp eax, 24
+    je .sys_rtl8139_send_packet
+    cmp eax, 25
+    je .sys_net_receive_packet
+    cmp eax, 26
+    je .sys_mem_write_byte
+    cmp eax, 27
+    je .sys_mem_read_byte
+    cmp eax, 28
+    je .sys_scroll_vram
+    cmp eax, 29
+    je .sys_pci_write
+    cmp eax, 30 
+    je .sys_exec_jit
+    cmp eax, 31
+    je .sys_pcnet_init_call
+    cmp eax, 32
+    je .sys_pcnet_send_packet
+    cmp eax, 33
+    je .sys_net_receive_packet_pcnet
+    cmp eax, 34
+    je .sys_switch_context
+    cmp eax, 35
+    je .sys_mem_write_dword
+    cmp eax, 36
+    je .sys_rtl8168_init
+    cmp eax, 37
+    je .sys_rtl8168_send_packet
+    cmp eax, 38
+    je .sys_rtl8168_receive_packet
+	cmp eax, 39
+	je .sys_draw_pixel_alpha
+	cmp eax, 40
+	je .sys_draw_polygon
+	cmp eax, 41
+	je .sys_fill_polygon
+	cmp eax, 42
+	je .sys_draw_oval
+	cmp eax, 43
+	je .sys_fill_oval	
+    cmp eax, 44
+    je .sys_draw_arc
+    cmp eax, 45
+    je .sys_fill_arc
+	cmp eax, 46
+	je .sys_mark_frame
 
-sys_init_mouse:
-    push eax
-    
-    ; Habilitar dispositivo auxiliar en el PS/2
-    mov al, 0xA8
-    out 0x64, al
-    call .wait_write
-
-    ; Habilitar IRQ12 en el Command Configuration Byte (CCB)
-    mov al, 0x20
-    out 0x64, al
-    call .wait_read
-    in al, 0x60
-    or al, 0x02         ; Bit 1 activa la interrupción del mouse
-    push eax
-    mov al, 0x60
-    out 0x64, al
-    call .wait_write
-    pop eax
-    out 0x60, al
-    call .wait_write
-
-    ; Habilitar el reporte de datos hacia el mouse
-    mov al, 0xD4
-    out 0x64, al
-    call .wait_write
-    mov al, 0xF4
-    out 0x60, al
-    call .wait_read
-    in al, 0x60         ; Leer ACK (0xFA)
-
-.flush_mouse:
-    in al, 0x64
-    test al, 0x01
-    jz .done_flush_m
-    in al, 0x60
-    jmp .flush_mouse
-    
-.done_flush_m:
-    mov byte [mouse_cycle], 0
-    pop eax
-    ret
-
-.wait_read:
-    in al, 0x64
-    test al, 0x01
-    jz .wait_read
-    ret
-
-.wait_write:
-    in al, 0x64
-    test al, 0x02
-    jnz .wait_write
-    ret
-
-sys_read_mouse:
-    push ebp
-    mov ebp, esp
-    mov ecx, [ebp + 8]
-    cmp ecx, 0
-    je .rx
-    cmp ecx, 1
-    je .ry
-    mov eax, [mouse_btn]
-    pop ebp
-    ret
-.rx:
-    mov eax, [mouse_x]
-    pop ebp
-    ret
-.ry:
-    mov eax, [mouse_y]
-    pop ebp
-    ret
-
-
-; Renderizador y driver gráfico VBE VESA
-sys_set_color:
-    push ebp
-    mov ebp, esp
-    mov eax, [ebp + 8]
-    ;or eax, 0xFF000000          ; Forzar canal Alpha opaco (24bpp / 32bpp)
-    mov [current_color], eax
-    pop ebp
-    ret
-
-sys_draw_pixel:
-    push ebp
-    mov ebp, esp
-    mov eax, [ebp + 8]          ; x
-    mov ecx, [ebp + 12]         ; y
-    mov edx, [current_color]	; color
-    imul ecx, [g_pitch]
-    shl eax, 2
-    add ecx, eax
-	
-    mov eax, [g_framebuffer] 
-    add eax, ecx
-    mov [eax], edx
-    pop ebp
-    ret
-
-sys_get_pixel:
-    push ebp
-    mov ebp, esp
-    mov eax, [ebp + 8]		; x
-    mov ecx, [ebp + 12]		; y
-    imul ecx, [g_pitch]
-    shl eax, 2
-    add ecx, eax
-    mov eax, [g_framebuffer] 
-    add eax, ecx
-    mov eax, [eax]
-    pop ebp
-    ret
-
-sys_draw_pixel_alpha:
-    push ebp
-    mov ebp, esp
-    pusha
-
-    mov esi, [current_color]    ; ESI = 0xAARRGGBB
-    mov edx, esi
-    shr edx, 24                 ; EDX = Alpha (0 - 255)
-
-    cmp edx, 255
-    je .draw_solid              ; Opaco: Escritura rápida
-    test edx, edx
-    jz .done                    ; Transparente: No hacer nada
-
-    ; Calcular offset en el framebuffer (y * pitch + x * 4)
-    mov eax, [ebp + 8]          ; X
-    mov ecx, [ebp + 12]         ; Y
-    imul ecx, [g_pitch]
-    shl eax, 2
-    add ecx, eax
-	
-    mov edi, [g_framebuffer]
-    add edi, ecx                ; EDI = Dirección del píxel destino
-
-    mov ebx, [edi]              ; EBX = Color de fondo (0x00RRGGBB)
-    
-    mov eax, 255
-    sub eax, edx                ; EAX = InvAlpha (255 - Alpha)
-
-    ; Procesar Rojo y Azul simultáneamente
-    push eax                    ; Guardar InvAlpha para el canal Verde    
-    mov ecx, ebx
-    and ecx, 0x00FF00FF         ; ECX = Destino R_B
-    imul ecx, eax               ; Destino R_B * InvAlpha
-
-    mov eax, esi
-    and eax, 0x00FF00FF         ; EAX = Origen R_B
-    imul eax, edx               ; Origen R_B * Alpha
-
-    add ecx, eax                ; Sumar origen y destino
-    shr ecx, 8                  ; Dividir entre 256 (aproximación rápida a 255)
-    and ecx, 0x00FF00FF         ; Limpiar basura, ECX = Final R_B
-
-    ; Procesar Verde
-    pop eax                     ; EAX = InvAlpha    
-    push ecx                    ; Guardar R_B procesado
-    
-    mov ecx, ebx
-    and ecx, 0x0000FF00         ; ECX = Destino G
-    imul ecx, eax               ; Destino G * InvAlpha
-
-    mov eax, esi
-    and eax, 0x0000FF00         ; EAX = Origen G
-    imul eax, edx               ; Origen G * Alpha
-
-    add ecx, eax
-    shr ecx, 8                  ; Dividir entre 256
-    and ecx, 0x0000FF00         ; ECX = Final G
-
-    pop eax                     ; Recuperar R_B
-    or eax, ecx                 ; Combinar Canales (Final RGB)
-    mov [edi], eax              ; Escribir píxel mezclado
+    xor eax, eax
     jmp .done
 
-.draw_solid:
-    ; Ruta rápida para alpha 255
-    mov eax, [ebp + 8]
-    mov ecx, [ebp + 12]
-    imul ecx, [g_pitch]
-    shl eax, 2
-    add ecx, eax
-	
-	mov edi, [g_framebuffer]
-    add edi, ecx
-    mov [edi], esi
+.sys_kalloc:
+    push dword [sys_arg_a]
+    call sys_kalloc
+    add esp, 4
+    jmp .done
 
-.done:
-    popa
-    pop ebp
-    ret	
+.sys_set_color:
+    mov eax, [sys_arg_a]
+    or eax, 0xFF000000
+    mov [current_color], eax
+    xor eax, eax
+    jmp .done
 
-sys_fill_rect:
-    push ebp
-    mov ebp, esp
-    push edi
-    push ebx
-    push esi
-    mov ebx, [ebp + 16]         ; w
-    mov edx, [ebp + 20]         ; h
-    mov esi, [current_color]	; color
-    test ebx, ebx
-    jle .done
-    test edx, edx
-    jle .done
-.row:
-    push edx
-    mov ecx, [ebp + 12]         ; y
-    imul ecx, [g_pitch]
-    mov eax, [ebp + 8]          ; x
-    shl eax, 2
-    add ecx, eax    
-	mov edi, [g_framebuffer] 
-    add edi, ecx
-    mov ecx, ebx
-    mov eax, esi
-    rep stosd
-    pop edx
-    inc dword [ebp + 12]
-    dec edx
-    jnz .row
-.done:
-    pop esi
-    pop ebx
-    pop edi
-    pop ebp
-    ret
-
-sys_draw_rect:
-    push ebp
-    mov ebp, esp
-    push 1
-    push dword [ebp + 16]
-    push dword [ebp + 12]
-    push dword [ebp + 8]
+.sys_fill_rect:
+    push dword [sys_arg_d]
+    push dword [sys_arg_c]
+    push dword [sys_arg_b]
+    push dword [sys_arg_a]
     call sys_fill_rect
     add esp, 16
+    xor eax, eax
+    jmp .done
 
-    mov eax, [ebp + 12]
-    add eax, [ebp + 20]
-    dec eax
-    push 1
-    push dword [ebp + 16]
-    push eax
-    push dword [ebp + 8]
-    call sys_fill_rect
+.sys_draw_rect:
+    push dword [sys_arg_d]
+    push dword [sys_arg_c]
+    push dword [sys_arg_b]
+    push dword [sys_arg_a]
+    call sys_draw_rect
     add esp, 16
+    xor eax, eax
+    jmp .done
 
-    push dword [ebp + 20]
-    push 1
-    push dword [ebp + 12]
-    push dword [ebp + 8]
-    call sys_fill_rect
-    add esp, 16
-
-    mov eax, [ebp + 8]
-    add eax, [ebp + 16]
-    dec eax
-    push dword [ebp + 20]
-    push 1
-    push dword [ebp + 12]
-    push eax
-    call sys_fill_rect
-    add esp, 16
-    pop ebp
-    ret
-
-sys_draw_line:
-    push ebp
-    mov ebp, esp
-    push ebx
-    push esi
-    push edi
-    sub esp, 24
-
-    mov eax, [ebp + 16]
-    sub eax, [ebp + 8]
-    jns .absdx
-    neg eax
-.absdx:
-    mov [ebp - 4], eax          ; dx
-
-    mov eax, [ebp + 20]
-    sub eax, [ebp + 12]
-    jns .absdy
-    neg eax
-.absdy:
-    neg eax
-    mov [ebp - 8], eax          ; -dy
-
-    mov eax, [ebp + 8]
-    cmp eax, [ebp + 16]
-    jl .sxpos
-    mov dword [ebp - 12], -1
-    jmp .sy
-.sxpos:
-    mov dword [ebp - 12], 1
-.sy:
-    mov eax, [ebp + 12]
-    cmp eax, [ebp + 20]
-    jl .sypos
-    mov dword [ebp - 16], -1
-    jmp .err
-.sypos:
-    mov dword [ebp - 16], 1
-.err:
-    mov eax, [ebp - 4]
-    add eax, [ebp - 8]
-    mov [ebp - 20], eax
-
-.loop:
-    push dword [ebp + 12]
-    push dword [ebp + 8]
-    call sys_draw_pixel
-    add esp, 8
-
-    mov eax, [ebp + 8]
-    cmp eax, [ebp + 16]
-    jne .cont
-    mov eax, [ebp + 12]
-    cmp eax, [ebp + 20]
-    je .done
-.cont:
-    mov eax, [ebp - 20]
-    shl eax, 1
-    cmp eax, [ebp - 8]
-    jl .check2
-    mov ecx, [ebp - 8]
-    add [ebp - 20], ecx
-    mov ecx, [ebp - 12]
-    add [ebp + 8], ecx
-.check2:
-    cmp eax, [ebp - 4]
-    jg .loop
-    mov ecx, [ebp - 4]
-    add [ebp - 20], ecx
-    mov ecx, [ebp - 16]
-    add [ebp + 12], ecx
-    jmp .loop
-.done:
-    add esp, 24
-    pop edi
-    pop esi
-    pop ebx
-    pop ebp
-    ret
-sys_draw_arc:
-    jmp sys_draw_oval
-    
-sys_fill_arc:
-    jmp sys_fill_oval
-
-sys_draw_oval:
-    push ebp
-    mov ebp, esp
-    sub esp, 28             ; Espacio local
-    pusha
-    
-    ; Similar a fill_oval, pero evaluamos un anillo entre 0.85 y 1.0
-    mov eax, [ebp+16]
-    shr eax, 1
-    mov [ebp-4], eax
-    
-    mov eax, [ebp+20]
-    shr eax, 1
-    mov [ebp-8], eax
-    
-    cmp dword [ebp-4], 0
-    je .draw_o_done
-    cmp dword [ebp-8], 0
-    je .draw_o_done
-
-    mov eax, [ebp+8]
-    add eax, [ebp-4]
-    mov [ebp-12], eax
-    
-    mov eax, [ebp+12]
-    add eax, [ebp-8]
-    mov [ebp-16], eax
-    
-    mov ecx, [ebp+12]       
-.y_loop:
-    mov eax, [ebp+12]
-    add eax, [ebp+20]
-    cmp ecx, eax            
-    jge .draw_o_done
-    
-    mov ebx, [ebp+8]        
-.x_loop:
-    mov eax, [ebp+8]
-    add eax, [ebp+16]
-    cmp ebx, eax            
-    jge .x_end
-    
-    mov eax, ebx
-    sub eax, [ebp-12]
-    mov [ebp-20], eax
-    
-    mov eax, ecx
-    sub eax, [ebp-16]
-    mov [ebp-24], eax
-    
-    fild dword [ebp-20]
-    fild dword [ebp-4]
-    fdivp st1, st0
-    fmul st0, st0
-    
-    fild dword [ebp-24]
-    fild dword [ebp-8]
-    fdivp st1, st0
-    fmul st0, st0
-    
-    faddp st1, st0          ; Suma actual
-    
-    ; Umbral inferior (aprox 0.85). Valor en float (32-bit IEEE) = 0x3F59999A
-    mov dword [ebp-28], 0x3F59999A
-    fld dword [ebp-28]      ; st0 = 0.85, st1 = Suma
-    fcomp st1               ; Comparar 0.85 y Suma
-    fnstsw ax
-    sahf
-    ja .cleanup_st0         ; Si Suma < 0.85, limpiar st0 y saltar
-
-    fld1                    ; st0 = 1.0, st1 = Suma
-    fcomp st1               ; Comparar 1.0 y Suma
-    fnstsw ax
-    sahf
-    jb .cleanup_st0         ; Si Suma > 1.0, limpiar st0 y saltar
-    
-    ; Si está en el anillo, limpiar suma y dibujar
-    fstp st0
-    
-    ; BUCLE
-    push ecx                ; RESPALDAR ECX (Contador Y)
-    push ecx                ; Empujar Y como argumento para sys_draw_pixel
-    push ebx                ; Empujar X como argumento para sys_draw_pixel
-    call sys_draw_pixel
-    add esp, 8              ; Limpiar argumentos
-    pop ecx                 ; RESTAURAR ECX (Contador Y) intacto
-    
-    
-    jmp .skip_pixel
-    
-.cleanup_st0:
-    fstp st0                ; Limpiar la suma descartada
-.skip_pixel:
-    inc ebx
-    jmp .x_loop
-.x_end:
-    inc ecx
-    jmp .y_loop
-    
-.draw_o_done:
-    popa
-    mov esp, ebp
-    pop ebp
-    ret    
-
-sys_fill_oval:
-    push ebp
-    mov ebp, esp
-    sub esp, 28             ; Espacio local para cálculos FPU
-    pusha
-    
-    ; Variables locales: [ebp-4]=rx, [ebp-8]=ry, [ebp-12]=xc, [ebp-16]=yc, [ebp-20]=dx, [ebp-24]=dy
-    mov eax, [ebp+16]       ; w
-    shr eax, 1              ; rx = w/2
-    mov [ebp-4], eax
-    
-    mov eax, [ebp+20]       ; h
-    shr eax, 1              ; ry = h/2
-    mov [ebp-8], eax
-    
-    ; Protección división por cero
-    cmp dword [ebp-4], 0
-    je .fill_o_done
-    cmp dword [ebp-8], 0
-    je .fill_o_done
-
-    mov eax, [ebp+8]
-    add eax, [ebp-4]        ; xc = x + rx
-    mov [ebp-12], eax
-    
-    mov eax, [ebp+12]
-    add eax, [ebp-8]        ; yc = y + ry
-    mov [ebp-16], eax
-    
-    ; Y Loop
-    mov ecx, [ebp+12]       ; py = y
-.y_loop:
-    mov eax, [ebp+12]
-    add eax, [ebp+20]
-    cmp ecx, eax            ; py < y+h ?
-    jge .fill_o_done
-    
-    ; X Loop
-    mov ebx, [ebp+8]        ; px = x
-.x_loop:
-    mov eax, [ebp+8]
-    add eax, [ebp+16]
-    cmp ebx, eax            ; px < x+w ?
-    jge .x_end
-    
-    ; Evaluar ((px-xc)/rx)^2 + ((py-yc)/ry)^2 <= 1.0 mediante FPU
-    mov eax, ebx
-    sub eax, [ebp-12]
-    mov [ebp-20], eax       ; dx
-    
-    mov eax, ecx
-    sub eax, [ebp-16]
-    mov [ebp-24], eax       ; dy
-    
-    fild dword [ebp-20]     ; Cargar dx
-    fild dword [ebp-4]      ; Cargar rx
-    fdivp st1, st0          ; (dx/rx)
-    fmul st0, st0           ; (dx/rx)^2
-    
-    fild dword [ebp-24]     ; Cargar dy
-    fild dword [ebp-8]      ; Cargar ry
-    fdivp st1, st0          ; (dy/ry)
-    fmul st0, st0           ; (dy/ry)^2
-    
-    faddp st1, st0          ; Suma
-    
-    fld1                    ; Cargar 1.0
-    fcompp                  ; Comparar 1.0 con la Suma (Saca ambos de la pila)
-    fnstsw ax               ; Extraer status FPU
-    sahf
-    jb .skip_pixel          ; Si 1.0 < suma, está fuera del óvalo
-    
-    ; BUCLE
-    push ecx                ; RESPALDAR ECX (Contador Y)
-    push ecx                ; Empujar Y como argumento para sys_draw_pixel
-    push ebx                ; Empujar X como argumento para sys_draw_pixel
-    call sys_draw_pixel
-    add esp, 8              ; Limpiar argumentos
-    pop ecx                 ; RESTAURAR ECX (Contador Y) intacto
-    
-    
-.skip_pixel:
-    inc ebx
-    jmp .x_loop
-.x_end:
-    inc ecx
-    jmp .y_loop
-    
-.fill_o_done:
-    popa
-    mov esp, ebp
-    pop ebp
-    ret
-
-sys_draw_polygon:
-    push ebp
-    mov ebp, esp
-    pusha
-    
-    mov esi, [ebp + 8]      ; xPoints (Puntero al array Java)
-    mov edi, [ebp + 12]     ; yPoints (Puntero al array Java)
-    mov ecx, [ebp + 16]     ; nPoints
-    
-    cmp ecx, 2
-    jl .poly_done           ; Mínimo 2 puntos
-    
-    add esi, 4              ; Saltar cabecera 'length' de Java
-    add edi, 4				; Apuntar a yPoints[0]
-    
-    xor ebx, ebx            ; Índice i = 0
-.poly_loop:
-    mov eax, ebx
-    inc eax                 ; j = i + 1
-    cmp eax, ecx
-    jne .no_wrap
-    xor eax, eax            ; j = 0 (Cerrar el polígono)
-.no_wrap:
-    push ecx                ; Preservar nPoints
-    
-    ; Empujar argumentos para sys_draw_line (y2, x2, y1, x1)
-    push dword [edi + eax*4]
-    push dword [esi + eax*4]
-    push dword [edi + ebx*4]
-    push dword [esi + ebx*4]
+.sys_draw_line:
+    push dword [sys_arg_d]
+    push dword [sys_arg_c]
+    push dword [sys_arg_b]
+    push dword [sys_arg_a]
     call sys_draw_line
     add esp, 16
+    xor eax, eax
+    jmp .done
+
+.sys_draw_string:
+    push dword [sys_arg_c]
+    push dword [sys_arg_b]
+    push dword [sys_arg_a]
+    call sys_draw_string
+    add esp, 12
+    xor eax, eax
+    jmp .done
+
+.sys_read_keyboard:
+    call sys_read_keyboard_scancode
+    jmp .done
+
+.sys_read_mouse:
+    push dword [sys_arg_a]
+    call sys_read_mouse
+    add esp, 4
+    jmp .done
+
+.sys_disk_read:
+    push dword [sys_arg_c]
+    push dword [sys_arg_a]
+    call sys_disk_read_sector
+    add esp, 8
+    jmp .done
+
+.sys_disk_write:
+    push dword [sys_arg_c]
+    push dword [sys_arg_a]
+    call sys_disk_write_sector
+    add esp, 8
+    jmp .done
     
+.sys_inb:
+    push dword [sys_arg_a]
+    call sys_inb
+    add esp, 4
+    jmp .done
+
+.sys_outb:
+    push dword [sys_arg_b]
+    push dword [sys_arg_a]
+    call sys_outb
+    add esp, 8
+    jmp .done
+
+.sys_sleep:
+    push dword [sys_arg_a]
+    call sys_sleep
+    add esp, 4
+    xor eax, eax
+    jmp .done
+    
+.sys_get_time:
+    push dword [sys_arg_a]
+    call sys_get_time
+    add esp, 4
+    jmp .done
+    
+.sys_get_pixel:
+    push dword [sys_arg_b]
+    push dword [sys_arg_a]
+    call sys_get_pixel
+    add esp, 8
+    jmp .done   
+
+.sys_draw_char:
+    push dword [current_color]
+    push dword [sys_arg_b]
+    push dword [sys_arg_a]
+    push dword [sys_arg_c]
+    call draw_char_vram
+    add esp, 16
+    xor eax, eax
+    jmp .done
+
+.sys_set_kbd_layout:
+    push dword [sys_arg_a]
+    call sys_set_keyboard_layout
+    add esp, 4
+    mov eax, 1
+    jmp .done
+
+.sys_exit:
+    call sys_exit
+    xor eax, eax
+    jmp .done
+
+.sys_get_ticks:
+    call sys_get_ticks
+    jmp .done
+    
+.sys_serial_putc:
+    push dword [sys_arg_a]
+    call sys_serial_putc
+    add esp, 4
+    xor eax, eax
+    jmp .done
+
+.sys_serial_puts:
+    push dword [sys_arg_c]
+    call sys_serial_print_java
+    add esp, 4
+    xor eax, eax
+    jmp .done   
+
+.sys_pci_write:
+    push dword [sys_arg_d]  ; Valor a escribir
+    push dword [sys_arg_c]  ; Offset
+    push dword [sys_arg_b]  ; Slot
+    push dword [sys_arg_a]  ; Bus
+    call sys_pci_write_config
+    add esp, 16
+    jmp .done
+
+.sys_pci_read:
+    push dword [sys_arg_d]
+    push dword [sys_arg_c]
+    push dword [sys_arg_b]
+    push dword [sys_arg_a]
+    call sys_pci_read_config
+    add esp, 16
+    jmp .done
+
+.sys_beep:
+    push dword [sys_arg_a]
+    call sys_beep
+    add esp, 4
+    jmp .done
+
+.sys_rtl8139_init:
+    push dword [sys_arg_a]  ; Puerto I/O
+    call sys_rtl8139_init
+    add esp, 4
+    jmp .done
+
+.sys_rtl8139_send_packet:
+    push dword [sys_arg_b]
+    push dword [sys_arg_c]
+    call sys_rtl8139_send_packet
+    add esp, 8
+    xor eax, eax
+    jmp .done
+
+.sys_net_receive_packet:
+    push dword [sys_arg_b]
+    push dword [sys_arg_c]
+    call sys_net_receive_packet
+    add esp, 8
+    jmp .done   
+
+; 8 bits    
+.sys_mem_write_byte:
+    mov eax, [sys_arg_a]
+    mov ebx, [sys_arg_b]
+    mov byte [eax], bl
+    xor eax, eax
+    jmp .done
+
+.sys_mem_read_byte:
+    mov eax, [sys_arg_a]
+    xor ebx, ebx
+    mov bl, byte [eax]
+    mov eax, ebx
+    jmp .done
+
+; 32 bits
+.sys_mem_write_dword:
+    mov eax, [sys_arg_a]  ; Dirección de memoria
+    mov ebx, [sys_arg_b]  ; Valor de 32 bits a escribir
+    mov dword [eax], ebx
+    xor eax, eax
+    jmp .done   
+
+.sys_scroll_vram:
+    push dword [sys_arg_a]  ; Píxeles a desplazar
+    call sys_scroll_vram
+    add esp, 4
+    jmp .done
+
+.sys_exec_jit:
+    push dword [sys_arg_b]
+    push dword [sys_arg_c]
+    call sys_exec_jit
+    add esp, 8
+    jmp .done
+
+.sys_pcnet_init_call:
+    push dword [sys_arg_a]  ; Puerto I/O
+    call sys_pcnet_init
+    add esp, 4
+    jmp .done
+
+.sys_pcnet_send_packet:
+    push dword [sys_arg_b]
+    push dword [sys_arg_c]
+    call sys_pcnet_send_packet
+    add esp, 8
+    xor eax, eax
+    jmp .done   
+
+.sys_net_receive_packet_pcnet:  
+    push dword [sys_arg_b]
+    push dword [sys_arg_c]
+    call sys_net_receive_packet_pcnet
+    add esp, 8
+    jmp .done   
+
+.sys_switch_context:
+    push dword [sys_arg_b]
+    push dword [sys_arg_a]
+    call sys_switch_context
+    add esp, 8
+    xor eax, eax
+    jmp .done
+
+.sys_rtl8168_init:
+    push dword [sys_arg_a]  ; Puerto I/O (BAR0)
+    call sys_rtl8168_init
+    add esp, 4
+    jmp .done
+
+.sys_rtl8168_send_packet:
+    push dword [sys_arg_b]  ; Longitud
+    push dword [sys_arg_c]  ; Arreglo de bytes (payload)
+    call sys_rtl8168_send_packet
+    add esp, 8
+    xor eax, eax
+    jmp .done   
+
+.sys_rtl8168_receive_packet:    
+    push dword [sys_arg_b]  ; Longitud máxima
+    push dword [sys_arg_c]  ; Arreglo de bytes destino
+    call sys_net_receive_packet_rtl8168
+    add esp, 8
+    jmp .done 
+
+.sys_draw_pixel_alpha:
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_draw_pixel_alpha
+    add esp, 8
+    jmp .done
+
+.sys_draw_polygon:
+    push dword [sys_arg_c]      ; nPoints
+    push dword [sys_arg_b]      ; yPoints (puntero array)
+    push dword [sys_arg_a]      ; xPoints (puntero array)
+    call sys_draw_polygon
+    add esp, 12
+    jmp .done
+
+.sys_fill_polygon:
+    push dword [sys_arg_c]      ; nPoints
+    push dword [sys_arg_b]      ; yPoints
+    push dword [sys_arg_a]      ; xPoints
+    call sys_fill_polygon
+    add esp, 12
+    jmp .done
+
+.sys_draw_oval:
+    push dword [sys_arg_d]      ; h
+    push dword [sys_arg_c]      ; w
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_draw_oval
+    add esp, 16
+    jmp .done
+
+.sys_fill_oval:
+    push dword [sys_arg_d]      ; h
+    push dword [sys_arg_c]      ; w
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_fill_oval
+    add esp, 16
+    jmp .done
+
+.sys_draw_arc:
+    push dword [sys_arg_d]      ; h (Para alias del óvalo)
+    push dword [sys_arg_c]      ; w
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_draw_arc
+    add esp, 16
+    jmp .done
+
+.sys_fill_arc:
+    push dword [sys_arg_d]      ; h (Para alias del óvalo)
+    push dword [sys_arg_c]      ; w
+    push dword [sys_arg_b]      ; y
+    push dword [sys_arg_a]      ; x
+    call sys_fill_arc
+    add esp, 16
+    jmp .done
+
+.sys_mark_frame:	
+    call sys_mark_frame    
+    jmp .done
+	
+.sys_reset_frame:	
+    call sys_reset_frame    
+    jmp .done	
+
+.done:
+    pop edx
     pop ecx
-    inc ebx
-    cmp ebx, ecx
-    jl .poly_loop
-    
-.poly_done:
-    popa
-    pop ebp
-    ret
-
-sys_fill_polygon:
-    push ebp
-    mov ebp, esp
-    pusha
-    
-    mov esi, [ebp + 8]      ; xPoints
-    mov edi, [ebp + 12]     ; yPoints
-    mov ecx, [ebp + 16]     ; nPoints
-    
-    cmp ecx, 3
-    jl .fill_poly_done
-    je .is_triangle
-    
-    ; Convex-Fan dividido en triángulos puros para nPoints > 3
-    add esi, 4              ; Saltar la cabecera/length
-    add edi, 4              ; Apuntar al índice 0
-    mov ebx, 1              
-.fan_loop:
-    mov eax, ecx
-    dec eax
-    cmp ebx, eax
-    jge .fill_poly_done
-
-    push dword [edi + ebx*4 + 4] ; y2
-    push dword [esi + ebx*4 + 4] ; x2
-    push dword [edi + ebx*4]     ; y1
-    push dword [esi + ebx*4]     ; x1
-    push dword [edi]             ; y0
-    push dword [esi]             ; x0
-    call internal_fill_triangle
-    add esp, 24
-
-    inc ebx
-    jmp .fan_loop
-
-.is_triangle:
-    add esi, 4
-    add edi, 4
-    push dword [edi + 8]    ; y2
-    push dword [esi + 8]    ; x2
-    push dword [edi + 4]    ; y1
-    push dword [esi + 4]    ; x1
-    push dword [edi]        ; y0
-    push dword [esi]        ; x0
-    call internal_fill_triangle
-    add esp, 24
-
-.fill_poly_done:
-    popa
-    pop ebp
-    ret
-
-; Subrutina interna de rasterización (Scanline Triangle Fill)
-internal_fill_triangle:
-    push ebp
-    mov ebp, esp
-    sub esp, 24             ; Espacio para x0, y0, x1, y1, x2, y2
-    pusha
-
-    ; Variables locales
-    mov eax, [ebp+8]
-    mov [ebp-4], eax        ; x0
-    mov eax, [ebp+12]
-    mov [ebp-8], eax        ; y0
-    mov eax, [ebp+16]
-    mov [ebp-12], eax       ; x1
-    mov eax, [ebp+20]
-    mov [ebp-16], eax       ; y1
-    mov eax, [ebp+24]
-    mov [ebp-20], eax       ; x2
-    mov eax, [ebp+28]
-    mov [ebp-24], eax       ; y2
-
-    ; Ordenar vértices por Y (y0 <= y1 <= y2)
-    mov eax, [ebp-8]
-    cmp eax, [ebp-16]
-    jle .sort1
-    mov ebx, [ebp-4]
-    mov ecx, [ebp-12]
-    mov [ebp-4], ecx
-    mov [ebp-12], ebx
-    mov ebx, [ebp-8]
-    mov ecx, [ebp-16]
-    mov [ebp-8], ecx
-    mov [ebp-16], ebx
-.sort1:
-    mov eax, [ebp-8]
-    cmp eax, [ebp-24]
-    jle .sort2
-    mov ebx, [ebp-4]
-    mov ecx, [ebp-20]
-    mov [ebp-4], ecx
-    mov [ebp-20], ebx
-    mov ebx, [ebp-8]
-    mov ecx, [ebp-24]
-    mov [ebp-8], ecx
-    mov [ebp-24], ebx
-.sort2:
-    mov eax, [ebp-16]
-    cmp eax, [ebp-24]
-    jle .sort3
-    mov ebx, [ebp-12]
-    mov ecx, [ebp-20]
-    mov [ebp-12], ecx
-    mov [ebp-20], ebx
-    mov ebx, [ebp-16]
-    mov ecx, [ebp-24]
-    mov [ebp-16], ecx
-    mov [ebp-24], ebx
-.sort3:
-    mov eax, [ebp-8]
-    cmp eax, [ebp-24]
-    je .done_tri            ; Triángulo sin área (y0 == y2)
-
-    ; Rasterizar mitad superior (y0 a y1)
-    mov ebx, [ebp-8]        ; y = y0
-.top_loop:
-    cmp ebx, [ebp-16]
-    jge .bot_half
-
-    ; xA = x0 + (x1 - x0) * (y - y0) / (y1 - y0)
-    mov eax, [ebp-12]
-    sub eax, [ebp-4]
-    mov ecx, ebx
-    sub ecx, [ebp-8]
-    imul ecx
-    mov ecx, [ebp-16]
-    sub ecx, [ebp-8]
-    cdq
-    idiv ecx
-    add eax, [ebp-4]
-    mov esi, eax            ; xA
-
-    ; xB = x0 + (x2 - x0) * (y - y0) / (y2 - y0)
-    mov eax, [ebp-20]
-    sub eax, [ebp-4]
-    mov ecx, ebx
-    sub ecx, [ebp-8]
-    imul ecx
-    mov ecx, [ebp-24]
-    sub ecx, [ebp-8]
-    cdq
-    idiv ecx
-    add eax, [ebp-4]
-    mov edi, eax            ; xB
-
-    cmp esi, edi
-    jle .top_draw
-    xchg esi, edi
-.top_draw:
-    mov ecx, edi
-    sub ecx, esi
-    inc ecx                 ; width
-
-    push 1
-    push ecx
-    push ebx
-    push esi
-    call sys_fill_rect
-    add esp, 16
-
-    inc ebx
-    jmp .top_loop
-
-.bot_half:
-    ; Rasterizar mitad inferior (y1 a y2)
-    mov ebx, [ebp-16]       ; y = y1
-.bot_loop:
-    cmp ebx, [ebp-24]
-    jg .done_tri
-
-    ; xA = x1 + (x2 - x1) * (y - y1) / (y2 - y1)
-    mov ecx, [ebp-24]
-    sub ecx, [ebp-16]
-    je .calc_xB_bot         ; Evitar / 0
-
-    mov eax, [ebp-20]
-    sub eax, [ebp-12]
-    mov edx, ebx
-    sub edx, [ebp-16]
-    imul edx
-    cdq
-    idiv ecx
-    add eax, [ebp-12]
-    mov esi, eax            ; xA
-    jmp .do_xB_bot
-
-.calc_xB_bot:
-    mov esi, [ebp-12]
-
-.do_xB_bot:
-    ; xB = x0 + (x2 - x0) * (y - y0) / (y2 - y0)
-    mov ecx, [ebp-24]
-    sub ecx, [ebp-8]
-    je .calc_xB_bot_zero
-
-    mov eax, [ebp-20]
-    sub eax, [ebp-4]
-    mov edx, ebx
-    sub edx, [ebp-8]
-    imul edx
-    cdq
-    idiv ecx
-    add eax, [ebp-4]
-    mov edi, eax            ; xB
-    jmp .order_bot
-
-.calc_xB_bot_zero:
-    mov edi, [ebp-4]
-
-.order_bot:
-    cmp esi, edi
-    jle .bot_draw
-    xchg esi, edi
-.bot_draw:
-    mov ecx, edi
-    sub ecx, esi
-    inc ecx                 ; width
-
-    push 1
-    push ecx
-    push ebx
-    push esi
-    call sys_fill_rect
-    add esp, 16
-
-    inc ebx
-    jmp .bot_loop
-
-.done_tri:
-    popa
+    pop ebx
     mov esp, ebp
     pop ebp
     ret
 
-; Impresión de cadenas de texto
-sys_draw_string:
-    push ebp
-    mov ebp, esp
-    pusha
-    mov ebx, [ebp + 8]          ; x
-    mov edx, [ebp + 12]         ; y
-    mov esi, [ebp + 16]         ; puntero al Objeto String real
-    
-    test esi, esi
-    jz .done
+; COMPILADOR JIT
 
-    ; Extraer byte[] value del String (alojado en el Offset 8)
-    mov esi, [esi + 8]
-    test esi, esi
-    jz .done
-
-    ; Extraer longitud del byte[] (alojada en el Offset 0)
-    mov ecx, [esi]
-    test ecx, ecx
-    jz .done
-
-    ; Apuntar a los caracteres reales (Offset 4)
-    add esi, 4
-    
-    mov edi, [current_color]
-    or edi, 0xFF000000          
-
-.char:
-    mov al, [esi]
-	; Decodificador UTF-8
-	cmp al, 0xC3
-	je .utf8_c3
-	cmp al, 0xC2
-	je .utf8_c2
-	
-.process_char:	
-    cmp al, 13
-    je .skip_char
-    cmp al, 10
-    je .skip_char
-    cmp al, 32
-    jb .skip_char		; Compara de 0 a 255 (sin signo)
-    
-    pusha
-    push edi
-    push edx
-    push ebx
-    movzx eax, al
-    push eax
-    call draw_char_vram
-    add esp, 16
-    popa
-    
-.skip_char:
-    add ebx, 10
-    inc esi
-    dec ecx
-    jnz .char
-	jmp .done
-
-.utf8_c3:	
-	inc esi						; avanzar al segundo byte del UTF-8
-	dec ecx						; restar longitud total
-	jz .done					; evitar cuelgue si la cadena se corta
-	mov al, [esi]				; Leer el segundo byte (0xA1 para 'á' por ej.)
-	add al, 64					; 0xA1 + 64 = 0xE1 (índice en font.asm)
-	jmp .process_char
-
-.utf8_c2:
-    inc esi
-    dec ecx
-    jz .done
-    mov al, [esi]               ; El segundo byte ya es el ASCII correcto
-    jmp .process_char	
-
-.done:
-    popa
-    pop ebp
-    ret
-
-; Desplazamiento de pantalla (SCROLL)
-sys_scroll_vram:
-    push ebp
-    mov ebp, esp
-    pusha
-
-    ; [ebp + 8] = Cantidad de píxeles a desplazar hacia arriba (ej. 25)
-    mov eax, [ebp + 8]
-    imul eax, [g_pitch]         ; eax = offset en bytes a desplazar
-
-    mov edi, [g_framebuffer]    ; Destino: Inicio de la pantalla
-    mov esi, [g_framebuffer]
-    add esi, eax                ; Origen: Pantalla desplazada
-
-    ; Calcular cuántos dwords (4 bytes) mover: ((768 * pitch) - offset) / 4
-    mov ecx, 768
-    imul ecx, [g_pitch]
-    sub ecx, eax
-    shr ecx, 2                  ; Dividir entre 4 para 'rep movsd'
-
-    cld                         ; Dirección de copia hacia adelante
-    rep movsd                   ; Copiar la memoria de video hacia arriba
-
-    ; Limpiar la franja inferior con color negro
-    ; EDI ya quedó apuntando a la zona libre al finalizar el rep movsd
-    mov ecx, eax
-    shr ecx, 2                  ; Convertir offset a dwords
-    xor eax, eax                ; Color Negro (0x00000000)
-    rep stosd                   ; Rellenar
-
-    popa
-    pop ebp
-    ret
-
-; CMOS Reloj real (RTC)
-sys_get_time:
-    push ebp
-    mov ebp, esp
-    push ebx
-
-    mov eax, [ebp + 8]
-    cmp eax, 0
-    je .sec
-    cmp eax, 1
-    je .min
-    cmp eax, 2
-    je .hour
-    cmp eax, 3
-    je .day
-    cmp eax, 4
-    je .month
-    cmp eax, 5
-    je .year
-    
-    xor eax, eax
-    pop ebx
-    pop ebp
-    ret
-
-.sec:   mov al, 0x00
-        jmp .read
-.min:   mov al, 0x02
-        jmp .read
-.hour:  mov al, 0x04
-        jmp .read
-.day:   mov al, 0x07
-        jmp .read
-.month: mov al, 0x08
-        jmp .read
-.year:  mov al, 0x09
-.read:
-    out 0x70, al
-    out 0x80, al
-    in al, 0x71
-    movzx ebx, al
-    mov eax, ebx
-    and eax, 0x0F
-    shr ebx, 4
-    and ebx, 0x0F
-    imul ebx, 10
-    add eax, ebx
-
-    pop ebx
-    pop ebp
-    ret
-
-
-; Bocinas de PC y Buzzer
-sys_beep:
-    push ebp
-    mov ebp, esp
-    push ebx
-
-    mov ecx, [ebp + 8]
-    test ecx, ecx
-    jz .off
-
-    mov eax, 1193180
-    xor edx, edx
-    div ecx
-
-    mov ebx, eax
-
-    mov al, 0xB6
-    out 0x43, al
-
-    mov al, bl
-    out 0x42, al
-
-    mov al, bh
-    out 0x42, al
-
-    in al, 0x61
-    or al, 0x03
-    out 0x61, al
-
-    jmp .done
-
-.off:
-    call sys_nosound
-
-.done:
-    pop ebx
-    pop ebp
-    ret
-
-sys_nosound:
-    in al, 0x61
-    and al, 0xFC
-    out 0x61, al
-    ret
-
-; Disco ATA IDE LBA28 (TIMEOUT Y RETARDO 400ns)
-; Subrutina: Esperar a que el disco se libere (BSY = 0)
-ata_wait_bsy:
-    push ecx
-    push edx
-    mov dx, 0x3F6
-    in al, dx
-    in al, dx
-    in al, dx
-    in al, dx
-    mov ecx, 100000         ; Timeout de seguridad
-    mov dx, 0x1F7
-.poll_bsy:
-    in al, dx
-    test al, 0x80           
-    jz .ready               
-    dec ecx
-    jnz .poll_bsy
-    stc                     ; Activa CF por timeout
-    jmp .done
-.ready:
-    clc                     
-.done:
-    pop edx
-    pop ecx
-    ret
-
-; Subrutina: Esperar a que el disco pida datos (DRQ = 1)
-ata_wait_drq:
-    push ecx
-    push edx
-    mov dx, 0x3F6
-    in al, dx
-    in al, dx
-    in al, dx
-    in al, dx
-    mov ecx, 100000         
-    mov dx, 0x1F7
-.poll_drq:
-    in al, dx
-    test al, 0x80           
-    jnz .retry
-    test al, 0x08           
-    jnz .ready
-    test al, 0x01           
-    jnz .error
-.retry:
-    dec ecx
-    jnz .poll_drq
-.error:
-    stc                     
-    jmp .done
-.ready:
-    clc
-.done:
-    pop edx
-    pop ecx
-    ret
-
-; Leer sector
-sys_disk_read_sector:
-    push ebp
-    mov ebp, esp
-    push ebx
-    push edi
-
-    mov edi, [ebp + 12]         
-    cmp edi, 0                  
-    jne .skip_default_r
-    mov edi, disk_sector_buf    
-	jmp .read_ready
-	
-.skip_default_r:  
-    add edi, 4					; protección GC
-	
-.read_ready:	
-    call ata_wait_bsy           
-    jc .disk_error
-
-    mov eax, [ebp + 8]          ; LBA (Nota: No sobrescribir EDI aquí)
-
-    mov dx, 0x1F6
-    shr eax, 24
-    or al, 0xE0
-    out dx, al
-
-    mov dx, 0x1F2
-    mov al, 1
-    out dx, al
-
-    mov eax, [ebp + 8]
-    mov dx, 0x1F3
-    out dx, al
-    shr eax, 8
-    mov dx, 0x1F4
-    out dx, al
-    shr eax, 8
-    mov dx, 0x1F5
-    out dx, al
-
-    mov dx, 0x1F7
-    mov al, 0x20                
-    out dx, al
-
-    call ata_wait_drq           
-    jc .disk_error
-
-    mov ecx, 256
-    mov dx, 0x1F0
-.read:
-    in ax, dx
-    mov [edi], ax
-    add edi, 2
-    loop .read
-
-    mov eax, 1                  
-    jmp .done
-
-.disk_error:
-    xor eax, eax                
-
-.done:
-    pop edi
-    pop ebx
-    pop ebp
-    ret
-
-; Escribir sector
-sys_disk_write_sector:
+jit_compile_method:
     push ebp
     mov ebp, esp
     push ebx
     push esi
+    push edi
     
-    mov esi, [ebp + 12]         
-    cmp esi, 0                  
-    jne .skip_default_w
-    mov esi, disk_sector_buf
-	jmp .write_ready    
+    mov eax, [jit_buffer_ptr]
+    push eax 
+    
+    mov dword [loop_start_addr], 0
+    mov dword [fixup_count], 0
+    mov [jit_bytecode_base], esi
 
-.skip_default_w:
-	add esi, 4					; protección GC
-	
-.write_ready:
-    call ata_wait_bsy           
-    jc .disk_error
+    push esi                    
+    push ecx                    
+    call jit_emit_prologue
+    pop ecx                     
 
-    mov eax, [ebp + 8]          ; LBA (Nota: No sobrescribir ESI aquí)
+    mov edi, esi
+    add edi, ecx                
 
-    mov dx, 0x1F6
-    shr eax, 24
-    or al, 0xE0
-    out dx, al
+.compile_loop:
+    cmp esi, edi
+    jae .resolve_fixups         
 
-    mov dx, 0x1F2
-    mov al, 1
-    out dx, al
+    mov ecx, esi
+    sub ecx, [jit_bytecode_base] 
+    mov edx, [jit_buffer_ptr]    
+    mov [pc_map + ecx * 4], edx  
 
-    mov eax, [ebp + 8]
-    mov dx, 0x1F3
-    out dx, al
-    shr eax, 8
-    mov dx, 0x1F4
-    out dx, al
-    shr eax, 8
-    mov dx, 0x1F5
-    out dx, al
+    movzx eax, byte [esi]
+    ;pusha
+    ;mov ebx, eax
+    ;shr ebx, 4
+    ;call .nibble_to_hex
+    ;mov [hex_byte_str], bl
+    ;mov ebx, eax
+    ;and ebx, 0x0F
+    ;call .nibble_to_hex
+    ;mov [hex_byte_str + 1], bl
+    ;push hex_byte_str
+    ;call sys_serial_puts
+    ;add esp, 4
+    ;popa
 
-    mov dx, 0x1F7
-    mov al, 0x30                
-    out dx, al
+    movzx eax, byte [esi]
+    inc esi
+    mov ebx, [jit_opcode_table + eax * 4]
+    call ebx
 
-    call ata_wait_drq           
-    jc .disk_error
+    jmp .compile_loop
 
+.resolve_fixups:
+    mov ecx, [fixup_count]
+    test ecx, ecx
+    jz .compile_done
+    xor ebx, ebx
+
+.fixup_loop:
+    mov eax, [fixup_target + ebx * 4]
+    mov edx, [pc_map + eax * 4]
+    mov edi, [fixup_addr + ebx * 4]
+    
+    mov eax, edx
+    sub eax, edi
+    sub eax, 4                        
+    mov [edi], eax
+
+    inc ebx
+    cmp ebx, ecx
+    jb .fixup_loop
+
+.compile_done:
+    pop edx
+    pop eax
+    
+    pop edi                     
+    pop esi                     
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
+
+.nibble_to_hex:
+    cmp bl, 9
+    jbe .is_digit
+    add bl, 7
+.is_digit:
+    add bl, '0'
+    ret
+
+; OPCODES BÁSICOS
+jit_op_aconst_null:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    ret
+
+jit_op_iconst_m1:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0xFF
+    call jit_emit_byte
+    ret
+    
+jit_op_nop:
+    mov al, 0x90
+    call jit_emit_byte
+    ret
+
+jit_op_iconst_0:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    ret
+
+jit_op_iconst_1:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x01
+    call jit_emit_byte
+    ret
+
+jit_op_iconst_2:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x02
+    call jit_emit_byte
+    ret
+
+jit_op_iconst_3:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x03
+    call jit_emit_byte
+    ret
+
+jit_op_iconst_4:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    ret
+
+jit_op_iconst_5:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x05
+    call jit_emit_byte
+    ret
+
+jit_op_lconst_0:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    ret
+
+jit_op_lconst_1:
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x01
+    call jit_emit_byte
+    ret
+
+jit_op_bipush:
+    movsx eax, byte [esi]
+    inc esi
+    push eax
+    mov al, 0x68
+    call jit_emit_byte
+    pop eax
+    call jit_emit_dword
+    ret
+
+jit_op_sipush:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl eax, 8
+    or eax, ebx
+    movsx eax, ax
+
+    push eax
+    mov al, 0x68
+    call jit_emit_byte
+    pop eax
+    call jit_emit_dword
+    ret
+
+jit_op_ldc:
+    movzx eax, byte [esi]
+    inc esi
+
+    mov ebx, [cp_base_ptr]
+    test ebx, ebx
+    jz .fallback_zero
+
+    mov eax, [ebx + eax * 4]
+    test eax, eax
+    jz .fallback_zero
+
+    cmp byte [eax], 8
+    je .is_string
+
+    mov eax, [eax + 1]
+    bswap eax
+    jmp .emit_val
+
+.is_string:
+    mov ax, [eax + 1]
+    xchg al, ah
+    movzx eax, ax
+    mov ebx, [cp_base_ptr]
+    mov eax, [ebx + eax * 4]
+    add eax, 3
+    
+    pusha
+    mov esi, eax                
+    movzx ecx, byte [esi - 2]
+    shl ecx, 8
+    mov cl, byte [esi - 1]      
+
+    mov edx, ecx
+    add edx, 4                  
+    push edx
+    call sys_kalloc
+    add esp, 4
+    or dword [eax - 12], 4      ; hacer el byte[] interno Inmortal (Bit 2)
+
+    mov esi, [esp + 28]         
+    movzx ecx, byte [esi - 2]
+    shl ecx, 8
+    mov cl, byte [esi - 1]
+
+    mov edi, eax
+    add edi, 4
+    xor edx, edx                
+.dec_loop:
+    test ecx, ecx
+    jz .dec_done
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    
+    cmp bl, 0xC3                
+    je .is_c3
+    cmp bl, 0xC2                
+    je .is_c2
+    
+    mov [edi], bl               
+    inc edi
+    inc edx
+    jmp .dec_loop
+    
+.is_c3:
+    test ecx, ecx
+    jz .dec_done
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    add bl, 64                  
+    mov [edi], bl
+    inc edi
+    inc edx
+    jmp .dec_loop
+    
+.is_c2:
+    test ecx, ecx
+    jz .dec_done
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    mov [edi], bl               
+    inc edi
+    inc edx
+    jmp .dec_loop
+    
+.dec_done:
+    mov [eax], edx              
+
+    mov [esp + 16], eax         
+
+    push 4096
+    call sys_kalloc
+    add esp, 4
+    or dword [eax - 12], 4          ; Hacer el String Inmortal (Bit 2)
+
+    mov ebx, [esp + 16]         
+    mov edi, eax
+    add edi, 8                  
+    mov ecx, 256                
+.fill_fields:
+    mov [edi], ebx
+    add edi, 4
+    dec ecx
+    jnz .fill_fields
+
+    mov [esp + 28], eax         
+    popa
+    jmp .emit_val
+
+.fallback_zero:
+    xor eax, eax
+
+.emit_val:
+    push eax
+    mov al, 0x68
+    call jit_emit_byte
+    pop eax
+    call jit_emit_dword
+    ret
+
+jit_op_ldc_w:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl eax, 8
+    or eax, ebx
+
+    mov ebx, [cp_offsets + eax * 4]
+    test ebx, ebx
+    jz .fallback_zero_w
+
+    cmp byte [ebx], 8
+    je .is_string_w
+
+    mov eax, [ebx + 1]
+    bswap eax
+    jmp .emit_val_w
+
+.is_string_w:
+    mov ax, [ebx + 1]
+    xchg al, ah
+    movzx eax, ax
+    mov ebx, [cp_offsets + eax * 4]
+    add ebx, 3
+    mov eax, ebx
+
+    pusha
+    mov esi, eax                
+    movzx ecx, byte [esi - 2]
+    shl ecx, 8
+    mov cl, byte [esi - 1]      
+
+    mov edx, ecx
+    add edx, 4                  
+    push edx
+    call sys_kalloc
+    add esp, 4
+    or dword [eax - 12], 4      ; hacer el byte[] interno Inmortal (Bit 2)
+    
+    mov esi, [esp + 28]         
+    movzx ecx, byte [esi - 2]
+    shl ecx, 8
+    mov cl, byte [esi - 1]
+
+    mov edi, eax
+    add edi, 4
+    xor edx, edx                
+.dec_loop_w:
+    test ecx, ecx
+    jz .dec_done_w
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    
+    cmp bl, 0xC3
+    je .is_c3_w
+    cmp bl, 0xC2
+    je .is_c2_w
+    
+    mov [edi], bl               
+    inc edi
+    inc edx
+    jmp .dec_loop_w
+    
+.is_c3_w:
+    test ecx, ecx
+    jz .dec_done_w
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    add bl, 64                  
+    mov [edi], bl
+    inc edi
+    inc edx
+    jmp .dec_loop_w
+    
+.is_c2_w:
+    test ecx, ecx
+    jz .dec_done_w
+    mov bl, [esi]
+    inc esi
+    dec ecx
+    mov [edi], bl
+    inc edi
+    inc edx
+    jmp .dec_loop_w
+    
+.dec_done_w:
+    mov [eax], edx              
+
+    mov [esp + 16], eax         
+
+    push 4096
+    call sys_kalloc
+    add esp, 4
+    or dword [eax - 12], 4          ; Hacer el String Inmortal (Bit 2)
+    
+    mov ebx, [esp + 16]         
+    mov edi, eax
+    add edi, 8
     mov ecx, 256
-    mov dx, 0x1F0
-.write:
-    mov ax, [esi]
-    out dx, ax
-    add esi, 2
-    loop .write
+.fill_fields_w:
+    mov [edi], ebx
+    add edi, 4
+    dec ecx
+    jnz .fill_fields_w
+
+    mov [esp + 28], eax         
+    popa
+    jmp .emit_val_w
+
+.fallback_zero_w:
+    xor eax, eax
+
+.emit_val_w:
+    push eax
+    mov al, 0x68
+    call jit_emit_byte
+    pop eax
+    call jit_emit_dword
+    ret
+
+jit_op_ldc2_w:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl eax, 8
+    or eax, ebx
+
+    mov ebx, [cp_offsets + eax * 4]
+    test ebx, ebx
+    jz .fallback_zero_64
+
+    mov eax, [ebx + 1]
+    mov edx, [ebx + 5]
+    bswap eax
+    bswap edx
+    jmp .emit_val_64
+
+.fallback_zero_64:
+    xor eax, eax
+    xor edx, edx
+
+.emit_val_64:
+    push edx
+    push eax
     
-    mov dx, 0x1F7
-    mov al, 0xE7                
-    out dx, al
+    mov al, 0x68
+    call jit_emit_byte
+    pop eax
+    call jit_emit_dword
+    
+    mov al, 0x68
+    call jit_emit_byte
+    pop eax
+    call jit_emit_dword
+    ret
 
-    call ata_wait_bsy           
-    jc .disk_error
+jit_op_new:
+    add esi, 2
 
-    mov eax, 1                  
-    jmp .done
+    mov al, 0x68                ; push imm32
+    call jit_emit_byte
+    mov eax, 4096               ; Allocation de 4KB por objeto 
+    call jit_emit_dword
 
-.disk_error:
-    xor eax, eax                
+    mov al, 0xE8                ; call sys_kalloc
+    call jit_emit_byte
+    mov eax, sys_kalloc
+    mov ebx, [jit_buffer_ptr]
+    add ebx, 4
+    sub eax, ebx
+    call jit_emit_dword
 
-.done:
+    mov al, 0x83                ; add esp, 4
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_getstatic:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl eax, 8
+    or eax, ebx
+
+    and eax, 0x03FF             
+    mov ebx, eax
+    shl ebx, 2
+    add ebx, java_static_vars
+
+    mov al, 0xA1                ; mov eax, [addr]
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_putstatic:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl eax, 8
+    or eax, ebx
+
+    and eax, 0x03FF
+    mov ebx, eax
+    shl ebx, 2
+    add ebx, java_static_vars
+
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0xA3                ; mov [addr], eax
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    ret
+
+jit_op_getfield:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl eax, 8
+    or eax, ebx
+    ; offset simple en 4 palabras
+    mov ecx, eax
+    shl ecx, 2
+    add ecx, 8
+
+    mov al, 0x58                ; pop eax (object reference)
+    call jit_emit_byte
+    
+    mov al, 0x8B                ; mov eax, [eax + imm32]
+    call jit_emit_byte
+    mov al, 0x80
+    call jit_emit_byte
+    mov eax, ecx
+    call jit_emit_dword
+    
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_putfield:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl eax, 8
+    or eax, ebx
+
+    mov ecx, eax
+    shl ecx, 2
+    add ecx, 8
+
+    mov al, 0x58                ; pop eax (valor a asignar)
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx (referencia del objeto)
+    call jit_emit_byte
+    
+    mov al, 0x89                ; mov [ebx + imm32], eax
+    call jit_emit_byte
+    mov al, 0x83
+    call jit_emit_byte
+    mov eax, ecx
+    call jit_emit_dword
+    ret
+
+jit_op_invokedynamic:
+    add esi, 4
+    ret
+
+jit_op_checkcast:
+    add esi, 2
+    ret
+
+jit_op_instanceof:
+    add esi, 2
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0x95
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xB6
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_monitorenter:
+    mov al, 0x58
+    call jit_emit_byte
+    ret
+
+jit_op_monitorexit:
+    mov al, 0x58
+    call jit_emit_byte
+    ret
+
+jit_op_wide:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl ebx, 8
+    movzx ecx, byte [esi]
+    inc esi
+    or ebx, ecx    
+
+    mov ecx, ebx
+    shl ecx, 2
+    add ecx, 16
+    neg ecx
+
+    cmp al, 0x15
+    je .load
+    cmp al, 0x17
+    je .load
+    cmp al, 0x19
+    je .load    
+    cmp al, 0x36
+    je .store
+    cmp al, 0x38
+    je .store
+    cmp al, 0x3A
+    je .store
+    cmp al, 0x84
+    je .iinc
+    cmp al, 0xA9
+    je .ret
+    ret
+.load:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, ecx
+    call jit_emit_dword
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+.store:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, ecx
+    call jit_emit_dword
+    ret
+
+.iinc:
+    movsx edx, byte [esi]
+    shl edx, 8
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    or edx, ebx
+    movsx edx, dx
+
+    mov al, 0x81
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, ecx
+    call jit_emit_dword
+    mov eax, edx
+    call jit_emit_dword
+    ret
+
+; Opcode: 0xC4 (Branch .ret interno para wide ret)
+.ret:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, ecx
+    call jit_emit_dword
+    
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, pc_map
+    call jit_emit_dword
+    
+    mov al, 0xFF
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    ret
+    
+; Opcode: 0xA8
+jit_op_jsr:
+    movzx eax, byte [esi]
+    inc esi
+    movzx ebx, byte [esi]
+    inc esi
+    shl eax, 8
+    or eax, ebx
+    movsx eax, ax
+
+    mov ecx, esi
+    sub ecx, [jit_bytecode_base]
+
+    mov al, 0x68
+    call jit_emit_byte
+    push eax
+    mov eax, ecx
+    call jit_emit_dword
+    pop eax
+
+    mov ecx, esi
+    sub ecx, [jit_bytecode_base]
+    sub ecx, 3
+    add ecx, eax
+
+    mov al, 0xE9
+    call jit_emit_byte
+    mov edx, [fixup_count]
+    mov ebx, [jit_buffer_ptr]
+    mov [fixup_addr + edx * 4], ebx
+    mov [fixup_target + edx * 4], ecx
+    inc edx
+    mov [fixup_count], edx
+    xor eax, eax
+    call jit_emit_dword
+    ret
+
+; Opcode: 0xA9
+jit_op_ret:
+    movzx ebx, byte [esi]
+    inc esi
+    shl ebx, 2
+    add ebx, 16
+    neg ebx
+    
+    mov al, 0x8B            
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    
+    mov al, 0x8B            
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, pc_map
+    call jit_emit_dword
+    
+    mov al, 0xFF            
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    ret
+
+.wide_load:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+.wide_store:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    ret
+
+jit_op_invokevirtual:
+jit_op_invokespecial:
+jit_op_invokestatic:
+    movzx ebx, byte [esi]       
+    shl ebx, 8
+    movzx eax, byte [esi+1]     
+    or ebx, eax                 
+    add esi, 2                  
+
+    mov al, 0xB8
+    call jit_emit_byte
+    mov eax, ebx                
+    call jit_emit_dword
+
+    mov al, 0xBA
+    call jit_emit_byte
+    mov eax, [current_class_ptr]
+    call jit_emit_dword
+
+    mov al, 0xE8
+    call jit_emit_byte
+    mov eax, jit_runtime_trampoline
+    push ebx                    
+    mov ebx, [jit_buffer_ptr]
+    add ebx, 4
+    sub eax, ebx
+    call jit_emit_dword
+    pop ebx                     
+
+    mov ecx, [cp_offsets + ebx * 4]     
+    movzx edx, word [ecx + 3]
+    xchg dl, dh
+    mov ecx, [cp_offsets + edx * 4]     
+    movzx edx, word [ecx + 3]
+    xchg dl, dh
+    mov ecx, [cp_offsets + edx * 4]     
+    add ecx, 3                          
+
+.scan_desc:
+    mov al, [ecx]
+    inc ecx
+    cmp al, ')'
+    jne .scan_desc
+    
+    mov al, [ecx]               
+    cmp al, 'V'
+    je .is_void
+    
+    cmp al, 'D'
+    je .is_64bit
+    cmp al, 'J'
+    je .is_64bit
+    
+    mov al, 0x50                ; push eax (para retornos estándar de 32 bits)
+    call jit_emit_byte
+    ret
+    
+.is_64bit:
+    mov al, 0x52                ; push edx (mitad alta del 64-bit)
+    call jit_emit_byte
+    mov al, 0x50                ; push eax (mitad baja del 64-bit)
+    call jit_emit_byte
+    
+.is_void:
+    ret
+
+; Opcode 0xB9
+jit_op_invokeinterface:
+    movzx ebx, byte [esi]
+    shl ebx, 8
+    movzx eax, byte [esi+1]
+    or ebx, eax
+    add esi, 4
+
+    mov al, 0xB8
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+
+    mov al, 0xBA
+    call jit_emit_byte
+    mov eax, [current_class_ptr]
+    call jit_emit_dword
+
+    mov al, 0xE8
+    call jit_emit_byte
+    mov eax, jit_runtime_trampoline
+    push ebx
+    mov ebx, [jit_buffer_ptr]
+    add ebx, 4
+    sub eax, ebx
+    call jit_emit_dword
+    pop ebx
+
+    mov ecx, [cp_offsets + ebx * 4]
+    movzx edx, word [ecx + 3]
+    xchg dl, dh
+    mov ecx, [cp_offsets + edx * 4]
+    movzx edx, word [ecx + 3]
+    xchg dl, dh
+    mov ecx, [cp_offsets + edx * 4]
+    add ecx, 3
+
+.scan_desc_interface:
+    mov al, [ecx]
+    inc ecx
+    cmp al, ')'
+    jne .scan_desc_interface
+
+    mov al, [ecx]
+    cmp al, 'V'
+    je .is_void_interface
+    
+    cmp al, 'D'
+    je .is_64bit_interface
+    cmp al, 'J'
+    je .is_64bit_interface
+
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+.is_64bit_interface:
+    mov al, 0x52                ; push edx
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    
+.is_void_interface:
+    ret
+
+jit_op_fconst_0:
+    mov al, 0x68
+    call jit_emit_byte
+    mov eax, 0x00000000
+    call jit_emit_dword
+    ret
+
+jit_op_fconst_1:
+    mov al, 0x68
+    call jit_emit_byte
+    mov eax, 0x3F800000
+    call jit_emit_dword
+    ret
+
+jit_op_fconst_2:
+    mov al, 0x68
+    call jit_emit_byte
+    mov eax, 0x40000000
+    call jit_emit_dword
+    ret
+
+jit_op_dconst_0:
+    mov al, 0x68
+    call jit_emit_byte
+    mov eax, 0x00000000
+    call jit_emit_dword
+    mov al, 0x68
+    call jit_emit_byte
+    mov eax, 0x00000000
+    call jit_emit_dword
+    ret
+
+jit_op_dconst_1:
+    mov al, 0x68
+    call jit_emit_byte
+    mov eax, 0x3FF00000
+    call jit_emit_dword
+    mov al, 0x68
+    call jit_emit_byte
+    mov eax, 0x00000000
+    call jit_emit_dword
+    ret
+
+jit_op_iload:
+jit_op_fload:
+jit_op_aload:
+    movzx ebx, byte [esi]
+    inc esi
+    shl ebx, 2
+    add ebx, 16
+    neg ebx                 
+
+    mov al, 0x8B            
+    call jit_emit_byte
+    mov al, 0x85            
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    
+    mov al, 0x50            
+    call jit_emit_byte
+    ret
+
+jit_op_iload_0:
+jit_op_aload_0:
+jit_op_fload_0:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xF0
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iload_1:
+jit_op_aload_1:
+jit_op_fload_1:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iload_2:
+jit_op_aload_2:
+jit_op_fload_2:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iload_3:
+jit_op_aload_3:
+jit_op_fload_3:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE4
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_istore:
+jit_op_astore:
+jit_op_fstore:
+    movzx ebx, byte [esi]
+    inc esi
+    shl ebx, 2
+    add ebx, 16
+    neg ebx                 
+
+    mov al, 0x58            
+    call jit_emit_byte
+    
+    mov al, 0x89            
+    call jit_emit_byte
+    mov al, 0x85            
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    ret
+
+jit_op_iload_4:
+jit_op_aload_4:
+jit_op_fload_4:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iload_5:
+jit_op_aload_5:
+jit_op_fload_5:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xDC
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_lload_0:
+jit_op_dload_0:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xF0
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_lload_1:
+jit_op_dload_1:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_lload_2:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE8        ; [ebp-24]
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE4        ; [ebp-28]
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_lload_3:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE4        ; [ebp-28]
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE0        ; [ebp-32]
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+    
+jit_op_lstore_1:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE8
+    call jit_emit_byte
+    
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    ret
+
+jit_op_lstore_2:
+jit_op_dstore_2:
+    mov al, 0x58        ; pop eax (bajo)
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE4        ; -> [ebp-28]
+    call jit_emit_byte
+
+    mov al, 0x58        ; pop eax (alto)
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE8        ; -> [ebp-24]
+    call jit_emit_byte
+    ret
+
+jit_op_lstore_3:
+jit_op_dstore_3:
+    mov al, 0x58        ; pop eax (bajo)
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE0        ; -> [ebp-32]
+    call jit_emit_byte
+
+    mov al, 0x58        ; pop eax (alto)
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE4        ; -> [ebp-28]
+    call jit_emit_byte
+    ret
+
+jit_op_lstore_0:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xEC                ; [ebp-20]
+    call jit_emit_byte
+    
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xF0                ; [ebp-16]
+    call jit_emit_byte
+    ret
+
+jit_op_istore_0:
+jit_op_astore_0:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xF0
+    call jit_emit_byte
+    ret
+
+jit_op_istore_1:
+jit_op_astore_1:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    ret
+
+jit_op_istore_2:
+jit_op_astore_2:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE8
+    call jit_emit_byte
+    ret
+
+jit_op_istore_3:
+jit_op_astore_3:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE4
+    call jit_emit_byte
+    ret
+
+jit_op_istore_4:
+jit_op_astore_4:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    ret
+
+jit_op_istore_5:
+jit_op_astore_5:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xDC
+    call jit_emit_byte
+    ret
+
+jit_op_dstore_0:
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x89                ; mov [ebp - 20], eax
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x89                ; mov [ebp - 16], eax
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xF0
+    call jit_emit_byte
+    ret
+
+jit_op_dstore_1:
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x89                ; mov [ebp - 24], eax
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE8
+    call jit_emit_byte
+
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x89                ; mov [ebp - 20], eax
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    ret
+    
+jit_op_iload_param_0:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iload_param_1:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0x0C
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iadd:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x01
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_ladd:
+    mov al, 0x58        ; pop eax (b_bajo)
+    call jit_emit_byte
+    mov al, 0x5A        ; pop edx (b_alto)
+    call jit_emit_byte
+    mov al, 0x59        ; pop ecx (a_bajo)
+    call jit_emit_byte
+    mov al, 0x5B        ; pop ebx (a_alto)
+    call jit_emit_byte
+    mov al, 0x01        ; add ecx, eax
+    call jit_emit_byte
+    mov al, 0xC1
+    call jit_emit_byte
+    mov al, 0x11        ; adc ebx, edx
+    call jit_emit_byte
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0x53        ; push ebx (alto)
+    call jit_emit_byte
+    mov al, 0x51        ; push ecx (bajo)
+    call jit_emit_byte
+    ret
+
+jit_op_fadd:
+    mov al, 0xD9        ; fld dword [esp+4]   (a)
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD8        ; fadd dword [esp]    (st0 = a + b)
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 4
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD9        ; fstp dword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_dadd:
+    mov al, 0xDD        ; fld qword [esp+8]   (a)
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0xDC        ; fadd qword [esp]    (st0 = a + b)
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 8
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0xDD        ; fstp qword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+    
+jit_op_lsub:
+    mov al, 0x58        ; pop eax (b_bajo)
+    call jit_emit_byte
+    mov al, 0x5A        ; pop edx (b_alto)
+    call jit_emit_byte
+    mov al, 0x59        ; pop ecx (a_bajo)
+    call jit_emit_byte
+    mov al, 0x5B        ; pop ebx (a_alto)
+    call jit_emit_byte
+    mov al, 0x29        ; sub ecx, eax
+    call jit_emit_byte
+    mov al, 0xC1
+    call jit_emit_byte
+    mov al, 0x19        ; sbb ebx, edx
+    call jit_emit_byte
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0x53        ; push ebx (alto)
+    call jit_emit_byte
+    mov al, 0x51        ; push ecx (bajo)
+    call jit_emit_byte
+    ret
+
+jit_op_fsub:
+    mov al, 0xD9        ; fld dword [esp+4]   (a)
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD8        ; fsub dword [esp]    (st0 = a - b)
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 4
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD9        ; fstp dword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_dsub:
+    mov al, 0xDD        ; fld qword [esp+8]   (a)
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0xDC        ; fsub qword [esp]    (st0 = a - b)
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 8
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0xDD        ; fstp qword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+    
+jit_op_lmul:
+    mov al, 0x58        ; pop eax = b_bajo
+    call jit_emit_byte
+    mov al, 0x5A        ; pop edx = b_alto
+    call jit_emit_byte
+    mov al, 0x59        ; pop ecx = a_bajo
+    call jit_emit_byte
+    mov al, 0x5B        ; pop ebx = a_alto
+    call jit_emit_byte
+
+    push ebx            
+    push edx
+
+    mov al, 0x89        ; mov esi, ecx
+    call jit_emit_byte
+    mov al, 0xCE
+    call jit_emit_byte
+
+    mov al, 0x0F        ; imul esi, edx
+    call jit_emit_byte
+    mov al, 0xAF
+    call jit_emit_byte
+    mov al, 0xF2
+    call jit_emit_byte
+
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xAF
+    call jit_emit_byte
+    mov al, 0xD8        ; imul ebx, eax
+    call jit_emit_byte
+
+    mov al, 0x01        ; add ebx, esi
+    call jit_emit_byte
+    mov al, 0xF3
+    call jit_emit_byte
+
+    mov al, 0xF7        ; mul ecx
+    call jit_emit_byte
+    mov al, 0xE1
+    call jit_emit_byte
+
+    mov al, 0x01        ; add edx, ebx
+    call jit_emit_byte
+    mov al, 0xDA
+    call jit_emit_byte
+
+    pop ebx             
+    pop ebx
+
+    mov al, 0x52        ; push edx (alto)
+    call jit_emit_byte
+    mov al, 0x50        ; push eax (bajo)
+    call jit_emit_byte
+    ret
+
+jit_op_fmul:
+    mov al, 0xD9        ; fld dword [esp+4]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD8        ; fmul dword [esp]
+    call jit_emit_byte
+    mov al, 0x0C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 4
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD9        ; fstp dword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_dmul:
+    mov al, 0xDD        ; fld qword [esp+8]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0xDC        ; fmul qword [esp]
+    call jit_emit_byte
+    mov al, 0x0C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 8
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0xDD        ; fstp qword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+    
+jit_op_isub:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x29
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_imul:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xAF
+    call jit_emit_byte
+    mov al, 0xC3
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_idiv:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x99
+    call jit_emit_byte
+    mov al, 0xF7
+    call jit_emit_byte
+    mov al, 0xFB
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_irem:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x99
+    call jit_emit_byte
+    mov al, 0xF7
+    call jit_emit_byte
+    mov al, 0xFB
+    call jit_emit_byte
+    mov al, 0x52
+    call jit_emit_byte
+    ret
+
+jit_op_land:
+    mov al, 0x58        ; pop eax (b_bajo)
+    call jit_emit_byte
+    mov al, 0x5A        ; pop edx (b_alto)
+    call jit_emit_byte
+    mov al, 0x59        ; pop ecx (a_bajo)
+    call jit_emit_byte
+    mov al, 0x5B        ; pop ebx (a_alto)
+    call jit_emit_byte
+    mov al, 0x21        ; and ecx, eax
+    call jit_emit_byte
+    mov al, 0xC1
+    call jit_emit_byte
+    mov al, 0x21        ; and ebx, edx
+    call jit_emit_byte
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0x53        ; push ebx
+    call jit_emit_byte
+    mov al, 0x51        ; push ecx
+    call jit_emit_byte
+    ret
+
+jit_op_lor:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x5A
+    call jit_emit_byte
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x09        ; or ecx, eax
+    call jit_emit_byte
+    mov al, 0xC1
+    call jit_emit_byte
+    mov al, 0x09        ; or ebx, edx
+    call jit_emit_byte
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0x53
+    call jit_emit_byte
+    mov al, 0x51
+    call jit_emit_byte
+    ret
+
+jit_op_lxor:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x5A
+    call jit_emit_byte
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x31        ; xor ecx, eax
+    call jit_emit_byte
+    mov al, 0xC1
+    call jit_emit_byte
+    mov al, 0x31        ; xor ebx, edx
+    call jit_emit_byte
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0x53
+    call jit_emit_byte
+    mov al, 0x51
+    call jit_emit_byte
+    ret
+
+; Opcode: 0x79
+jit_op_lshl:
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x5A
+    call jit_emit_byte
+    
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xE1
+    call jit_emit_byte
+    mov al, 0x3F
+    call jit_emit_byte
+    
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xA5
+    call jit_emit_byte
+    mov al, 0xC2
+    call jit_emit_byte
+    
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    
+    mov al, 0xF6
+    call jit_emit_byte
+    mov al, 0xC1
+    call jit_emit_byte
+    mov al, 0x20
+    call jit_emit_byte
+    
+    mov al, 0x74
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0xC2
+    call jit_emit_byte
+    
+    mov al, 0x31
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    
+    mov al, 0x52
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+; Opcode: 0x7B
+jit_op_lshr:
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x5A
+    call jit_emit_byte
+    
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xE1
+    call jit_emit_byte
+    mov al, 0x3F
+    call jit_emit_byte
+    
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xAD
+    call jit_emit_byte
+    mov al, 0xD0
+    call jit_emit_byte
+    
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0xFA
+    call jit_emit_byte
+    
+    mov al, 0xF6
+    call jit_emit_byte
+    mov al, 0xC1
+    call jit_emit_byte
+    mov al, 0x20
+    call jit_emit_byte
+    
+    mov al, 0x74
+    call jit_emit_byte
+    mov al, 0x05
+    call jit_emit_byte
+    
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0xD0
+    call jit_emit_byte
+    
+    mov al, 0xC1
+    call jit_emit_byte
+    mov al, 0xFA
+    call jit_emit_byte
+    mov al, 0x1F
+    call jit_emit_byte
+    
+    mov al, 0x52
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+; Opcode: 0x7D
+jit_op_lushr:
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x5A
+    call jit_emit_byte
+    
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xE1
+    call jit_emit_byte
+    mov al, 0x3F
+    call jit_emit_byte
+    
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xAD
+    call jit_emit_byte
+    mov al, 0xD0
+    call jit_emit_byte
+    
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0xEA
+    call jit_emit_byte
+    
+    mov al, 0xF6
+    call jit_emit_byte
+    mov al, 0xC1
+    call jit_emit_byte
+    mov al, 0x20
+    call jit_emit_byte
+    
+    mov al, 0x74
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0xD0
+    call jit_emit_byte
+    
+    mov al, 0x31
+    call jit_emit_byte
+    mov al, 0xD2
+    call jit_emit_byte
+    
+    mov al, 0x52
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+; Opcode: 0x94
+jit_op_lcmp:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x5A
+    call jit_emit_byte
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    
+    mov al, 0x39
+    call jit_emit_byte
+    mov al, 0xD0
+    call jit_emit_byte
+    
+    mov al, 0x7F
+    call jit_emit_byte
+    mov al, 0x0C
+    call jit_emit_byte
+    
+    mov al, 0x7C
+    call jit_emit_byte
+    mov al, 0x0E
+    call jit_emit_byte
+    
+    mov al, 0x39
+    call jit_emit_byte
+    mov al, 0xD9
+    call jit_emit_byte
+    
+    mov al, 0x77
+    call jit_emit_byte
+    mov al, 0x06
+    call jit_emit_byte
+    
+    mov al, 0x72
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    
+    mov al, 0xEB
+    call jit_emit_byte
+    mov al, 0x06
+    call jit_emit_byte
+    
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0x01
+    call jit_emit_byte
+    
+    mov al, 0xEB
+    call jit_emit_byte
+    mov al, 0x02
+    call jit_emit_byte
+    
+    mov al, 0x6A
+    call jit_emit_byte
+    mov al, 0xFF
+    call jit_emit_byte
+    ret
+
+; Opcode: 0xC5
+jit_op_newarray:
+    movzx edx, byte [esi]       ; Leer el <atype> (tipo de dato primitivo)
+    inc esi                     ; Saltar byte <atype>
+    
+    mov al, 0x5B                ; pop ebx (length)
+    call jit_emit_byte
+    
+    mov al, 0x89                ; mov eax, ebx
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+
+    cmp dl, 4                   ; boolean
+    je .mult_1
+    cmp dl, 8                   ; byte
+    je .mult_1
+    cmp dl, 5                   ; char
+    je .mult_2
+    cmp dl, 9                   ; short
+    je .mult_2
+    cmp dl, 7                   ; double
+    je .mult_8
+    cmp dl, 11                  ; long
+    je .mult_8
+    
+    ; Por defecto (int, float, referencias)
+    jmp .mult_4
+
+.mult_1:
+    jmp .calc_size
+
+.mult_2:
+    mov al, 0xD1                ; shl eax, 1 (eax * 2)
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    jmp .calc_size
+
+.mult_8:
+    mov al, 0xC1                ; shl eax, 3 (eax * 8)
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0x03
+    call jit_emit_byte
+    jmp .calc_size
+
+.mult_4:
+    mov al, 0xC1                ; shl eax, 2 (eax * 4)
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0x02
+    call jit_emit_byte
+
+.calc_size:
+    mov al, 0x83                ; add eax, 4 (+4 bytes para guardar el length)
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    jmp alloc_array_common
+
+jit_op_anewarray:
+    add esi, 2                  ; Saltar el índice de la clase en el Constant Pool (2 bytes)
+    
+    mov al, 0x5B                ; pop ebx (length)
+    call jit_emit_byte
+    mov al, 0x89                ; mov eax, ebx
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    
+    mov al, 0xC1                ; shl eax, 2 (length * 4 bytes, pues son referencias de 32 bits)
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0x02
+    call jit_emit_byte
+    
+    mov al, 0x83                ; add eax, 4 (+4 bytes para guardar la longitud original)
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    
+    jmp alloc_array_common      ; Saltar a la rutina común de kalloc
+
+jit_op_multianewarray:
+    add esi, 3
+    mov al, 0x5B                ; pop ebx (length)
+    call jit_emit_byte
+    mov al, 0x89                ; mov eax, ebx
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0xC1                ; shl eax, 2 (length * 4 bytes)
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0x02
+    call jit_emit_byte
+    mov al, 0x83                ; add eax, 4
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    jmp alloc_array_common
+
+alloc_array_common:
+    ; push eax (argumento tamaño para kalloc)
+    mov al, 0x50                
+    call jit_emit_byte
+
+    ; call sys_kalloc
+    mov al, 0xE8                
+    call jit_emit_byte
+    mov eax, sys_kalloc
+    mov edx, [jit_buffer_ptr]
+    add edx, 4
+    sub eax, edx
+    call jit_emit_dword
+
+    ; add esp, 4 (limpiar argumento)
+    mov al, 0x83                
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    
+    ; mov [eax], ebx (guardar la longitud ORIGINAL)
+    mov al, 0x89                
+    call jit_emit_byte
+    mov al, 0x18
+    call jit_emit_byte
+    
+    ; push eax (devolver referencia a Java)
+    mov al, 0x50                
+    call jit_emit_byte
+    ret
+    
+jit_op_ineg:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0xF7
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_ishl:
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_ishr:
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0xF8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iushr:
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0xD3
+    call jit_emit_byte
+    mov al, 0xE8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iand:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x21
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_ior:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x09
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_ixor:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x31
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iinc:
+    movzx ebx, byte [esi]
+    inc esi
+    movzx ecx, byte [esi]
+    inc esi
+    
+    shl ebx, 2
+    add ebx, 16
+    neg ebx
+    
+    mov al, 0x83            ; add dword [ebp+disp32], imm8
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    mov al, cl              
+    call jit_emit_byte
+    ret
+
+jit_op_fdiv:
+    mov al, 0xD9        ; fld dword [esp+4]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD8        ; fdiv dword [esp]
+    call jit_emit_byte
+    mov al, 0x34
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 4
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD9        ; fstp dword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_ddiv:
+    mov al, 0xDD        ; fld qword [esp+8]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0xDC        ; fdiv qword [esp]
+    call jit_emit_byte
+    mov al, 0x34
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 8
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0xDD        ; fstp qword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+    
+; Rutina central de división/módulo de 64 bits con signo
+; Entrada: [ebp+8]=b_low, [ebp+12]=b_high, [ebp+16]=a_low, [ebp+20]=a_high
+; Salida:  EDX:EAX = Cociente, ECX:EBX = Resto
+__jit_divmod64_internal:
+    push ebp
+    mov ebp, esp
+    sub esp, 16                 ; Local: [ebp-4]=sign_r, [ebp-8]=sign_q, [ebp-12]=rem_h, [ebp-16]=counter
+    push ebx
+    push esi
+    push edi
+
+    mov eax, [ebp + 16]         ; a_low
+    mov edx, [ebp + 20]         ; a_high
+    mov esi, [ebp + 8]          ; b_low
+    mov edi, [ebp + 12]         ; b_high
+
+    ; Verificar división por cero
+    mov ecx, esi
+    or ecx, edi
+    jz .div_by_zero
+
+    ; Calcular banderas de signo: sign_r = a_high, sign_q = a_high ^ b_high
+    mov ecx, edx
+    mov [ebp - 4], ecx
+    xor ecx, edi
+    mov [ebp - 8], ecx
+
+    ; Valor absoluto de A (EDX:EAX)
+    test edx, edx
+    jns .a_pos
+    not edx
+    not eax
+    add eax, 1
+    adc edx, 0
+.a_pos:
+
+    ; Valor absoluto de B (EDI:ESI)
+    test edi, edi
+    jns .b_pos
+    not edi
+    not esi
+    add esi, 1
+    adc edi, 0
+.b_pos:
+
+    ; Inicializar Resto = 0 y Contador = 64
+    xor ebx, ebx
+    mov dword [ebp - 12], 0
+    mov dword [ebp - 16], 64
+
+.div_loop:
+    ; Desplazar Dividendo N (EDX:EAX) a la izquierda por 1 bit
+    shl eax, 1
+    rcl edx, 1
+
+    ; Desplazar Resto ([ebp-12]:EBX) a la izquierda incorporando el bit que salió de N
+    rcl ebx, 1
+    rcl dword [ebp - 12], 1
+
+    ; Comparar Resto con Divisor B (EDI:ESI)
+    mov ecx, [ebp - 12]
+    cmp ecx, edi
+    jb .next
+    ja .sub_b
+    cmp ebx, esi
+    jb .next
+
+.sub_b:
+    sub ebx, esi
+    sbb dword [ebp - 12], edi
+    inc eax                     ; Poner el bit LSB del cociente en 1
+
+.next:
+    dec dword [ebp - 16]
+    jnz .div_loop
+
+    ; Aplicar signo al Cociente (EDX:EAX)
+    mov ecx, [ebp - 8]
+    test ecx, 0x80000000
+    jz .q_pos
+    not edx
+    not eax
+    add eax, 1
+    adc edx, 0
+.q_pos:
+
+    ; Aplicar signo al Resto ([ebp-12]:EBX)
+    mov ecx, [ebp - 12]
+    mov edi, [ebp - 4]
+    test edi, 0x80000000
+    jz .r_pos
+    not ecx
+    not ebx
+    add ebx, 1
+    adc ecx, 0
+.r_pos:
+
+    pop edi
     pop esi
     pop ebx
+    mov esp, ebp
     pop ebp
     ret
 
-
-; Puertos dedicados I/O
-sys_inb:
-    push ebp
-    mov ebp, esp
-    mov dx, [ebp + 8]
-    in al, dx
+.div_by_zero:
+    xor eax, eax
+    xor edx, edx
+    xor ebx, ebx
+    xor ecx, ecx
+    pop edi
+    pop esi
+    pop ebx
+    mov esp, ebp
     pop ebp
-    ret
-sys_outb:
-    push ebp
-    mov ebp, esp
-    mov dx, [ebp + 8]
-    mov al, [ebp + 12]
-    out dx, al
-    pop ebp
-    ret
-sys_inw:
-    push ebp
-    mov ebp, esp
-    mov dx, [ebp + 8]
-    in ax, dx
-    pop ebp
-    ret
-sys_outw:
-    push ebp
-    mov ebp, esp
-    mov dx, [ebp + 8]
-    mov ax, [ebp + 12]
-    out dx, ax
-    pop ebp
-    ret
-sys_indw:
-    push ebp
-    mov ebp, esp
-    mov dx, [ebp + 8]
-    in eax, dx
-    pop ebp
-    ret
-sys_outdw:
-    push ebp
-    mov ebp, esp
-    mov dx, [ebp + 8]
-    mov eax, [ebp + 12]
-    out dx, eax
-    pop ebp
-    ret
-sys_wait_io:
-    out 0x80, al
     ret
 
-; Sección DATA y RODATA
-section .data
-align 16
+; Manejador JIT para LDIV
+__jit_ldiv_helper:
+    pop edi                     ; Guardar dirección de retorno de la pila JIT
+    pop eax                     ; b_low
+    pop edx                     ; b_high
+    pop ecx                     ; a_low
+    pop ebx                     ; a_high
 
-frame_heap_checkpoint dd 0
+    push ebx
+    push ecx
+    push edx
+    push eax
+    call __jit_divmod64_internal
+    add esp, 16
 
-idtr:
-    idtr_limit      dw 2047
-    idtr_base       dd idt_entries
-align 16
-idt_entries:        times 256 * 8 db 0
+    push edx                    ; Push Cociente Alto
+    push eax                    ; Push Cociente Bajo
+    jmp edi                     ; Retornar a la ejecución del JIT
 
+; Manejador JIT para LREM
+__jit_lrem_helper:
+    pop edi                     ; Guardar dirección de retorno de la pila JIT
+    pop eax                     ; b_low
+    pop edx                     ; b_high
+    pop ecx                     ; a_low
+    pop ebx                     ; a_high
+
+    push ebx
+    push ecx
+    push edx
+    push eax
+    call __jit_divmod64_internal
+    add esp, 16
+
+    push ecx                    ; Push Resto Alto
+    push ebx                    ; Push Resto Bajo
+    jmp edi                     ; Retornar a la ejecución del JIT
+
+jit_op_ldiv:     
+    mov al, 0xE8                ; call rel32 __jit_ldiv_helper
+    call jit_emit_byte
+    mov eax, __jit_ldiv_helper
+    mov ebx, [jit_buffer_ptr]
+    add ebx, 4
+    sub eax, ebx
+    call jit_emit_dword
+    ret
+
+jit_op_lrem:
+    mov al, 0xE8                ; call rel32 __jit_lrem_helper
+    call jit_emit_byte
+    mov eax, __jit_lrem_helper
+    mov ebx, [jit_buffer_ptr]
+    add ebx, 4
+    sub eax, ebx
+    call jit_emit_dword
+    ret
+
+jit_op_frem:
+    mov al, 0xD9        ; fld dword [esp]
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0xD9        ; fld dword [esp+4]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+.loop:
+    mov al, 0xD9        ; fprem
+    call jit_emit_byte
+    mov al, 0xF8
+    call jit_emit_byte
+    mov al, 0xDF        ; fnstsw ax
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0xF6        ; test ah, 0x04
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x75        ; jnz .loop
+    call jit_emit_byte
+    mov al, 0xF7        
+    call jit_emit_byte
+    mov al, 0xDD        ; fstp st(1)
+    call jit_emit_byte
+    mov al, 0xD9
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 4
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD9        ; fstp dword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_drem:
+    mov al, 0xDD        ; fld qword [esp]
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0xDD        ; fld qword [esp+8]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+.loop:
+    mov al, 0xD9        ; fprem
+    call jit_emit_byte
+    mov al, 0xF8
+    call jit_emit_byte
+    mov al, 0xDF        ; fnstsw ax
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+    mov al, 0xF6        ; test ah, 0x04
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x75        ; jnz .loop
+    call jit_emit_byte
+    mov al, 0xF7        
+    call jit_emit_byte
+    mov al, 0xDD        ; fstp st(1)
+    call jit_emit_byte
+    mov al, 0xD9
+    call jit_emit_byte
+    mov al, 0x83        ; add esp, 8
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+    mov al, 0xDD        ; fstp qword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+    
+jit_op_i2l:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x99
+    call jit_emit_byte
+    mov al, 0x52
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_l2i:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_i2b:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xBE
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_i2c:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xB7
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_ifeq:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xF8
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0x84
+    call jit_emit_byte
+    call jit_emit_branch_target
+    ret
+
+jit_op_ifne:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xF8
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0x85
+    call jit_emit_byte
+    call jit_emit_branch_target
+    ret
+
+jit_op_ifle:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xF8
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0x8E
+    call jit_emit_byte
+    call jit_emit_branch_target
+    ret
+
+jit_op_ifge:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xF8
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0x8D
+    call jit_emit_byte
+    call jit_emit_branch_target
+    ret
+
+jit_emit_icmp_branch:
+    push ecx
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x39
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+
+    mov al, 0x0F
+    call jit_emit_byte
+    pop ecx
+    mov al, cl
+    call jit_emit_byte
+
+    call jit_emit_branch_target
+    ret
+
+jit_op_if_icmpne:
+    mov ecx, 0x85
+    jmp jit_emit_icmp_branch
+
+jit_op_if_icmplt:
+    mov ecx, 0x8C
+    jmp jit_emit_icmp_branch
+
+jit_op_if_icmpge:
+    mov ecx, 0x8D
+    jmp jit_emit_icmp_branch
+
+jit_op_if_icmpgt:
+    mov ecx, 0x8F
+    jmp jit_emit_icmp_branch
+
+jit_op_if_icmple:
+    mov ecx, 0x8E
+    jmp jit_emit_icmp_branch
+
+jit_op_iaload:
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+
+    mov al, 0x8D                ; lea eax, [eax + ebx*4 + 4]
+    call jit_emit_byte
+    mov al, 0x44                
+    call jit_emit_byte
+    mov al, 0x98                
+    call jit_emit_byte
+    mov al, 0x04                
+    call jit_emit_byte
+
+    mov al, 0x8B                ; mov eax, [eax]
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_aaload:
+    mov al, 0x59                ; pop ecx
+    call jit_emit_byte
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x8B                ; mov eax, [eax + ecx*4 + 4]
+    call jit_emit_byte
+    mov al, 0x44                
+    call jit_emit_byte
+    mov al, 0x88                
+    call jit_emit_byte
+    mov al, 0x04                
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_iastore:
+    mov al, 0x5A                ; pop edx
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+
+    mov al, 0x89                ; mov [eax + ebx*4 + 4], edx
+    call jit_emit_byte
+    mov al, 0x54
+    call jit_emit_byte
+    mov al, 0x98
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    ret
+
+jit_op_fastore:
+    mov al, 0x5A                ; pop edx
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+
+    mov al, 0x89                ; mov [eax + ebx*4 + 4], edx
+    call jit_emit_byte
+    mov al, 0x54                
+    call jit_emit_byte
+    mov al, 0x98                
+    call jit_emit_byte
+    mov al, 0x04                
+    call jit_emit_byte
+    ret
+    
+jit_op_lastore:
+jit_op_dastore:
+    mov al, 0x5A        ; pop edx (bajo)
+    call jit_emit_byte
+    mov al, 0x58        ; pop eax (alto)
+    call jit_emit_byte
+    mov al, 0x59        ; pop ecx (índice)
+    call jit_emit_byte
+    mov al, 0x5B        ; pop ebx (arrayref)
+    call jit_emit_byte
+    mov al, 0x8D        ; lea ebx, [ebx + ecx*8 + 4]
+    call jit_emit_byte
+    mov al, 0x5C
+    call jit_emit_byte
+    mov al, 0xCB
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x89        ; mov [ebx], edx
+    call jit_emit_byte
+    mov al, 0x13
+    call jit_emit_byte
+    mov al, 0x89        ; mov [ebx+4], eax
+    call jit_emit_byte
+    mov al, 0x43
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    ret
+    
+jit_op_saload:
+    mov al, 0x59                ; pop ecx
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xBF                ; movsx eax, word [ebx + ecx*2 + 4]
+    call jit_emit_byte
+    mov al, 0x44                
+    call jit_emit_byte
+    mov al, 0x4B                
+    call jit_emit_byte
+    mov al, 0x04                
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_aastore:
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x59                ; pop ecx
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x89                ; mov [ebx + ecx*4 + 4], eax
+    call jit_emit_byte
+    mov al, 0x44                
+    call jit_emit_byte
+    mov al, 0x8B                
+    call jit_emit_byte
+    mov al, 0x04                
+    call jit_emit_byte
+    ret
+
+jit_op_bastore:
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x59                ; pop ecx
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x88                ; mov [ebx + ecx + 4], al
+    call jit_emit_byte
+    mov al, 0x44                
+    call jit_emit_byte
+    mov al, 0x0B                
+    call jit_emit_byte
+    mov al, 0x04                
+    call jit_emit_byte
+    ret
+
+jit_op_castore:
+jit_op_sastore:
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x59                ; pop ecx
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x66
+    call jit_emit_byte
+    mov al, 0x89                ; mov [ebx + ecx*2 + 4], ax
+    call jit_emit_byte
+    mov al, 0x44                
+    call jit_emit_byte
+    mov al, 0x4B                
+    call jit_emit_byte
+    mov al, 0x04                
+    call jit_emit_byte
+    ret
+
+jit_op_arraylength:
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x8B                ; mov eax, [eax]
+    call jit_emit_byte
+    mov al, 0x00                
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_swap:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    mov al, 0x53
+    call jit_emit_byte
+    ret 
+
+jit_op_dup:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_pop:
+    mov al, 0x58
+    call jit_emit_byte
+    ret
+
+jit_op_pop2:
+    mov al, 0x58        ; pop eax
+    call jit_emit_byte
+    mov al, 0x58        ; pop eax
+    call jit_emit_byte
+    ret
+
+jit_op_dup_x1:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    mov al, 0x53
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_dup_x2:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x59
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    mov al, 0x51
+    call jit_emit_byte
+    mov al, 0x53
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_dup2:
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x53                ; push ebx
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    mov al, 0x53
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_dup2_x1:                 
+    mov al, 0x58                ; pop eax = v1
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx = v2
+    call jit_emit_byte
+    mov al, 0x59                ; pop ecx = v3
+    call jit_emit_byte
+    mov al, 0x53                ; push ebx (v2)
+    call jit_emit_byte
+    mov al, 0x50                ; push eax (v1)
+    call jit_emit_byte
+    mov al, 0x51                ; push ecx (v3)
+    call jit_emit_byte
+    mov al, 0x53                ; push ebx (v2)
+    call jit_emit_byte
+    mov al, 0x50                ; push eax (v1)
+    call jit_emit_byte
+    ret
+
+jit_op_dup2_x2:                 
+    mov al, 0x58                ; pop eax = v1
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx = v2
+    call jit_emit_byte
+    mov al, 0x59                ; pop ecx = v3
+    call jit_emit_byte
+    mov al, 0x5A                ; pop edx = v4
+    call jit_emit_byte
+    mov al, 0x53                ; push ebx (v2)
+    call jit_emit_byte
+    mov al, 0x50                ; push eax (v1)
+    call jit_emit_byte
+    mov al, 0x52                ; push edx (v4)
+    call jit_emit_byte
+    mov al, 0x51                ; push ecx (v3)
+    call jit_emit_byte
+    mov al, 0x53                ; push ebx (v2)
+    call jit_emit_byte
+    mov al, 0x50                ; push eax (v1)
+    call jit_emit_byte
+    ret
+
+jit_op_if_icmpeq:
+    mov ecx, 0x84
+    jmp jit_emit_icmp_branch
+
+jit_op_goto:
+    mov al, 0xE9
+    call jit_emit_byte
+    call jit_emit_branch_target
+    ret
+
+jit_op_return:
+    call jit_emit_epilogue
+    ret
+
+; Opcodes: 0x16 (lload) y 0x18 (dload)
+jit_op_lload:
+jit_op_dload:
+    movzx ebx, byte [esi]
+    inc esi
+    
+    shl ebx, 2
+    add ebx, 16
+    neg ebx
+    
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x85                ; Corregido: ModRM disp32 (0x85) en lugar de disp8 (0x45)
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    
+    mov al, 0x50
+    call jit_emit_byte
+    
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x85                ; Corregido: ModRM disp32 (0x85)
+    call jit_emit_byte
+    mov eax, ebx
+    sub eax, 4
+    call jit_emit_dword
+    
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+; Opcodes: 0x37 (lstore) y 0x39 (dstore)
+jit_op_lstore:
+jit_op_dstore:
+    movzx ebx, byte [esi]
+    inc esi
+    
+    shl ebx, 2
+    add ebx, 16
+    neg ebx
+    
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x85                ; Corregido: ModRM disp32 (0x85)
+    call jit_emit_byte
+    mov eax, ebx
+    sub eax, 4
+    call jit_emit_dword
+    
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x89
+    call jit_emit_byte
+    mov al, 0x85                ; Corregido: ModRM disp32 (0x85)
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+    ret
+
+; Rutina auxiliar para comparaciones Float (llamada por 0x95 y 0x96)
+jit_emit_fcom_routine:
+    push eax        ; Guardar AL (1 o -1)
+
+    mov al, 0xD9    ; fld dword [esp+4]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+
+    mov al, 0xD9    ; fld dword [esp]
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+
+    mov al, 0xDE    ; fcompp
+    call jit_emit_byte
+    mov al, 0xD9
+    call jit_emit_byte
+
+    mov al, 0xDF    ; fnstsw ax
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+
+    mov al, 0x9E    ; sahf
+    call jit_emit_byte
+
+    mov al, 0x83    ; add esp, 8
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+
+    mov al, 0x7A    ; jp .isNaN
+    call jit_emit_byte
+    mov al, 0x0E    ; Offset exacto de 14 bytes
+    call jit_emit_byte
+
+    ; --- Comparacion Normal (14 bytes emitidos) ---
+    mov al, 0x31    ; xor eax, eax
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+
+    mov al, 0x0F    ; seta al
+    call jit_emit_byte
+    mov al, 0x97
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+
+    mov al, 0x31    ; xor edx, edx
+    call jit_emit_byte
+    mov al, 0xD2
+    call jit_emit_byte
+
+    mov al, 0x0F    ; setb dl
+    call jit_emit_byte
+    mov al, 0x92
+    call jit_emit_byte
+    mov al, 0xD2
+    call jit_emit_byte
+
+    mov al, 0x29    ; sub eax, edx
+    call jit_emit_byte
+    mov al, 0xD0
+    call jit_emit_byte
+
+    mov al, 0xEB    ; jmp .done
+    call jit_emit_byte
+    mov al, 0x05    ; Offset exacto de 5 bytes
+    call jit_emit_byte
+
+    ; --- .isNaN (5 bytes emitidos) ---
+    mov al, 0xB8    ; mov eax, imm32
+    call jit_emit_byte
+
+    pop eax         ; Recuperar 1 o -1 que se paso a la rutina
+    movsx eax, al   ; Extender signo a 32 bits para emitir constante
+    call jit_emit_dword
+
+    ; --- .done ---
+    mov al, 0x50    ; push eax
+    call jit_emit_byte
+    ret
+
+; Rutina auxiliar para comparaciones Double (llamada por 0x97 y 0x98)
+jit_emit_dcom_routine:
+    push eax        ; Guardar AL (1 o -1)
+
+    mov al, 0xDD    ; fld qword [esp+8]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x08
+    call jit_emit_byte
+
+    mov al, 0xDD    ; fld qword [esp]
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+
+    mov al, 0xDE    ; fcompp
+    call jit_emit_byte
+    mov al, 0xD9
+    call jit_emit_byte
+
+    mov al, 0xDF    ; fnstsw ax
+    call jit_emit_byte
+    mov al, 0xE0
+    call jit_emit_byte
+
+    mov al, 0x9E    ; sahf
+    call jit_emit_byte
+
+    mov al, 0x83    ; add esp, 16
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x10
+    call jit_emit_byte
+
+    mov al, 0x7A    ; jp .isNaN
+    call jit_emit_byte
+    mov al, 0x0E    ; Offset exacto de 14 bytes
+    call jit_emit_byte
+
+    ; --- Comparacion Normal (14 bytes emitidos) ---
+    mov al, 0x31    ; xor eax, eax
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+
+    mov al, 0x0F    ; seta al
+    call jit_emit_byte
+    mov al, 0x97
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+
+    mov al, 0x31    ; xor edx, edx
+    call jit_emit_byte
+    mov al, 0xD2
+    call jit_emit_byte
+
+    mov al, 0x0F    ; setb dl
+    call jit_emit_byte
+    mov al, 0x92
+    call jit_emit_byte
+    mov al, 0xD2
+    call jit_emit_byte
+
+    mov al, 0x29    ; sub eax, edx
+    call jit_emit_byte
+    mov al, 0xD0
+    call jit_emit_byte
+
+    mov al, 0xEB    ; jmp .done
+    call jit_emit_byte
+    mov al, 0x05    ; Offset exacto de 5 bytes
+    call jit_emit_byte
+
+    ; --- .isNaN (5 bytes emitidos) ---
+    mov al, 0xB8    ; mov eax, imm32
+    call jit_emit_byte
+
+    pop eax         ; Recuperar 1 o -1 que se paso a la rutina
+    movsx eax, al   ; Extender signo a 32 bits para emitir constante
+    call jit_emit_dword
+
+    ; --- .done ---
+    mov al, 0x50    ; push eax
+    call jit_emit_byte
+    ret
+
+; Opcode: 0x97
+jit_op_dcmpl:
+    mov al, -1
+    call jit_emit_dcom_routine
+    ret
+
+; Opcode: 0x98
+jit_op_dcmpg:
+    mov al, 1
+    call jit_emit_dcom_routine
+    ret
+
+jit_op_dload_2:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE8                ; [ebp-24]
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE4                ; [ebp-28]
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_dload_3:
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE4                ; [ebp-28]
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    mov al, 0x8B
+    call jit_emit_byte
+    mov al, 0x45
+    call jit_emit_byte
+    mov al, 0xE0                ; [ebp-32]
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_laload:
+    mov al, 0x5B
+    call jit_emit_byte
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x8D                ; lea eax, [eax + ebx*8 + 4]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xFF                ; push [eax+4]
+    call jit_emit_byte
+    mov al, 0x70
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xFF                ; push [eax]
+    call jit_emit_byte
+    mov al, 0x30
+    call jit_emit_byte
+    ret
+
+jit_op_baload:
+    mov al, 0x59                ; pop ecx
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xBE                ; movsx eax, byte [ebx + ecx + 4]
+    call jit_emit_byte
+    mov al, 0x44                
+    call jit_emit_byte
+    mov al, 0x0B                
+    call jit_emit_byte
+    mov al, 0x04                
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_caload:
+    mov al, 0x59                ; pop ecx
+    call jit_emit_byte
+    mov al, 0x5B                ; pop ebx
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xB7                ; movzx eax, word [ebx + ecx*2 + 4]
+    call jit_emit_byte
+    mov al, 0x44                
+    call jit_emit_byte
+    mov al, 0x4B                
+    call jit_emit_byte
+    mov al, 0x04                
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_iflt:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xF8
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0x8C
+    call jit_emit_byte
+    call jit_emit_branch_target
+    ret
+
+jit_op_ifgt:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x83
+    call jit_emit_byte
+    mov al, 0xF8
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0x8F
+    call jit_emit_byte
+    call jit_emit_branch_target
+    ret
+
+jit_op_fneg:                    
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0x35                ; xor eax, imm32
+    call jit_emit_byte
+    mov eax, 0x80000000
+    call jit_emit_dword
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_dneg:                    
+    mov al, 0x58                ; pop eax (bajo)
+    call jit_emit_byte
+    mov al, 0x5A                ; pop edx (alto)
+    call jit_emit_byte
+    mov al, 0x81                ; xor edx, imm32
+    call jit_emit_byte
+    mov al, 0xF2
+    call jit_emit_byte
+    mov eax, 0x80000000
+    call jit_emit_dword
+    mov al, 0x52                ; push edx
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_lneg:                    
+    mov al, 0x58                ; pop eax (bajo)
+    call jit_emit_byte
+    mov al, 0x5A                ; pop edx (alto)
+    call jit_emit_byte
+    mov al, 0xF7                ; neg eax
+    call jit_emit_byte
+    mov al, 0xD8
+    call jit_emit_byte
+    mov al, 0x83                ; adc edx, 0
+    call jit_emit_byte
+    mov al, 0xD2
+    call jit_emit_byte
+    mov al, 0x00
+    call jit_emit_byte
+    mov al, 0xF7                ; neg edx
+    call jit_emit_byte
+    mov al, 0xDA
+    call jit_emit_byte
+    mov al, 0x52                ; push edx
+    call jit_emit_byte
+    mov al, 0x50                ; push eax
+    call jit_emit_byte
+    ret
+
+jit_op_i2f:
+    mov al, 0xDB
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+
+    mov al, 0xD9
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_f2i:
+    mov al, 0xD9
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+
+    mov al, 0xDB
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_i2d:                     
+    mov al, 0x83                ; sub esp, 4
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xDB                ; fild dword [esp+4]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xDD                ; fstp qword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+    
+jit_op_l2f:                     
+    mov al, 0xDF                ; fild qword [esp]
+    call jit_emit_byte
+    mov al, 0x2C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83                ; add esp, 4
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD9                ; fstp dword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_l2d:                     
+    mov al, 0xDF                ; fild qword [esp]
+    call jit_emit_byte
+    mov al, 0x2C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0xDD                ; fstp qword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_f2l:                     
+    mov al, 0x83                ; sub esp, 4
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD9                ; fld dword [esp+4]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xDF                ; fistp qword [esp]
+    call jit_emit_byte
+    mov al, 0x3C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_f2d:                     
+    mov al, 0x83                ; sub esp, 4
+    call jit_emit_byte
+    mov al, 0xEC
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD9                ; fld dword [esp+4]
+    call jit_emit_byte
+    mov al, 0x44
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xDD                ; fstp qword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_d2i:                     
+    mov al, 0xDD                ; fld qword [esp]
+    call jit_emit_byte
+    mov al, 0x0C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83                ; add esp, 4
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xDB                ; fistp dword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_d2l:                     
+    mov al, 0xDD                ; fld qword [esp]
+    call jit_emit_byte
+    mov al, 0x0C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0xDF                ; fistp qword [esp]
+    call jit_emit_byte
+    mov al, 0x3C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_d2f:                     
+    mov al, 0xDD                ; fld qword [esp]
+    call jit_emit_byte
+    mov al, 0x0C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    mov al, 0x83                ; add esp, 4
+    call jit_emit_byte
+    mov al, 0xC4
+    call jit_emit_byte
+    mov al, 0x04
+    call jit_emit_byte
+    mov al, 0xD9                ; fstp dword [esp]
+    call jit_emit_byte
+    mov al, 0x1C
+    call jit_emit_byte
+    mov al, 0x24
+    call jit_emit_byte
+    ret
+
+jit_op_i2s:
+    mov al, 0x58
+    call jit_emit_byte
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0xBF
+    call jit_emit_byte
+    mov al, 0xC0
+    call jit_emit_byte
+    mov al, 0x50
+    call jit_emit_byte
+    ret
+
+jit_op_fcmpl:
+    mov al, -1
+    call jit_emit_fcom_routine
+    ret
+
+jit_op_fcmpg:
+    mov al, 1
+    call jit_emit_fcom_routine
+    ret
+
+jit_op_if_acmpeq:
+    jmp jit_op_if_icmpeq
+
+jit_op_if_acmpne:
+    jmp jit_op_if_icmpne
+
+jit_op_ifnull:
+    jmp jit_op_ifeq
+
+jit_op_ifnonnull:
+    jmp jit_op_ifne
+
+jit_op_goto_w:
+    mov eax, [esi]
+    bswap eax
+    add esi, 4
+
+    mov ecx, esi
+    sub ecx, [jit_bytecode_base]
+    sub ecx, 5
+    add ecx, eax
+
+    mov al, 0xE9
+    call jit_emit_byte
+
+    mov edx, [fixup_count]
+    mov ebx, [jit_buffer_ptr]
+    mov [fixup_addr + edx * 4], ebx
+    mov [fixup_target + edx * 4], ecx
+    inc edx
+    mov [fixup_count], edx
+    xor eax, eax
+    call jit_emit_dword
+    ret
+
+
+jit_op_jsr_w:
+    mov eax, esi
+    sub eax, [jit_bytecode_base]
+    add eax, 4
+
+    push eax
+    mov al, 0x68
+    call jit_emit_byte
+    pop eax
+    call jit_emit_dword
+
+    mov al, 0xE9
+    call jit_emit_byte
+    call jit_emit_branch_target
+    ret
+
+
+
+jit_op_tableswitch:
+    mov eax, esi
+    dec eax
+    sub eax, [jit_bytecode_base]
+    mov edx, eax                 
+
+    mov eax, esi
+    sub eax, [jit_bytecode_base]
+    and eax, 3
+    jz .ts_aligned
+    neg eax
+    add eax, 4
+    add esi, eax
+
+.ts_aligned:
+    mov eax, [esi]               
+    bswap eax
+    add esi, 4
+    add eax, edx                 
+    push eax                     
+
+    mov ebx, [esi]               
+    bswap ebx
+    add esi, 4
+
+    mov ecx, [esi]               
+    bswap ecx
+    add esi, 4
+
+    mov al, 0x58
+    call jit_emit_byte
+
+.ts_loop:
+    cmp ebx, ecx
+    jg .ts_done
+
+    mov eax, [esi]               
+    bswap eax
+    add esi, 4
+    add eax, edx                 
+
+    push ecx
+    push ebx
+    push eax
+
+    mov al, 0x3D
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0x84
+    call jit_emit_byte
+
+    pop ecx                      
+    call .emit_switch_fixup
+
+    pop ebx
+    pop ecx
+    inc ebx
+    jmp .ts_loop
+
+.ts_done:
+    mov al, 0xE9
+    call jit_emit_byte
+    pop ecx                      
+    call .emit_switch_fixup
+    ret
+
+.emit_switch_fixup:
+    mov eax, [pc_map + ecx * 4]
+    test eax, eax
+    jnz .ts_backwards
+    mov edx, [fixup_count]
+    mov ebx, [jit_buffer_ptr]
+    mov [fixup_addr + edx * 4], ebx
+    mov [fixup_target + edx * 4], ecx
+    inc edx
+    mov [fixup_count], edx
+    xor eax, eax
+    call jit_emit_dword
+    ret
+.ts_backwards:
+    mov ebx, [jit_buffer_ptr]
+    add ebx, 4
+    sub eax, ebx
+    call jit_emit_dword
+    ret
+
+jit_op_lookupswitch:
+    mov eax, esi
+    dec eax
+    sub eax, [jit_bytecode_base]
+    mov edx, eax                 
+
+    mov eax, esi
+    sub eax, [jit_bytecode_base]
+    and eax, 3
+    jz .ls_aligned
+    neg eax
+    add eax, 4
+    add esi, eax
+
+.ls_aligned:
+    mov eax, [esi]               
+    bswap eax
+    add esi, 4
+    add eax, edx                 
+    push eax
+
+    mov ecx, [esi]               
+    bswap ecx
+    add esi, 4
+
+    mov al, 0x58
+    call jit_emit_byte
+
+.ls_loop:
+    test ecx, ecx
+    jz .ls_done
+
+    mov ebx, [esi]               
+    bswap ebx
+    add esi, 4
+
+    mov eax, [esi]               
+    bswap eax
+    add esi, 4
+    add eax, edx                 
+
+    push ecx
+    push eax
+
+    mov al, 0x3D
+    call jit_emit_byte
+    mov eax, ebx
+    call jit_emit_dword
+
+    mov al, 0x0F
+    call jit_emit_byte
+    mov al, 0x84
+    call jit_emit_byte
+
+    pop ecx                      
+    call jit_op_tableswitch.emit_switch_fixup
+
+    pop ecx
+    dec ecx
+    jmp .ls_loop
+
+.ls_done:
+    mov al, 0xE9
+    call jit_emit_byte
+    pop ecx                      
+    call jit_op_tableswitch.emit_switch_fixup
+    ret
+
+jit_op_ireturn:
+jit_op_freturn:
+jit_op_areturn:
+    mov al, 0x58         ; pop eax
+    call jit_emit_byte
+    call jit_emit_epilogue
+    ret
+
+jit_op_lreturn:
+jit_op_dreturn:
+    mov al, 0x58         ; pop eax (bajo)
+    call jit_emit_byte
+    mov al, 0x5A         ; pop edx (alto)
+    call jit_emit_byte
+    call jit_emit_epilogue
+    ret 
+
+jit_op_athrow:
+    mov al, 0x58                ; pop eax
+    call jit_emit_byte
+    mov al, 0xFA                ; cli
+    call jit_emit_byte
+    mov al, 0xF4                ; hlt
+    call jit_emit_byte
+    ret
+
+jit_op_unsupported:
+    movzx eax, byte [esi - 1]
+
+    mov ebx, eax
+    shr ebx, 4
+    call .nibble_to_hex
+    mov [hex_byte_str], bl
+
+    mov ebx, eax
+    and ebx, 0x0F
+    call .nibble_to_hex
+    mov [hex_byte_str + 1], bl
+
+    push msg_panic_head
+    call sys_serial_puts
+    add esp, 4
+
+    push hex_byte_str
+    call sys_serial_puts
+    add esp, 4
+
+    cli
+    hlt
+
+.nibble_to_hex:
+    cmp bl, 9
+    jbe .is_digit
+    add bl, 7
+.is_digit:
+    add bl, '0'
+    ret
+
+jit_emit_branch_target:
+    movzx eax, byte [esi]       
+    inc esi
+    movzx ebx, byte [esi]       
+    inc esi
+    shl eax, 8
+    or eax, ebx
+    movsx eax, ax               
+
+    mov ecx, esi
+    sub ecx, 3                  
+    sub ecx, [jit_bytecode_base]
+    add ecx, eax                
+
+    cmp eax, 0
+    jl .backwards
+
+.forward:
+    mov edx, [fixup_count]
+    mov ebx, [jit_buffer_ptr]
+    mov [fixup_addr + edx * 4], ebx
+    mov [fixup_target + edx * 4], ecx
+    
+    inc edx
+    mov [fixup_count], edx
+    
+    xor eax, eax
+    call jit_emit_dword
+    ret
+
+.backwards:
+    mov eax, [pc_map + ecx * 4]
+    mov ebx, [jit_buffer_ptr]
+    add ebx, 4
+    sub eax, ebx
+    call jit_emit_dword
+    ret
+
+jit_test_phase1:
+    mov eax, 0x00200000
+    mov ebx, 65536
+    call jit_init
+    mov al, 0x90
+    call jit_emit_byte
+    mov al, 0xB8
+    call jit_emit_byte
+    mov eax, 0x12345678
+    call jit_emit_dword
+    mov al, 0xC3
+    call jit_emit_byte
+
+    mov eax, [jit_buffer_base]
+    call eax
+    ret
+
+jit_test_phase2:
+    mov esi, test_bytecode_p2
+    mov ecx, 3
+    call jit_compile_method
+    call eax
+    ret
+
+jit_test_phase3:
+    mov esi, test_bytecode_p3
+    mov ecx, 8
+    call jit_compile_method
+    call eax
+    ret
+
+jit_test_phase4:
+    mov esi, test_bytecode_p4
+    mov ecx, 10
+    call jit_compile_method
+    call eax
+    ret
+
+jit_test_phase5:
+    mov dword [jit_opcode_table + 0x1A * 4], jit_op_iload_param_0
+    mov dword [jit_opcode_table + 0x1B * 4], jit_op_iload_param_1
+
+    mov esi, test_bytecode_p5
+    mov ecx, 4
+    call jit_compile_method
+    push dword 60
+    push dword 40
+    call eax
+    add esp, 8
+
+    mov dword [jit_opcode_table + 0x1A * 4], jit_op_iload_0
+    mov dword [jit_opcode_table + 0x1B * 4], jit_op_iload_1
+    ret
+
+jit_test_phase6:    
+    mov esi, test_bytecode_p6
+    mov ecx, 17
+    call jit_compile_method
+    call eax
+    ret
+
+jit_execute_method:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push ecx
+    push edx
+
+    test ecx, ecx
+    jnz .has_len
+    mov ecx, 4096
+.has_len:
+
+    call jit_compile_method
+    call eax
+
+    pop edx
+    pop ecx
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
+
+jit_flush_icache:
+    push eax
+    push ebx
+    push ecx
+    push edx
+    
+    xor eax, eax
+    cpuid                   ; Barrera de serialización x86
+    
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+    
 section .rodata
 align 4
 
-; Mapa de teclado LATAM Normal (Minúsculas y números)
-kbd_ascii_map_normal:
-    ; 0x00 - 0x0F (191 = ¿)
-    db 0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 39, 191, 8, 9
-    ; 0x10 - 0x1F (180 = ´)
-    db 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 180, '+', 13, 0, 'a', 's'
-    ; 0x20 - 0x2F (241 = ñ)
-    db 'd', 'f', 'g', 'h', 'j', 'k', 'l', 241, '{', '|', 0, '}', 'z', 'x', 'c', 'v'    
-    ; 0x30 - 0x3F 
-    db 'b', 'n', 'm', ',', '.', '-', 0, '*', 0, 32, 0, 0, 0, 0, 0, 0
-    ; 0x40 - 0x5F (Scancode 0x56 = <)
-    db 0, 0, 0, 0, 0, 0, 0, '7', '8', '9', '-', '4', '5', '6', '+', '1'
-    db '2', '3', '0', '.', 0, 0, '<', 0, 0, 0, 0, 0, 0, 0, 0, 0
-    times 32 db 0
+msg_err_unsupported_op: db 13, 10, "[JIT Panic] Unsupported Opcode encountered!", 13, 10, 0
+msg_panic_head:         db 13, 10, "[JIT Panic] Unsupported Opcode: 0x", 0
+hex_byte_str:           db "00!", 13, 10, 0
 
-; Mapa de teclado LATAM Shifted (Mayúsculas y Símbolos)
-kbd_ascii_map_shift:
-    ; 0x00 - 0x0F (161 = ¡)
-    db 0, 27, '!', '"', '#', '$', '%', '&', '/', '(', ')', '=', '?', 161, 8, 9
-    ; 0x10 - 0x1F (168 = ¨)
-    db 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 168, '*', 13, 0, 'A', 'S'
-    ; 0x20 - 0x2F (209 = Ñ, 176 = °)
-    db 'D', 'F', 'G', 'H', 'J', 'K', 'L', 209, '[', 176, 0, ']', 'Z', 'X', 'C', 'V'    
-    ; 0x30 - 0x3F 
-    db 'B', 'N', 'M', ';', ':', '_', 0, '*', 0, 32, 0, 0, 0, 0, 0, 0
-    ; 0x40 - 0x5F (Scancode 0x56 = >)
-    db 0, 0, 0, 0, 0, 0, 0, '7', '8', '9', '-', '4', '5', '6', '+', '1'
-    db '2', '3', '0', '.', 0, 0, '>', 0, 0, 0, 0, 0, 0, 0, 0, 0
-    times 32 db 0
-
-kbd_ascii_map_old:
-    ; 0x00 - 0x0F
-    db 0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '=', '+', 8, 9
-    ; 0x10 - 0x1F
-    db 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', 13, 0, 'A', 'S'
-    ; 0x20 - 0x2F
-    db 'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', '{', '|', 0, '}', 'Z', 'X', 'C', 'V'    
-    ; 0x30 - 0x3F (0x39 es el ESPACIO ASCII 32)
-    db 'B', 'N', 'M', ',', '.', '-', 0, '*', 0, 32, 0, 0, 0, 0, 0, 0
-    ; 0x40 - 0x4F (Teclado numérico)
-    db 0, 0, 0, 0, 0, 0, 0, '7', '8', '9', '-', '4', '5', '6', '+', '1'
-    db '2', '3', '0', '.', 0, 0, '<', 0, 0, 0, 0, 0, 0, 0, 0, 0
-    times 32 db 0
+section .rodata
+align 4
+jit_opcode_table:
+    dd jit_op_nop                   ; 0x00
+    dd jit_op_aconst_null           ; 0x01
+    dd jit_op_iconst_m1             ; 0x02
+    dd jit_op_iconst_0              ; 0x03
+    dd jit_op_iconst_1              ; 0x04
+    dd jit_op_iconst_2              ; 0x05
+    dd jit_op_iconst_3              ; 0x06
+    dd jit_op_iconst_4              ; 0x07
+    dd jit_op_iconst_5              ; 0x08
+    dd jit_op_lconst_0              ; 0x09
+    dd jit_op_lconst_1              ; 0x0A
+    dd jit_op_fconst_0              ; 0x0B
+    dd jit_op_fconst_1              ; 0x0C
+    dd jit_op_fconst_2              ; 0x0D
+    dd jit_op_dconst_0              ; 0x0E
+    dd jit_op_dconst_1              ; 0x0F
+    dd jit_op_bipush                ; 0x10
+    dd jit_op_sipush                ; 0x11
+    dd jit_op_ldc                   ; 0x12
+    dd jit_op_ldc_w                 ; 0x13
+    dd jit_op_ldc2_w                ; 0x14
+    dd jit_op_iload                 ; 0x15
+    dd jit_op_lload                 ; 0x16
+    dd jit_op_fload                 ; 0x17
+    dd jit_op_dload                 ; 0x18
+    dd jit_op_aload                 ; 0x19
+    dd jit_op_iload_0               ; 0x1A
+    dd jit_op_iload_1               ; 0x1B
+    dd jit_op_iload_2               ; 0x1C
+    dd jit_op_iload_3               ; 0x1D
+    dd jit_op_lload_0               ; 0x1E
+    dd jit_op_lload_1               ; 0x1F
+    dd jit_op_lload_2               ; 0x20 
+    dd jit_op_lload_3               ; 0x21  
+    dd jit_op_fload_0               ; 0x22
+    dd jit_op_fload_1               ; 0x23
+    dd jit_op_fload_2               ; 0x24
+    dd jit_op_fload_3               ; 0x25
+    dd jit_op_dload_0               ; 0x26
+    dd jit_op_dload_1               ; 0x27
+    dd jit_op_dload_2               ; 0x28
+    dd jit_op_dload_3               ; 0x29
+    dd jit_op_aload_0               ; 0x2A
+    dd jit_op_aload_1               ; 0x2B
+    dd jit_op_aload_2               ; 0x2C
+    dd jit_op_aload_3               ; 0x2D
+    dd jit_op_iaload                ; 0x2E
+    dd jit_op_laload                ; 0x2F
+    dd jit_op_iaload                ; 0x30 (faload alias)
+    dd jit_op_laload                ; 0x31 (daload alias)
+    dd jit_op_aaload                ; 0x32
+    dd jit_op_baload                ; 0x33
+    dd jit_op_caload                ; 0x34
+    dd jit_op_saload                ; 0x35
+    dd jit_op_istore                ; 0x36
+    dd jit_op_lstore                ; 0x37
+    dd jit_op_fstore                ; 0x38
+    dd jit_op_dstore                ; 0x39
+    dd jit_op_astore                ; 0x3A
+    dd jit_op_istore_0              ; 0x3B
+    dd jit_op_istore_1              ; 0x3C
+    dd jit_op_istore_2              ; 0x3D
+    dd jit_op_istore_3              ; 0x3E
+    dd jit_op_lstore_0              ; 0x3F
+    dd jit_op_lstore_1              ; 0x40
+    dd jit_op_lstore_2              ; 0x41 
+    dd jit_op_lstore_3              ; 0x42 
+    dd jit_op_istore_0              ; 0x43 
+    dd jit_op_istore_1              ; 0x44
+    dd jit_op_istore_2              ; 0x45
+    dd jit_op_istore_3              ; 0x46
+    dd jit_op_dstore_0              ; 0x47 
+    dd jit_op_dstore_1              ; 0x48 
+    dd jit_op_dstore_2              ; 0x49 
+    dd jit_op_dstore_3              ; 0x4A 
+    dd jit_op_astore_0              ; 0x4B
+    dd jit_op_astore_1              ; 0x4C
+    dd jit_op_astore_2              ; 0x4D
+    dd jit_op_astore_3              ; 0x4E
+    dd jit_op_iastore               ; 0x4F
+    dd jit_op_lastore               ; 0x50 
+    dd jit_op_fastore               ; 0x51 
+    dd jit_op_dastore               ; 0x52 
+    dd jit_op_aastore               ; 0x53
+    dd jit_op_bastore               ; 0x54
+    dd jit_op_castore               ; 0x55
+    dd jit_op_sastore               ; 0x56
+    dd jit_op_pop                   ; 0x57
+    dd jit_op_pop2                  ; 0x58
+    dd jit_op_dup                   ; 0x59
+    dd jit_op_dup_x1                ; 0x5A
+    dd jit_op_dup_x2                ; 0x5B
+    dd jit_op_dup2                  ; 0x5C
+    dd jit_op_dup2_x1               ; 0x5D
+    dd jit_op_dup2_x2               ; 0x5E
+    dd jit_op_swap                  ; 0x5F
+    dd jit_op_iadd                  ; 0x60
+    dd jit_op_ladd                  ; 0x61 
+    dd jit_op_fadd                  ; 0x62 
+    dd jit_op_dadd                  ; 0x63 
+    dd jit_op_isub                  ; 0x64
+    dd jit_op_lsub                  ; 0x65
+    dd jit_op_fsub                  ; 0x66 
+    dd jit_op_dsub                  ; 0x67 
+    dd jit_op_imul                  ; 0x68
+    dd jit_op_lmul                  ; 0x69
+    dd jit_op_fmul                  ; 0x6A 
+    dd jit_op_dmul                  ; 0x6B 
+    dd jit_op_idiv                  ; 0x6C
+    dd jit_op_ldiv                  ; 0x6D
+    dd jit_op_fdiv                  ; 0x6E 
+    dd jit_op_ddiv                  ; 0x6F 
+    dd jit_op_irem                  ; 0x70
+    dd jit_op_lrem                  ; 0x71
+    dd jit_op_frem                  ; 0x72 
+    dd jit_op_drem                  ; 0x73 
+    dd jit_op_ineg                  ; 0x74
+    dd jit_op_lneg                  ; 0x75
+    dd jit_op_fneg                  ; 0x76
+    dd jit_op_dneg                  ; 0x77
+    dd jit_op_ishl                  ; 0x78
+    dd jit_op_lshl                  ; 0x79
+    dd jit_op_ishr                  ; 0x7A
+    dd jit_op_lshr                  ; 0x7B
+    dd jit_op_iushr                 ; 0x7C
+    dd jit_op_lushr                 ; 0x7D
+    dd jit_op_iand                  ; 0x7E
+    dd jit_op_land                  ; 0x7F
+    dd jit_op_ior                   ; 0x80
+    dd jit_op_lor                   ; 0x81
+    dd jit_op_ixor                  ; 0x82
+    dd jit_op_lxor                  ; 0x83
+    dd jit_op_iinc                  ; 0x84
+    dd jit_op_i2l                   ; 0x85
+    dd jit_op_i2f                   ; 0x86
+    dd jit_op_i2d                   ; 0x87
+    dd jit_op_l2i                   ; 0x88
+    dd jit_op_l2f                   ; 0x89
+    dd jit_op_l2d                   ; 0x8A
+    dd jit_op_f2i                   ; 0x8B
+    dd jit_op_f2l                   ; 0x8C
+    dd jit_op_f2d                   ; 0x8D
+    dd jit_op_d2i                   ; 0x8E
+    dd jit_op_d2l                   ; 0x8F
+    dd jit_op_d2f                   ; 0x90
+    dd jit_op_i2b                   ; 0x91
+    dd jit_op_i2c                   ; 0x92
+    dd jit_op_i2s                   ; 0x93
+    dd jit_op_lcmp                  ; 0x94
+    dd jit_op_fcmpl                 ; 0x95
+    dd jit_op_fcmpg                 ; 0x96
+    dd jit_op_dcmpl                 ; 0x97
+    dd jit_op_dcmpg                 ; 0x98
+    dd jit_op_ifeq                  ; 0x99
+    dd jit_op_ifne                  ; 0x9A
+    dd jit_op_iflt                  ; 0x9B
+    dd jit_op_ifge                  ; 0x9C
+    dd jit_op_ifgt                  ; 0x9D
+    dd jit_op_ifle                  ; 0x9E
+    dd jit_op_if_icmpeq             ; 0x9F
+    dd jit_op_if_icmpne             ; 0xA0
+    dd jit_op_if_icmplt             ; 0xA1
+    dd jit_op_if_icmpge             ; 0xA2
+    dd jit_op_if_icmpgt             ; 0xA3
+    dd jit_op_if_icmple             ; 0xA4
+    dd jit_op_if_acmpeq             ; 0xA5
+    dd jit_op_if_acmpne             ; 0xA6
+    dd jit_op_goto                  ; 0xA7
+    dd jit_op_jsr                   ; 0xA8
+    dd jit_op_ret                   ; 0xA9
+    dd jit_op_tableswitch           ; 0xAA
+    dd jit_op_lookupswitch          ; 0xAB
+    dd jit_op_ireturn               ; 0xAC
+    dd jit_op_lreturn               ; 0xAD
+    dd jit_op_freturn               ; 0xAE
+    dd jit_op_dreturn               ; 0xAF
+    dd jit_op_areturn               ; 0xB0
+    dd jit_op_return                ; 0xB1
+    dd jit_op_getstatic             ; 0xB2
+    dd jit_op_putstatic             ; 0xB3
+    dd jit_op_getfield              ; 0xB4
+    dd jit_op_putfield              ; 0xB5
+    dd jit_op_invokevirtual         ; 0xB6
+    dd jit_op_invokespecial         ; 0xB7
+    dd jit_op_invokestatic          ; 0xB8
+    dd jit_op_invokeinterface       ; 0xB9
+    dd jit_op_invokedynamic         ; 0xBA
+    dd jit_op_new                   ; 0xBB
+    dd jit_op_newarray              ; 0xBC
+    dd jit_op_anewarray             ; 0xBD
+    dd jit_op_arraylength           ; 0xBE
+    dd jit_op_athrow                ; 0xBF
+    dd jit_op_checkcast             ; 0xC0
+    dd jit_op_instanceof            ; 0xC1
+    dd jit_op_monitorenter          ; 0xC2
+    dd jit_op_monitorexit           ; 0xC3
+    dd jit_op_wide                  ; 0xC4
+    dd jit_op_multianewarray        ; 0xC5
+    dd jit_op_ifnull                ; 0xC6
+    dd jit_op_ifnonnull             ; 0xC7
+    dd jit_op_goto_w                ; 0xC8
+    dd jit_op_jsr_w                 ; 0xC9
+    ; los siguientes no se usan ni estan en la especificación    
+    times 54 dd jit_op_nop          ; 0xCA..0xFF
 
 section .note.GNU-stack noalloc noexec nowrite progbits
