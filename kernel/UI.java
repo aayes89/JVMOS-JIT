@@ -88,6 +88,8 @@ public class UI {
 
         // Ciclo principal del escritorio
         while (true) {
+			drawBackground();
+			
             // Cargar fecha y hora dinámicamente
             showDateTime();
 
