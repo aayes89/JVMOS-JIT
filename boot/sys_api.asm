@@ -77,7 +77,6 @@ global sys_fill_polygon
 global sys_draw_string
 global current_color
 global sys_scroll_vram
-global sys_swap_buffers
 
 ; Disco ATA IDE LBA28 
 global sys_disk_read_sector
@@ -129,7 +128,6 @@ section .bss
 alignb 16
 
 sys_ticks           resd 1
-g_backbuffer		resd 1	; Puntero al liezo en RAM
 
 heap_curr_ptr       resd 1
 heap_start_ptr      resd 1
@@ -181,9 +179,7 @@ sys_hardware_init:
 
     call sys_init_keyboard
     call sys_init_mouse
-
-    sti
-    ret
+    call sys_sti
 
 sys_cli:
     cli
@@ -192,40 +188,6 @@ sys_cli:
 sys_sti:
     sti
     ret
-
-; Doble buffer 3MB
-sys_init_double_buffer:
-    ; Reservar 3,145,728 bytes (1024 * 768 * 4) para el backbuffer
-    push dword 3145728
-    call sys_kalloc
-    add esp, 4
-    mov [g_backbuffer], eax
-    ret
-
-sys_swap_buffers:
-    pusha
-
-    mov dx, 0x3DA
-.wait_not_vblank:
-    in al, dx
-    test al, 8
-    jnz .wait_not_vblank     ; Espera a que termine el VSYNC actual
-
-.wait_vblank:
-    in al, dx
-    test al, 8
-    jz .wait_vblank          ; Espera a que comience un nuevo VSYNC
-
-    ; Iniciar la transferencia de memoria (Blitting)
-    mov esi, [g_backbuffer]  ; Origen: RAM
-    mov edi, [g_framebuffer] ; Destino: VRAM
-    mov ecx, 786432          ; 1024 * 768 = 786432 dwords (32 bits)
-    
-    cld                      ; Asegurar incremento hacia adelante
-    rep movsd                ; Copiar 3MB a la velocidad del bus de memoria
-
-    popa
-    ret	
 
 ; Puerto serie UART 16550 (COM1 @ 0x3F8)
 sys_serial_init:
@@ -420,7 +382,7 @@ set_idt_gate:
 
 irq0_timer_handler:
     pusha
-    inc dword [sys_ticks]
+    inc dword [sys_ticks]	
     mov al, 0x20
     out 0x20, al
     popa
@@ -1195,8 +1157,7 @@ sys_draw_pixel:
     shl eax, 2
     add ecx, eax
 	
-    ;mov eax, [g_framebuffer] ; antes
-	mov eax, [g_backbuffer]	  ; ahora	
+    mov eax, [g_framebuffer] 
     add eax, ecx
     mov [eax], edx
     pop ebp
@@ -1210,8 +1171,7 @@ sys_get_pixel:
     imul ecx, [g_pitch]
     shl eax, 2
     add ecx, eax
-    mov eax, [g_framebuffer] ; antes
-	mov eax, [g_backbuffer]	  ; ahora	
+    mov eax, [g_framebuffer] 
     add eax, ecx
     mov eax, [eax]
     pop ebp
@@ -1238,7 +1198,7 @@ sys_draw_pixel_alpha:
     shl eax, 2
     add ecx, eax
 	
-    mov edi, [g_backbuffer]
+    mov edi, [g_framebuffer]
     add edi, ecx                ; EDI = Dirección del píxel destino
 
     mov ebx, [edi]              ; EBX = Color de fondo (0x00RRGGBB)
@@ -1289,7 +1249,7 @@ sys_draw_pixel_alpha:
     shl eax, 2
     add ecx, eax
 	
-    mov edi, [g_backbuffer]
+	mov edi, [g_framebuffer]
     add edi, ecx
     mov [edi], esi
 
@@ -1318,8 +1278,7 @@ sys_fill_rect:
     mov eax, [ebp + 8]          ; x
     shl eax, 2
     add ecx, eax    
-	;mov edi, [g_framebuffer] ; antes
-	mov edi, [g_backbuffer]	  ; ahora	
+	mov edi, [g_framebuffer] 
     add edi, ecx
     mov ecx, ebx
     mov eax, esi
@@ -1703,36 +1662,227 @@ sys_fill_polygon:
     
     cmp ecx, 3
     jl .fill_poly_done
+    je .is_triangle
     
-    add esi, 4				; Saltar la cabecera/length	
-    add edi, 4				; Apuntar al índice 0
-    
-    mov ebx, 1              ; Iniciar Convex-Fan desde el segundo punto
-.fill_loop:
-    push ecx
-    
-    ; Rellenar trazando un abanico desde el punto 0
-    push dword [edi + ebx*4]
-    push dword [esi + ebx*4]
+    ; Convex-Fan dividido en triángulos puros para nPoints > 3
+    add esi, 4              ; Saltar la cabecera/length
+    add edi, 4              ; Apuntar al índice 0
+    mov ebx, 1              
+.fan_loop:
+    mov eax, ecx
+    dec eax
+    cmp ebx, eax
+    jge .fill_poly_done
+
+    push dword [edi + ebx*4 + 4] ; y2
+    push dword [esi + ebx*4 + 4] ; x2
+    push dword [edi + ebx*4]     ; y1
+    push dword [esi + ebx*4]     ; x1
+    push dword [edi]             ; y0
+    push dword [esi]             ; x0
+    call internal_fill_triangle
+    add esp, 24
+
+    inc ebx
+    jmp .fan_loop
+
+.is_triangle:
+    add esi, 4
+    add edi, 4
+    push dword [edi + 8]    ; y2
+    push dword [esi + 8]    ; x2
+    push dword [edi + 4]    ; y1
+    push dword [esi + 4]    ; x1
     push dword [edi]        ; y0
     push dword [esi]        ; x0
-    call sys_draw_line
-    add esp, 16
-    
-    pop ecx
-    inc ebx
-    cmp ebx, ecx
-    jl .fill_loop
-    
-    ; Redibujar el contorno exterior
-    push dword [ebp + 16]
-    push dword [ebp + 12]
-    push dword [ebp + 8]
-    call sys_draw_polygon
-    add esp, 12
-    
+    call internal_fill_triangle
+    add esp, 24
+
 .fill_poly_done:
     popa
+    pop ebp
+    ret
+
+; Subrutina interna de rasterización (Scanline Triangle Fill)
+internal_fill_triangle:
+    push ebp
+    mov ebp, esp
+    sub esp, 24             ; Espacio para x0, y0, x1, y1, x2, y2
+    pusha
+
+    ; Variables locales
+    mov eax, [ebp+8]
+    mov [ebp-4], eax        ; x0
+    mov eax, [ebp+12]
+    mov [ebp-8], eax        ; y0
+    mov eax, [ebp+16]
+    mov [ebp-12], eax       ; x1
+    mov eax, [ebp+20]
+    mov [ebp-16], eax       ; y1
+    mov eax, [ebp+24]
+    mov [ebp-20], eax       ; x2
+    mov eax, [ebp+28]
+    mov [ebp-24], eax       ; y2
+
+    ; Ordenar vértices por Y (y0 <= y1 <= y2)
+    mov eax, [ebp-8]
+    cmp eax, [ebp-16]
+    jle .sort1
+    mov ebx, [ebp-4]
+    mov ecx, [ebp-12]
+    mov [ebp-4], ecx
+    mov [ebp-12], ebx
+    mov ebx, [ebp-8]
+    mov ecx, [ebp-16]
+    mov [ebp-8], ecx
+    mov [ebp-16], ebx
+.sort1:
+    mov eax, [ebp-8]
+    cmp eax, [ebp-24]
+    jle .sort2
+    mov ebx, [ebp-4]
+    mov ecx, [ebp-20]
+    mov [ebp-4], ecx
+    mov [ebp-20], ebx
+    mov ebx, [ebp-8]
+    mov ecx, [ebp-24]
+    mov [ebp-8], ecx
+    mov [ebp-24], ebx
+.sort2:
+    mov eax, [ebp-16]
+    cmp eax, [ebp-24]
+    jle .sort3
+    mov ebx, [ebp-12]
+    mov ecx, [ebp-20]
+    mov [ebp-12], ecx
+    mov [ebp-20], ebx
+    mov ebx, [ebp-16]
+    mov ecx, [ebp-24]
+    mov [ebp-16], ecx
+    mov [ebp-24], ebx
+.sort3:
+    mov eax, [ebp-8]
+    cmp eax, [ebp-24]
+    je .done_tri            ; Triángulo sin área (y0 == y2)
+
+    ; Rasterizar mitad superior (y0 a y1)
+    mov ebx, [ebp-8]        ; y = y0
+.top_loop:
+    cmp ebx, [ebp-16]
+    jge .bot_half
+
+    ; xA = x0 + (x1 - x0) * (y - y0) / (y1 - y0)
+    mov eax, [ebp-12]
+    sub eax, [ebp-4]
+    mov ecx, ebx
+    sub ecx, [ebp-8]
+    imul ecx
+    mov ecx, [ebp-16]
+    sub ecx, [ebp-8]
+    cdq
+    idiv ecx
+    add eax, [ebp-4]
+    mov esi, eax            ; xA
+
+    ; xB = x0 + (x2 - x0) * (y - y0) / (y2 - y0)
+    mov eax, [ebp-20]
+    sub eax, [ebp-4]
+    mov ecx, ebx
+    sub ecx, [ebp-8]
+    imul ecx
+    mov ecx, [ebp-24]
+    sub ecx, [ebp-8]
+    cdq
+    idiv ecx
+    add eax, [ebp-4]
+    mov edi, eax            ; xB
+
+    cmp esi, edi
+    jle .top_draw
+    xchg esi, edi
+.top_draw:
+    mov ecx, edi
+    sub ecx, esi
+    inc ecx                 ; width
+
+    push 1
+    push ecx
+    push ebx
+    push esi
+    call sys_fill_rect
+    add esp, 16
+
+    inc ebx
+    jmp .top_loop
+
+.bot_half:
+    ; Rasterizar mitad inferior (y1 a y2)
+    mov ebx, [ebp-16]       ; y = y1
+.bot_loop:
+    cmp ebx, [ebp-24]
+    jg .done_tri
+
+    ; xA = x1 + (x2 - x1) * (y - y1) / (y2 - y1)
+    mov ecx, [ebp-24]
+    sub ecx, [ebp-16]
+    je .calc_xB_bot         ; Evitar / 0
+
+    mov eax, [ebp-20]
+    sub eax, [ebp-12]
+    mov edx, ebx
+    sub edx, [ebp-16]
+    imul edx
+    cdq
+    idiv ecx
+    add eax, [ebp-12]
+    mov esi, eax            ; xA
+    jmp .do_xB_bot
+
+.calc_xB_bot:
+    mov esi, [ebp-12]
+
+.do_xB_bot:
+    ; xB = x0 + (x2 - x0) * (y - y0) / (y2 - y0)
+    mov ecx, [ebp-24]
+    sub ecx, [ebp-8]
+    je .calc_xB_bot_zero
+
+    mov eax, [ebp-20]
+    sub eax, [ebp-4]
+    mov edx, ebx
+    sub edx, [ebp-8]
+    imul edx
+    cdq
+    idiv ecx
+    add eax, [ebp-4]
+    mov edi, eax            ; xB
+    jmp .order_bot
+
+.calc_xB_bot_zero:
+    mov edi, [ebp-4]
+
+.order_bot:
+    cmp esi, edi
+    jle .bot_draw
+    xchg esi, edi
+.bot_draw:
+    mov ecx, edi
+    sub ecx, esi
+    inc ecx                 ; width
+
+    push 1
+    push ecx
+    push ebx
+    push esi
+    call sys_fill_rect
+    add esp, 16
+
+    inc ebx
+    jmp .bot_loop
+
+.done_tri:
+    popa
+    mov esp, ebp
     pop ebp
     ret
 
@@ -1827,8 +1977,8 @@ sys_scroll_vram:
     mov eax, [ebp + 8]
     imul eax, [g_pitch]         ; eax = offset en bytes a desplazar
 
-    mov edi, [g_backbuffer]    ; Destino: Inicio de la pantalla
-    mov esi, [g_backbuffer]
+    mov edi, [g_framebuffer]    ; Destino: Inicio de la pantalla
+    mov esi, [g_framebuffer]
     add esi, eax                ; Origen: Pantalla desplazada
 
     ; Calcular cuántos dwords (4 bytes) mover: ((768 * pitch) - offset) / 4
