@@ -23,7 +23,7 @@ SOFTWARE.*/
 package java.awt.g3d;
 
 import java.awt.Graphics2D;
-//import java.awt.Color;
+import kernel.Native;
 
 //Basado en librería de OpenGL
 public class Renderer3D {
@@ -41,6 +41,10 @@ public class Renderer3D {
     private Vertex3D[] projA = new Vertex3D[MAX_TRIANGLES];
     private Vertex3D[] projB = new Vertex3D[MAX_TRIANGLES];
     private Vertex3D[] projC = new Vertex3D[MAX_TRIANGLES];
+	
+	private final int[] staticX = new int[3];
+    private final int[] staticY = new int[3];
+	
 
 	// Constructor 
     public Renderer3D(Graphics2D graphics,int screenWidth,int screenHeight) {
@@ -63,6 +67,17 @@ public class Renderer3D {
 
     public void setProjectionScale(int scale) {
         projectionScale = scale;
+    }
+	
+	public void renderTriangle(int x0, int y0, int x1, int y1, int x2, int y2, int color) {
+        // Sobreescribir las mismas posiciones de memoria
+        staticX[0] = x0; staticX[1] = x1; staticX[2] = x2;
+        staticY[0] = y0; staticY[1] = y1; staticY[2] = y2;
+
+		// Syscall 1: SYS_SET_COLOR
+        Native.sys(Native.SYS_SET_COLOR, color, 0, 0, 0);
+        // Transmite la dirección de memoria fija al HAL en ensamblador
+        Native.sys(Native.SYS_FILL_POLYGON, staticX, staticY, 3, 0);
     }
 	
 	public void render(Mesh mesh, Matrix3D mt, int screenX, int screenY, int scalePercent) {
@@ -119,8 +134,9 @@ public class Renderer3D {
                 
                 if (cross <= 0) continue;
                 
-                graphics.setColor(t.getColor());
-                graphics.fillTriangle(x0, y0, x1, y1, x2, y2);
+                //graphics.setColor(t.getColor());
+                //graphics.fillTriangle(x0, y0, x1, y1, x2, y2);
+				renderTriangle(x0, y0, x1, y1, x2, y2, t.getColor());
             }
         }
 
