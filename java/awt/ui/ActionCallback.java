@@ -23,6 +23,6 @@ SOFTWARE.*/
 package java.awt.ui;
 
 public interface ActionCallback {
-    void execute();
+    //void execute();
 	void execute(int actionId);
 }
