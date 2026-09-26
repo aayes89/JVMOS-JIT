@@ -28,7 +28,7 @@
 global draw_char_vram
 
 ; Referencia al backbuffer en lugar del framebuffer
-extern g_backbuffer 
+extern g_framebuffer 
 extern g_pitch
 
 section .rodata
@@ -293,123 +293,53 @@ section .text
 draw_char_vram:
     push ebp
     mov ebp, esp
-    sub esp, 12                 ; [ebp-4]=InvAlpha, [ebp-8]=GlyphPtr, [ebp-12]=Alpha
     pusha
 
-    ; Extraer Alpha 
-    mov edx, [ebp + 20]         ; EDX = Color
-    mov eax, edx
-    shr eax, 24                 ; EAX = Alpha
-    test eax, eax
-    jz .done                    ; Si es 0 (totalmente transparente), salir
-    mov [ebp - 12], eax         ; Guardar Alpha
-
-    ; Calcular InvAlpha 
-    mov ebx, 255
-    sub ebx, eax
-    mov [ebp - 4], ebx          ; Guardar InvAlpha
-
-    ; Puntero a la letra segura 
-    movzx eax, byte [ebp + 8]
-    shl eax, 4
-    add eax, g_font_8x16
-    mov [ebp - 8], eax          ; GUARDAR EL PUNTERO SEGURO DE LA LETRA
-
-    ; Dirección física del lienzo 
+    movzx eax, byte [ebp + 8]   ; Carácter ASCII
     mov ebx, [ebp + 12]         ; X
     mov ecx, [ebp + 16]         ; Y
-    mov edi, [g_backbuffer]     ; Backbuffer
+    mov edx, [ebp + 20]         ; Color
+
+    ; offset = g_font_8x16 + (c * 16)
+    shl eax, 4
+    add eax, g_font_8x16
+
+    ; PhysAddr = g_framebuffer + (y * pitch) + (x * 4)
+    mov edi, [g_framebuffer]
     imul ecx, [g_pitch]
     shl ebx, 2
     add edi, ecx
-    add edi, ebx                ; EDI = Destino Base
+    add edi, ebx
 
-    mov ecx, 0                  ; ECX = Contador de Fila (0 a 15)
-
+    mov ecx, 0                  ; Fila 0 a 15
 .row_loop:
     cmp ecx, 16
     jge .done
 
-    mov eax, [ebp - 8]          ; EAX = Puntero a la letra
-    mov bl, [eax + ecx]         ; BL = Los 8 bits de esta fila
-    mov esi, 0                  ; ESI = Columna (0 a 7)
+    mov bl, [eax + ecx]         ; Byte con los 8 píxeles
+    mov esi, 0                  ; Bit 0 a 7
 
 .bit_loop:
     cmp esi, 8
     jge .next_row
 
-    test bl, 0x80               ; ¿Hay un pixel dibujado en este bit?
-    jz .skip_pixel              ; No -> saltar
+    test bl, 0x80
+    jz .skip_pixel
 
-    ; El pixel existe, verificar si es sólido o transparente 
-    mov eax, [ebp - 12]         ; Cargar Alpha de la variable local
-    cmp eax, 255
-    je .draw_solid
-
-    ; Alpha Blending 
-    push ebx                    ; Guardar BL (fila de la letra)
-    push ecx                    ; Guardar ECX (contador de fila)
-    
-    mov ecx, [edi + esi * 4]    ; ECX = Color Destino (Fondo)
-    mov ebx, [ebp - 4]          ; EBX = InvAlpha
-    
-    push ebx                    ; [esp+4] = InvAlpha
-    push eax                    ; [esp] = Alpha
-    
-    ; Mezclar Rojo_Azul
-    mov eax, ecx
-    and eax, 0x00FF00FF
-    imul eax, ebx               ; DestR_B * InvAlpha
-    
-    mov ebx, edx
-    and ebx, 0x00FF00FF
-    imul ebx, [esp]             ; OrigR_B * Alpha
-    
-    add eax, ebx
-    shr eax, 8
-    and eax, 0x00FF00FF
-    push eax                    ; Guardar Resultado Rojo_Azul en [esp]
-    
-    ; Mezclar Verde
-    mov eax, ecx
-    and eax, 0x0000FF00
-    imul eax, [esp+8]           ; DestG * InvAlpha
-    
-    mov ecx, edx
-    and ecx, 0x0000FF00
-    imul ecx, [esp+4]           ; OrigG * Alpha
-    
-    add eax, ecx
-    shr eax, 8
-    and eax, 0x0000FF00
-    
-    pop ecx                     ; ECX = Resultado Rojo_Azul
-    or eax, ecx                 ; EAX = Color Final
-    
-    add esp, 8                  ; Limpiar Alpha e InvAlpha de la pila
-    
-    mov [edi + esi * 4], eax    ; Escribir el pixel calculado
-    
-    pop ecx                     ; Restaurar contador de fila
-    pop ebx                     ; Restaurar la fila de la letra
-    jmp .skip_pixel
-    
-.draw_solid:
-    mov [edi + esi * 4], edx    ; Escribir pixel solido (sin mezclar)
+    mov [edi + esi * 4], edx     ; Pintar píxel DIRECTO A VRAM
 
 .skip_pixel:
-    shl bl, 1                   ; Mover al siguiente bit de la letra
+    shl bl, 1
     inc esi
     jmp .bit_loop
 
 .next_row:
-    add edi, [g_pitch]          ; Bajar una linea en la pantalla
+    add edi, [g_pitch]
     inc ecx
     jmp .row_loop
 
 .done:
     popa
-    add esp, 12                 ; Limpiar variables locales
     mov esp, ebp
     pop ebp
     ret
