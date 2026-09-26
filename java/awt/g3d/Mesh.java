@@ -27,6 +27,11 @@ public class Mesh {
     public Vertex3D[] vertices;
     public Triangle3D[] triangles;
 	public Line3D[] lines;
+	// Estado anterior de la figura
+    public int oldX = -1;
+    public int oldY = -1;
+    public int oldW = 0;
+    public int oldH = 0;
 
     public Mesh(Vertex3D[] vertices, Triangle3D[] triangles, Line3D[] lines) {
         this.vertices = vertices;
@@ -66,4 +71,15 @@ public class Mesh {
 	public Line3D getLine(int index){
 		return lines[index];
 	}
+	public void update(int x, int y, int w, int h){
+		this.oldX = x;
+		this.oldY = y;
+		this.oldW = w;
+		this.oldH = h;
+		
+	}
+	public int getOldX(){return oldX;}
+	public int getOldY(){return oldY;}	
+	public int getOldW(){return oldW;}
+	public int getOldH(){return oldH;}
 }
