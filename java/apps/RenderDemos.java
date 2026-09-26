@@ -89,9 +89,7 @@ public class RenderDemos {
                 g.drawLine(projX[p1], projY[p1], projX[p2], projY[p2]);
             }
 
-            for (int i = 0; i < 8; i++) { oldProjX[i] = projX[i]; oldProjY[i] = projY[i]; }
-			// Volcar bacbuffer a la pantalla
-			g.swapBuffers();
+            for (int i = 0; i < 8; i++) { oldProjX[i] = projX[i]; oldProjY[i] = projY[i]; }			
 
             angleX = (angleX + 2) % 360; angleY = (angleY + 3) % 360; angleZ = (angleZ + 1) % 360;
             try{Thread.sleep(16);}catch(Exception e){}
@@ -252,9 +250,6 @@ public class RenderDemos {
                 g.drawLine(projX[v2],projY[v2],projX[v3],projY[v3]);
                 g.drawLine(projX[v3],projY[v3],projX[v0],projY[v0]);
             }
-			
-			// Volcar backbuffer a la pantalla
-			g.swapBuffers();
 
             // Siguiente frame
             angleX = (angleX + 2) % 360;
@@ -300,22 +295,19 @@ public class RenderDemos {
             int sinZ = Math.sin(angleZ); 
             int cosZ = Math.cos(angleZ); 
 
-            // 1. Iniciar la matriz principal con la rotación X
+            // Iniciar la matriz principal con la rotación X
             matrix.setRotationX(sinX, cosX);
             
-            // 2. Preparar rotación Y y multiplicar
+            // Preparar rotación Y y multiplicar
             rotY.setRotationY(sinY, cosY);
             matrix.multiply(rotY);
             
-            // 3. Preparar rotación Z y multiplicar
+            // Preparar rotación Z y multiplicar
             rotZ.setRotationZ(sinZ, cosZ);
             matrix.multiply(rotZ);
 
             // Renderizar la geometría final combinada
-            renderer.render(cube, matrix, 200, 385, 100);
-			
-			// Volcar backbuffer a la pantalla
-			g.swapBuffers();
+            renderer.render(cube, matrix, 200, 385, 100);			
             
             // Avanzar rotaciones a distintas velocidades para un efecto más natural
             angleX = (angleX + 1) % 360;
