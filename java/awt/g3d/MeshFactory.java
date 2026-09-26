@@ -99,8 +99,8 @@ public class MeshFactory {
     
     public static Mesh createSphere() {
         int radius = 25;
-        int rings = 8;
-        int sectors = 8;
+        int rings = 8; // 8
+        int sectors = 8; // 8
         
         int numVertices = (rings - 1) * sectors + 2;
         Vertex3D[] vertices = new Vertex3D[numVertices];
