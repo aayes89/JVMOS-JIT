@@ -75,7 +75,7 @@ section .text
     
 
     extern sys_arg_id, sys_arg_a, sys_arg_b, sys_arg_c, sys_arg_d           
-    extern draw_char_vram, sys_draw_string, sys_serial_puts, sys_serial_putc, sys_serial_print_java, sys_scroll_vram
+    extern draw_char_vram, sys_draw_string, sys_serial_puts, sys_serial_putc, sys_serial_print_java, sys_scroll_vram, sys_wait_vsync
     extern current_color
     extern sys_switch_context
     extern sys_read_keyboard_scancode, sys_set_keyboard_layout, sys_read_mouse
@@ -90,7 +90,7 @@ section .text
     extern sys_inb, sys_outb, sys_inw, sys_outw, sys_indw, sys_outdw, sys_get_ticks
     extern sys_get_time, sys_sleep, sys_exit
     extern sys_exec_jit
-	extern sys_mark_frame, sys_reset_frame
+	extern sys_mark_frame, sys_reset_frame, sys_clear_region
 
 jit_init:
     push eax
@@ -393,6 +393,12 @@ sys_native_dispatch:
     je .sys_fill_arc
 	cmp eax, 46
 	je .sys_mark_frame
+	cmp eax, 47
+	je .sys_reset_frame
+	cmp eax, 48
+	je .sys_clear_region
+	cmp eax, 49
+	je .sys_wait_vsync
 
     xor eax, eax
     jmp .done
@@ -743,6 +749,19 @@ sys_native_dispatch:
 .sys_reset_frame:	
     call sys_reset_frame    
     jmp .done	
+
+.sys_clear_region:
+    push dword [ebp + 24]   ; Arg 4: Alto (Height)
+    push dword [ebp + 20]   ; Arg 3: Ancho (Width)
+    push dword [ebp + 16]   ; Arg 2: Y
+    push dword [ebp + 12]   ; Arg 1: X
+    call sys_clear_region
+    add esp, 16             ; Limpiar los 4 argumentos de la pila (4 * 4 bytes)
+    jmp .done
+
+.sys_wait_vsync:
+	call sys_wait_vsync
+	jmp .done
 
 .done:
     pop edx
