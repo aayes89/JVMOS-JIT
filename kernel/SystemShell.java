@@ -74,7 +74,7 @@ public class SystemShell {
         int lastKey = 0, cmdLen = 0;
         int[] cmdBuffer = new int[128];
         
-        drawPrompt();
+        drawPrompt();		
 
         while (true) {
             int asciiChar = Native.sys(Native.SYS_READ_KEYBOARD, 0, 0, 0, 0);
@@ -106,7 +106,7 @@ public class SystemShell {
                         cmdBuffer[cmdLen] = 0;
                         cursorX -= 10;
                         g.setColor(Color.BLACK);
-                        g.fillRect(cursorX, cursorY, 12, 20);
+                        g.fillRect(cursorX, cursorY, 12, 20);						
                     }
                 } else if (asciiChar >= 32 && asciiChar <= 165) { // CARACTERES
                     if (cmdLen < 60) {
@@ -191,7 +191,7 @@ public class SystemShell {
                         if (cursorY > 700) { 
                             // Syscall 28: Mover VRAM hacia arriba 25 píxeles (la altura de tus líneas)
                             Native.sys(Native.SYS_SCROLL_UP, 25, 0, 0, 0); 
-                            cursorY -= 25; // El cursor retrocede en Y para quedarse en la misma línea visual
+                            cursorY -= 25; // El cursor retrocede en Y para quedarse en la misma línea visual							
                         }
                     }
                 }
@@ -657,8 +657,8 @@ public class SystemShell {
             Thread.sleep(2000);
         } catch(Exception e){
             // System.err.println(e.getMessage); 
-        } 
-        java.lang.System.exit(0);
+        } 		
+        System.exit(0);
     }
 
     // Reinicia el sistema
