@@ -43,11 +43,11 @@ public class Boot {
 
     public static void main(String[] args) {
         //Native.sys(1, 0x0000FF00, 0, 0, 0); // verde
-        Native.sys(5, 20, 20, "INICIANDO JVMOS-JIT...", 0); 
+        //Native.sys(5, 20, 20, "INICIANDO JVMOS-JIT...", 0); 		
 
         java.lang.System.out = new PrintStream();
         System.out.println("[Boot] Inicializando subsistemas Micro-RT de JVMOS-JIT...");
-        g = new Graphics2D();
+        g = new Graphics2D();		
         
         portapapeles = new Portapapeles();
 
@@ -61,7 +61,7 @@ public class Boot {
         NetworkShell.init(g); 
 		
 		// Prueba del GC
-		testGarbageCollector();
+		//testGarbageCollector();
 		
         Native.sys(12,3000,0,0,0); // sleep 3s      
         
@@ -105,7 +105,7 @@ public class Boot {
         g.clearScreen(); 
         g.setColor(Color.GREEN); 
         g.drawString("JVMOS BIOS [v2.5]", 20, 25); 
-        g.drawString("=============================================", 20, 45);
+        g.drawString("=============================================", 20, 45);		
         g.drawString("[ OK ]", 20, 75); g.setColor(Color.WHITE); g.drawString("Verificando CPU x86 [Protected Mode 32-Bit]...", 90, 75);
         g.setColor(Color.GREEN); 
         g.drawString("[ OK ]", 20, 95); g.setColor(Color.WHITE); g.drawString("Memoria RAM Detectada: [128MB]", 90, 95);
@@ -119,12 +119,12 @@ public class Boot {
         g.drawString("[ OK ]", 20, 175); g.setColor(Color.WHITE); g.drawString("Modo de Video VBE VESA [1024x768 @ 32bpp]", 90, 175);
         g.setColor(Color.GREEN); 
         g.drawString("=============================================", 20, 45);
-        g.drawString("SISTEMA LISTO. Iniciando Shell interactivo...", 20, 205);
+        g.drawString("SISTEMA LISTO. Iniciando Shell interactivo...", 20, 205);		
         try { 
             Thread.sleep(2000);
         } catch(Exception e) {
             // System.err.println(e.getMessage());          
         } 
-        g.clearScreen();
+        g.clearScreen();		
     }
 }
