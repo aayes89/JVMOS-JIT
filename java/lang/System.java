@@ -46,6 +46,16 @@ public final class System {
 		Runtime.outb(0x64, 0xFE);
 		//while (1) asm volatile ("hlt");
 	}
+	
+	public static int readMouseEvent(int e){ 
+		return Native.sys(Native.SYS_READ_MOUSE,e,0,0,0);
+	}
+    public static int readKeyboardKey(int p) { 
+		return Native.sys(Native.SYS_READ_KEYBOARD, p, 0, 0, 0); 
+	}
+	public static int readTime(int p) { 
+		return Native.sys(Native.SYS_GET_TIME, p, 0, 0, 0); 
+	}
 
     // Inicializar teclado
     public static void initKeyboard() {
