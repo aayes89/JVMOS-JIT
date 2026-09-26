@@ -46,6 +46,8 @@ public class Demo3D {
         Matrix3D rotZ = new Matrix3D();
         
         int angle = 0;
+		// Syscall 46: SYS_MARK_FRAME
+		Native.sys(Native.SYS_MARK_FRAME, 0, 0, 0, 0);
         
         while (true) {
             g.clearScreen();
@@ -79,6 +81,9 @@ public class Demo3D {
             renderer.render(sphere, matSphere, 768, 384, 100);
 			
             angle = (angle + 2) % 360;
+			
+			// Syscall 47: SYS_RESET_FRAME
+			Native.sys(Native.SYS_RESET_FRAME, 0, 0, 0, 0);
 
             Native.sys(12, 16, 0, 0, 0); 
             if (Native.sys(6, 0, 0, 0, 0) == 27) break;
