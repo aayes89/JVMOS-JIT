@@ -1412,10 +1412,9 @@ sys_draw_line:
     pop ebx
     pop ebp
     ret
-
 sys_draw_arc:
     jmp sys_draw_oval
-	
+    
 sys_fill_arc:
     jmp sys_fill_oval
 
@@ -1497,10 +1496,16 @@ sys_draw_oval:
     
     ; Si está en el anillo, limpiar suma y dibujar
     fstp st0
-    push ecx
-    push ebx
+    
+    ; BUCLE
+    push ecx                ; RESPALDAR ECX (Contador Y)
+    push ecx                ; Empujar Y como argumento para sys_draw_pixel
+    push ebx                ; Empujar X como argumento para sys_draw_pixel
     call sys_draw_pixel
-    add esp, 8
+    add esp, 8              ; Limpiar argumentos
+    pop ecx                 ; RESTAURAR ECX (Contador Y) intacto
+    
+    
     jmp .skip_pixel
     
 .cleanup_st0:
@@ -1516,7 +1521,7 @@ sys_draw_oval:
     popa
     mov esp, ebp
     pop ebp
-    ret	
+    ret    
 
 sys_fill_oval:
     push ebp
@@ -1590,10 +1595,14 @@ sys_fill_oval:
     sahf
     jb .skip_pixel          ; Si 1.0 < suma, está fuera del óvalo
     
-    push ecx
-    push ebx
+    ; BUCLE
+    push ecx                ; RESPALDAR ECX (Contador Y)
+    push ecx                ; Empujar Y como argumento para sys_draw_pixel
+    push ebx                ; Empujar X como argumento para sys_draw_pixel
     call sys_draw_pixel
-    add esp, 8
+    add esp, 8              ; Limpiar argumentos
+    pop ecx                 ; RESTAURAR ECX (Contador Y) intacto
+    
     
 .skip_pixel:
     inc ebx
@@ -1606,7 +1615,7 @@ sys_fill_oval:
     popa
     mov esp, ebp
     pop ebp
-    ret	
+    ret
 
 sys_draw_polygon:
     push ebp
