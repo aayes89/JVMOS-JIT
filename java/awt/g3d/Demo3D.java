@@ -31,6 +31,7 @@ public class Demo3D {
     // liberado código de Boot.java para limpiar código y permitir ejecución independiente.
     // antigua función runShapes3D ahora run(Graphics2D)
     public static void run(Graphics2D g) {
+		g.clearScreen();	
         Renderer3D renderer = new Renderer3D(g, 1024, 768);
         
         Mesh cube = MeshFactory.createCube();
@@ -48,13 +49,14 @@ public class Demo3D {
         int angle = 0;
 		// Syscall 46: SYS_MARK_FRAME
 		Native.sys(Native.SYS_MARK_FRAME, 0, 0, 0, 0);
-        
-        while (true) {
-            g.clearScreen();
+							
+        while (true) {       
+			// Syscall 49: SYS_WAIT_VSYNC - 60Hz
+			Native.sys(Native.SYS_WAIT_VSYNC,0,0,0,0);
+			
 			g.setColor(Color.WHITE);
-            g.drawString("Demo Bare-Metal 3D: Piramide, Cubo y Esfera. ESC para salir.", 20, 20);
-
-
+			g.drawString("Demo Bare-Metal 3D: Piramide, Cubo y Esfera. ESC para salir.", 20, 20);		
+			
             int sinA = Math.sin(angle);
             int cosA = Math.cos(angle);
             int sinB = Math.sin(angle / 2);
@@ -79,13 +81,13 @@ public class Demo3D {
             matSphere.multiply(rotX);
             matSphere.multiply(rotZ);
             renderer.render(sphere, matSphere, 768, 384, 100);
-			
+						
             angle = (angle + 2) % 360;
 			
 			// Syscall 47: SYS_RESET_FRAME
-			Native.sys(Native.SYS_RESET_FRAME, 0, 0, 0, 0);
+			Native.sys(Native.SYS_RESET_FRAME, 0, 0, 0, 0);			
 
-            Native.sys(12, 16, 0, 0, 0); 
+            //Native.sys(12, 16, 0, 0, 0); 
             if (Native.sys(6, 0, 0, 0, 0) == 27) break;
         }
     }
