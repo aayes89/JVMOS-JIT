@@ -29,7 +29,7 @@ import java.io.FileSystem;
 import java.io.File;
 
 // Funcionalidades extraídas de la implementación de JPad y shell en proyectos previos
-public class JEditor extends JFrame {
+public class JEditor extends JFrame implements ActionCallback{
     private FileSystem fs;
     private File currentFile;
     private int currentDirLba;
@@ -44,7 +44,7 @@ public class JEditor extends JFrame {
         this.fs = fs;
         
         // Instanciar los componentes visuales internos (Coordenadas relativas al JFrame)
-        btnSave = new JButton("Guardar", 10, 30, 80, 24, () -> saveFile());
+        btnSave = new JButton("Guardar", 10, 30, 80, 24, this, 1);
         textArea = new JTextArea(10, 60, 580, 330);
         
         // Añadir los componentes al JFrame
@@ -93,4 +93,11 @@ public class JEditor extends JFrame {
         if (!isVisible()) return false;                
         return textArea.handleKey(ascii);
     }
+	
+	@Override
+	public void execute(int actionId){
+		if(actionId == 1){
+			saveFile();
+		}
+	}
 }
