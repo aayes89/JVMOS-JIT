@@ -71,10 +71,9 @@ public class Native {
 	public static final int SYS_DRAW_POLYGON     = 40; // Dibujar un polígono
 	public static final int SYS_FILL_POLYGON     = 41; // Pintar un polígono
 	public static final int SYS_DRAW_OVAL        = 42; // Dibujar un ovalo
-	public static final int SYS_FILL_OVAL        = 43; // Pintar un ovalo
-	public static final int SYS_SWAP_BUFFERS	 = 44; // Swap buffer 
-	public static final int SYS_DRAW_ARC         = 45; // Dibujar un ovalo
-	public static final int SYS_FILL_ARC         = 46; // Pintar un ovalo
+	public static final int SYS_FILL_OVAL        = 43; // Pintar un ovalo	
+	public static final int SYS_DRAW_ARC         = 44; // Dibujar un ovalo
+	public static final int SYS_FILL_ARC         = 45; // Pintar un ovalo
 
 
     // FIRMAS NATIVAS (Todas las posibles combinaciones)   	
@@ -92,7 +91,5 @@ public class Native {
 	public static native int sys(int id, Object a, int b, int c, int d);
 	public static native int sys(int id, int a, Object b, int c, int d);
 	public static native int sys(int id, int a, int b, Object c, int d);
-	public static native int sys(int id, int a, int b, int c, Object d);
-	
-    
+	public static native int sys(int id, int a, int b, int c, Object d);	    
 }
