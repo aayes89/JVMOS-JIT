@@ -31,13 +31,15 @@ public class JButton extends JComponent {
     private int textColor;
     private boolean isPressed;
     private ActionCallback action;
+	private int actionId;
 
-    public JButton(String text, int x, int y, int width, int height, ActionCallback action) {
+    public JButton(String text, int x, int y, int width, int height, ActionCallback action, int actionId) {
         super(x, y, width, height);
         this.text = text;
         this.bgColor = 0x00C0C0C0; // Gris clásico de Windows 9x
         this.textColor = 0x00000000;
         this.action = action;
+		this.actionId = actionId;
         this.isPressed = false;
     }
 
@@ -91,7 +93,7 @@ public class JButton extends JComponent {
         } else if (btn == 0 && isPressed) {
             isPressed = false;
             if (action != null) {
-                action.execute(); // Disparar la acción configurada
+                action.execute(actionId); // Disparar la acción configurada
             }
             return true;
         }
