@@ -81,8 +81,7 @@ section .text
     extern sys_read_keyboard_scancode, sys_set_keyboard_layout, sys_read_mouse
     extern sys_draw_rect, sys_fill_rect, sys_draw_line, sys_get_pixel, sys_draw_pixel
 	extern sys_draw_pixel_alpha, sys_draw_polygon, sys_fill_polygon
-    extern sys_draw_oval, sys_fill_oval, sys_draw_arc, sys_fill_arc
-    extern sys_swap_buffers
+    extern sys_draw_oval, sys_fill_oval, sys_draw_arc, sys_fill_arc    
     extern sys_beep, sys_nosound, sys_get_free_mem, sys_get_ram_size
     extern sys_pci_write_config, sys_pci_read_config, sys_disk_read_sector, sys_disk_write_sector
     extern sys_rtl8139_init, sys_rtl8139_send_packet, sys_net_receive_packet
@@ -386,12 +385,10 @@ sys_native_dispatch:
 	cmp eax, 42
 	je .sys_draw_oval
 	cmp eax, 43
-	je .sys_fill_oval
-	cmp eax, 44
-    je .sys_swap_buffers
-    cmp eax, 45
+	je .sys_fill_oval	
+    cmp eax, 44
     je .sys_draw_arc
-    cmp eax, 46
+    cmp eax, 45
     je .sys_fill_arc
 
     xor eax, eax
@@ -716,11 +713,6 @@ sys_native_dispatch:
     push dword [sys_arg_a]      ; x
     call sys_fill_oval
     add esp, 16
-    jmp .done
-
-.sys_swap_buffers:
-    call sys_swap_buffers
-    xor eax, eax                ; Retorna 0 / void
     jmp .done
 
 .sys_draw_arc:
