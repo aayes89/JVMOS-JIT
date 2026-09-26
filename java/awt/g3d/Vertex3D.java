@@ -39,6 +39,12 @@ public class Vertex3D {
         this.y = y;
         this.z = z;
     }
+	
+	public void update(int x, int y, int z) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
 	// getters y setters
     public int getX() {
 		return x; 
