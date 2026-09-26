@@ -42,6 +42,7 @@ global sys_memset
 global sys_gc_collect
 global sys_mark_frame
 global sys_reset_frame
+global sys_clear_region
 %include "boot/sys_thread.asm"
 global sys_switch_context
 
@@ -79,6 +80,7 @@ global sys_fill_polygon
 global sys_draw_string
 global current_color
 global sys_scroll_vram
+global sys_wait_vsync
 
 ; Disco ATA IDE LBA28 
 global sys_disk_read_sector
@@ -567,6 +569,85 @@ sys_reset_frame:
 .done_rf:
 	ret	
 
+; Borra únicamente un área específica de la VRAM (Ultra rápido)
+sys_clear_region:
+    push ebp
+    mov ebp, esp
+    pusha
+	
+	mov ax, ds
+	mov es, ax
+	cld
+	
+	mov ebx, [ebp + 8]          ; X
+    mov ecx, [ebp + 12]         ; Y
+    mov edx, [ebp + 16]         ; Ancho (Width)
+    mov esi, [ebp + 20]         ; Alto (Height)
+    ;xor eax, eax                ; Color NEGRO (0x00000000)
+
+    ; Clipping de bordes contra pantalla
+    cmp ebx, 0
+    jge .check_y
+    add edx, ebx
+    xor ebx, ebx
+.check_y:
+    cmp ecx, 0
+    jge .check_w
+    add esi, ecx
+    xor ecx, ecx
+.check_w:
+    mov edi, ebx
+    add edi, edx
+    cmp edi, 1024
+    jle .check_h
+    sub edi, 1024
+    sub edx, edi
+.check_h:
+    mov edi, ecx
+    add edi, esi
+    cmp edi, 768
+    jle .validate
+    sub edi, 768
+    sub esi, edi
+
+.validate:
+    cmp edx, 0
+    jle .done_cls
+    cmp esi, 0
+    jle .done_cls
+
+    ; Cálculo normalizado de pitch
+    mov eax, [g_pitch]
+    cmp eax, 2048               ; Si pitch < 2048 está en píxeles (1024)
+    jge .pitch_ok
+    shl eax, 2                  ; Convertir 1024 píxeles a 4096 bytes
+.pitch_ok:
+    ; EAX contiene ahora el PITCH REAL EN BYTES
+
+    ; Offset inicial VRAM = g_framebuffer + (Y * pitch_bytes) + (X * 4)
+    mov edi, [g_framebuffer]
+    imul ecx, eax               ; Y * pitch_bytes
+    add edi, ecx
+    lea edi, [edi + ebx * 4]    ; EDI = Dirección exacta de inicio en VRAM
+
+    mov ebx, eax                ; Guardar pitch_bytes en EBX para el bucle
+    xor eax, eax                ; Color NEGRO absoluto (0x00000000)
+
+.y_loop:
+    push edi
+    mov ecx, edx               ; Cantidad de píxeles (DWORDs) por línea
+    rep stosd                  ; Escribe EAX en ES:EDI (Borrando a negro)
+    pop edi
+    add edi, ebx               ; Avanza exactamente una línea horizontal en VRAM
+    dec esi
+    jnz .y_loop
+
+.done_cls:
+    popa
+    mov esp, ebp
+    pop ebp
+    ret
+
 ; Asignador de Memoria Kernel preparado para GC (Cabecera de 16 bytes)
 sys_kalloc:
     push ebp
@@ -627,7 +708,7 @@ sys_kalloc:
     
 .split_done:
     mov dword [esi + 4], 1      ; Marcar como asignado
-    mov dword [esi + 8], 0xCAFEBABE ; <--- BLINDAJE GC: FIRMA MÁGICA
+    mov dword [esi + 8], 0xCAFEBABE ; BLINDAJE GC: FIRMA MÁGICA
     mov eax, esi
     add eax, 16                 ; Puntero al payload
     jmp .clear_mem
@@ -688,9 +769,8 @@ sys_kalloc:
     pop ebp
     ret
 
-; ====================================================================
-; GC MARK & SWEEP (CON FUSIÓN DE BLOQUES ANTI-FRAGMENTACIÓN)
-; ====================================================================
+
+; GC MARK & SWEEP (Con fusión de bloques anto-fragmentación)
 sys_gc_collect:
     pusha            
 
@@ -731,7 +811,7 @@ sys_gc_collect:
     test ebx, 2                    
     jnz .keep_object
 
-    ; FUSIONAR BLOQUES MUERTOS
+    ; Fusionar bloques muertos
     mov dword [esi + 4], 0      
     mov edi, esi
     add edi, eax                
@@ -792,10 +872,9 @@ gc_mark_object:
     mov eax, edi
     sub eax, 16
     
-    ; --- BLINDAJE ESTRICTO CONTRA FALSOS PUNTEROS DE COORDENADAS 3D ---
+    ; Blindaje contra falsos punteros
     cmp dword [eax + 8], 0xCAFEBABE
-    jne .done
-    ; ------------------------------------------------------------------
+    jne .done    
 
     mov ebx, [eax + 4]
     test ebx, 1
@@ -1168,6 +1247,28 @@ sys_read_mouse:
 
 
 ; Renderizador y driver gráfico VBE VESA
+
+; Sincronización vertical (VSYNC)
+sys_wait_vsync:
+	push eax
+    push edx
+
+    mov edx, 0x3DA
+
+.wait_end:
+    in al, dx
+    test al, 0x08
+    jnz .wait_end           ; Si ya está en VBlank, espera a que termine el ciclo actual
+
+.wait_start:
+    in al, dx
+    test al, 0x08
+    jz .wait_start          ; Espera el inicio exacto del nuevo Retrazo Vertical
+
+    pop edx
+    pop eax
+    ret
+	
 sys_set_color:
     push ebp
     mov ebp, esp
