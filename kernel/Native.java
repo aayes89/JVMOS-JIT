@@ -76,6 +76,8 @@ public class Native {
 	public static final int SYS_FILL_ARC         = 45; // Pintar un ovalo
 	public static final int SYS_MARK_FRAME       = 46; // Marcar el límite de memoria permanente
 	public static final int SYS_RESET_FRAME      = 47; // Restablecer memoria permanente
+	public static final int SYS_CLEAR_REGION     = 48; // Limpia en VRAM sólo el área usada
+	public static final int SYS_WAIT_VSYNC		 = 49; // Sincronismo vertical (VSYNC)
 
 
     // FIRMAS NATIVAS (Todas las posibles combinaciones)   	
