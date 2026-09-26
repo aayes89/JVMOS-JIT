@@ -28,12 +28,14 @@ public class JMenuItem extends JComponent {
     private String text;
     private boolean isHovered;
     private ActionCallback action;
+	private int actionId;
 
-    public JMenuItem(String text, ActionCallback action) {
+    public JMenuItem(String text, ActionCallback action, int actionId) {
         super(0, 0, 180, 24); // Dimensiones estándar para un ítem de menú
         this.text = text;
         this.action = action;
-        this.isHovered = false;
+		this.actionId = actionId;
+        this.isHovered = false;		
     }
 
     @Override
@@ -51,13 +53,10 @@ public class JMenuItem extends JComponent {
 
     @Override
     public boolean handleMouse(int mx, int my, int btn) {
-        if (!visible) return false;
-
-        boolean wasHovered = isHovered;
+        if (!visible) return false;        
         isHovered = contains(mx, my);
-
         if (isHovered && btn == 1) {
-            if (action != null) action.execute();
+            if (action != null) action.execute(actionId);
             return true;
         }
 
