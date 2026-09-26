@@ -121,4 +121,27 @@ public class JFrame extends JComponent {
         
         return true; // El clic fue dentro de la ventana, lo consumimos para que no pase al fondo
     }
+	
+	// Getter y setters
+	public String getTitle(){
+		return title;
+	}
+    public JComponent[] getChildren(){
+		return children;
+	}
+    public int getChildCount(){
+		return childCount;
+	}
+    public boolean getIsDragging(){
+		return isDragging;
+	}
+	public void setIsDragging(boolean isDragging){
+		this.isDragging = isDragging;
+	}	
+    public int getDragOffsetX(){
+		return dragOffsetX;
+	}
+    public int getDragOffsetY(){
+		return dragOffsetY;
+	}
 }
