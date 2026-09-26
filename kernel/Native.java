@@ -74,6 +74,8 @@ public class Native {
 	public static final int SYS_FILL_OVAL        = 43; // Pintar un ovalo	
 	public static final int SYS_DRAW_ARC         = 44; // Dibujar un ovalo
 	public static final int SYS_FILL_ARC         = 45; // Pintar un ovalo
+	public static final int SYS_MARK_FRAME       = 46; // Marcar el límite de memoria permanente
+	public static final int SYS_RESET_FRAME      = 47; // Restablecer memoria permanente
 
 
     // FIRMAS NATIVAS (Todas las posibles combinaciones)   	
