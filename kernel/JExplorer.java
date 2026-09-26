@@ -68,14 +68,7 @@ public class JExplorer extends JFrame {
         leftPanel.add(new JLabel("[-] / (Raiz)", 10, 10, 0x00000000));
         
         // Panel derecho (Vista de archivos, fondo blanco)
-        rightPanel = new JPanel(200, 50, 510, 400, 0x00FFFFFF) {
-            // Sobrescribimos temporalmente el paint del panel para dibujar los archivos
-            @Override
-            public void paint(Graphics2D g) {
-                super.paint(g); // Dibuja el fondo blanco
-                drawFiles(g, this.x, this.y, this.width);
-            }
-        };
+        rightPanel = new JPanel(200, 50, 510, 400, 0x00FFFFFF);
 
         this.add(pathLabel);
         this.add(leftPanel);
@@ -94,6 +87,14 @@ public class JExplorer extends JFrame {
         this.pathLabel.setText("Ruta: " + currentDirPath);
     }
     
+	@Override
+	public void paint(Graphics2D g){
+		super.paint(g);
+		if(isVisible() && !isMinimized()){
+			drawFiles(g, rightPanel.getX(), rightPanel.getY(), rightPanel.getWidth());
+        }
+	}
+	
     // Método temporal incrustado en el rightPanel
     private void drawFiles(Graphics2D g, int panelX, int panelY, int panelW) {
         int iconX = panelX + 20;
