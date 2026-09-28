@@ -24,6 +24,7 @@ SOFTWARE.*/
 package java.awt.ui;
 
 import java.awt.Graphics2D;
+import java.awt.Color;
 
 public class JButton extends JComponent {
     private String text;
@@ -36,8 +37,8 @@ public class JButton extends JComponent {
     public JButton(String text, int x, int y, int width, int height, ActionCallback action, int actionId) {
         super(x, y, width, height);
         this.text = text;
-        this.bgColor = 0x00C0C0C0; // Gris clásico de Windows 9x
-        this.textColor = 0x00000000;
+        this.bgColor = Color.LIGHT_GRAY; // Gris claro por defecto al fondo
+        this.textColor = Color.BLACK; // Negro por defecto
         this.action = action;
 		this.actionId = actionId;
         this.isPressed = false;
@@ -45,33 +46,36 @@ public class JButton extends JComponent {
 
     @Override
     public void paint(Graphics2D g) {
-        if (!visible) return;
+        if (!visible) return;		
         
-        // Fondo oscurecido si está presionado
-        g.setColor(isPressed ? 0x00808080 : bgColor);
-        g.fillRect(x, y, width, height);
+		int absX = getAbsoluteX();
+        int absY = getAbsoluteY();
+		
+		// Fondo oscurecido si está presionado
+        g.setColor(isPressed ? Color.GRAY : bgColor);
+        g.fillRect(absX, absY, width, height);        
         
         // Bordes 3D simulados
         if (!isPressed) {
-            g.setColor(0x00FFFFFF); // Brillo superior e izquierdo
-            g.fillRect(x, y, width, 2);
-            g.fillRect(x, y, 2, height);
+            g.setColor(Color.WHITE); // Brillo superior e izquierdo
+            g.fillRect(absX, absY, width, 2);
+            g.fillRect(absX, absY, 2, height);
             
             g.setColor(0x00555555); // Sombra inferior y derecha
-            g.fillRect(x, y + height - 2, width, 2);
-            g.fillRect(x + width - 2, y, 2, height);
+            g.fillRect(absX, absY + height - 2, width, 2);
+            g.fillRect(absX + width - 2, absY, 2, height);
         }
 
-        // Centrado aproximado del texto
-        g.setColor(textColor);
-        int textX = x + (width - (text.length() * 8)) / 2;
-        int textY = y + (height / 2) + 4; 
+        // Centrado aproximado del texto        
+        int textX = absX + (width - (text.length() * 8)) / 2;
+        int textY = absY + (height / 2) + 4; 
         
         // Desplazamiento visual al presionar
         if (isPressed) { 
             textX++; 
             textY++; 
-        }         
+        }         		
+		g.setColor(textColor);
         g.drawString(text, textX, textY);
     }
 
