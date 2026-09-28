@@ -411,7 +411,8 @@ sys_native_dispatch:
 
 .sys_set_color:
     mov eax, [sys_arg_a]
-    or eax, 0xFF000000
+	; Alpha se pasa en el código Java
+    ;or eax, 0xFF000000
     mov [current_color], eax
     xor eax, eax
     jmp .done
