@@ -23,6 +23,7 @@ SOFTWARE.*/
 package java.awt.ui;
 
 import java.awt.Graphics2D;
+import java.awt.Color;
 
 // Tomado de implementación original y adaptado a JVMOS-JIT
 public class JPopupMenu extends JComponent {
@@ -31,73 +32,68 @@ public class JPopupMenu extends JComponent {
     private static final int MAX_ITEMS = 16;
 
     public JPopupMenu() {
-        super(0, 0, 184, 4); // El alto crece dinámicamente al agregar ítems
+        super(0, 0, 184, 4);
+		this.width = 184;
+		this.height = 4;
         this.items = new JMenuItem[MAX_ITEMS];
         this.itemCount = 0;
         this.visible = false;
     }
 
     public void add(JMenuItem item) {
-        if (itemCount < MAX_ITEMS) {
-            item.parent = this;
-            item.x = this.x + 2; 
-            item.y = this.y + 2 + (itemCount * 24);
-            item.width = this.width - 4;
-            items[itemCount++] = item;
-            this.height = (itemCount * 24) + 4; // Ajustar la altura del menú
+		if (itemCount < MAX_ITEMS && item != null) {
+            item.parent = this;                        
+            item.setX(2); 
+            item.setY(2 + (itemCount * 24));
+            item.setWidth(this.width - 4);            
+            items[itemCount++] = item;			
+            this.height = (itemCount * 24) + 4;
         }
     }
 
     // Posiciona el menú y lo hace visible
     public void show(int screenX, int screenY) {
         this.x = screenX;
-        this.y = screenY;
-        
-        // Actualizar las posiciones relativas de los hijos
-        for (int i = 0; i < itemCount; i++) {
-            items[i].x = this.x + 2;
-            items[i].y = this.y + 2 + (i * 24);
-        }
+        this.y = screenY;		
         this.visible = true;
     }
 
     @Override
     public void paint(Graphics2D g) {
-        if (!visible) return;
-
-        // Borde exterior 3D
-        g.setColor(0x00FFFFFF); g.fillRect(x, y, width, 2); // Arriba
-        g.fillRect(x, y, 2, height); // Izquierda
-        g.setColor(0x00555555); g.fillRect(x, y + height - 2, width, 2); // Abajo
-        g.fillRect(x + width - 2, y, 2, height); // Derecha
-
-        // Fondo del contenedor
-        g.setColor(0x00C0C0C0);
-        g.fillRect(x + 2, y + 2, width - 4, height - 4);
+        if (!visible) return;		
+		
+        int absX = getAbsoluteX();
+        int absY = getAbsoluteY();
+        
+        g.setColor(0xFFFFFFFF); 
+        g.fillRect(absX, absY, width, 2); 
+        g.fillRect(absX, absY, 2, height); 
+        
+        g.setColor(0xFF555555); // Gris oscuro OPACO
+        g.fillRect(absX, absY + height - 2, width, 2); 
+        g.fillRect(absX + width - 2, absY, 2, height); 
+		
+        g.setColor(0xFFC0C0C0);
+        g.fillRect(absX + 2, absY + 2, width - 4, height - 4);
 
         for (int i = 0; i < itemCount; i++) {
             items[i].paint(g);
         }
     }
+    
 
     @Override
-    public boolean handleMouse(int mx, int my, int btn) {
-        if (!visible) return false;
-
-        boolean clickedInside = contains(mx, my);
-
-        for (int i = 0; i < itemCount; i++) {
-            if (items[i].handleMouse(mx, my, btn)) {
-                if (btn == 1) this.visible = false; // Auto-ocultar al hacer clic en una opción
-                return true;
-            }
-        }
-
-        // Si el usuario hace clic fuera del menú, este se cierra automáticamente
-        if (btn == 1 && !clickedInside) {
-            this.visible = false;
-        }
-
-        return clickedInside; // Bloquea los clics para que no atraviesen el menú
-    }
+	public boolean handleMouse(int mx, int my, int btn) {
+		if (!visible) return false;
+		
+		boolean itemHandled = false;
+		for (int i = 0; i < itemCount; i++) {
+			if (items[i].handleMouse(mx, my, btn)) {
+				itemHandled = true;
+				// Ocultar al ejecutar
+				if (btn == 1 || btn == 2) this.visible = false;                
+			}
+		}        
+		return contains(mx, my) || itemHandled; 
+	}
 }
