@@ -60,15 +60,23 @@ public abstract class JComponent {
         int absY = getAbsoluteY();
         return (mx >= absX && mx <= absX + width && my >= absY && my <= absY + height);
     }
-    
+	
 	// Getters y Setters
 	public int getAbsoluteX(){
 		// Posición actual o centro de la pantalla
-		return (parent == null) ? x + parent.getAbsoluteX(): (width/2);
+		// Cambie de ternario a clásico para evitar al GC
+		if(parent == null) {
+			return x;
+		}
+		return x + parent.getAbsoluteX();
 	}
 	public int getAbsoluteY(){
 		// Posición actual o centro de la pantalla
-		return (parent == null) ? y + parent.getAbsoluteY(): (height/2);
+		// Cambie de ternario a clásico para evitar al GC
+		if (parent == null) {
+			return y;
+		}
+		return y + parent.getAbsoluteY();
 	}
     public void setVisible(boolean v) {
 		this.visible = v; 
