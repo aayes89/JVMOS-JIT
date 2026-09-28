@@ -67,7 +67,6 @@ global sys_read_mouse
 global sys_set_color
 global sys_draw_pixel
 global sys_get_pixel
-global sys_draw_pixel_alpha
 global sys_fill_rect
 global sys_draw_rect
 global sys_draw_line
@@ -1278,22 +1277,6 @@ sys_set_color:
     pop ebp
     ret
 
-sys_draw_pixel:
-    push ebp
-    mov ebp, esp
-    mov eax, [ebp + 8]          ; x
-    mov ecx, [ebp + 12]         ; y
-    mov edx, [current_color]	; color
-    imul ecx, [g_pitch]
-    shl eax, 2
-    add ecx, eax
-	
-    mov eax, [g_framebuffer] 
-    add eax, ecx
-    mov [eax], edx
-    pop ebp
-    ret
-
 sys_get_pixel:
     push ebp
     mov ebp, esp
@@ -1308,7 +1291,7 @@ sys_get_pixel:
     pop ebp
     ret
 
-sys_draw_pixel_alpha:
+sys_draw_pixel:
     push ebp
     mov ebp, esp
     pusha
