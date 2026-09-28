@@ -23,23 +23,23 @@ SOFTWARE.*/
 package java.awt;
 
 public class Color {
-    public static final int BLACK       = 0x00000000;
-    public static final int WHITE       = 0x00FFFFFF;
-    public static final int RED         = 0x00FF0000;
-    public static final int GREEN       = 0x00008000;
-    public static final int BLUE        = 0x000000FF;
-    public static final int YELLOW      = 0x00FFFF00;
-    public static final int GRAY        = 0x00808080;
-    public static final int LIGHT_GRAY  = 0x00C0C0C0;
-    public static final int DARK_GRAY   = 0x00404040;
-	public static final int CYAN 		= 0x0000FFFF;
+    public static final int BLACK       = 0xFF000000;
+    public static final int WHITE       = 0xFFFFFFFF;
+    public static final int RED         = 0xFFFF0000;
+    public static final int GREEN       = 0xFF008000;
+    public static final int BLUE        = 0xFF0000FF;
+    public static final int YELLOW      = 0xFFFFFF00;
+    public static final int GRAY        = 0xFF808080;
+    public static final int LIGHT_GRAY  = 0xFFC0C0C0;
+    public static final int DARK_GRAY   = 0xFF404040;
+	public static final int CYAN 		= 0xFF00FFFF;
 	public static final int MAGENT      = 0xFFFF00FF;
-	public static final int WIN_BG 		= 0x00E0E0E0; 
-	public static final int WIN_TITLE 	= 0x00000080;
-    public static final int SEL 		= 0x00D0D0FF;
-	public static final int FOLDER 		= 0x00F0C000; 
-	public static final int	FILE		= 0x00A0A0A0;
-    public static final int TRANSPARENT = 0x00000055; // Dependiendo de tu alfa
+	public static final int WIN_BG 		= 0xFFE0E0E0; 
+	public static final int WIN_TITLE 	= 0xFF000080;
+    public static final int SEL 		= 0xFFD0D0FF;
+	public static final int FOLDER 		= 0xFFF0C000; 
+	public static final int	FILE		= 0xFFA0A0A0;
+    public static final int TRANSPARENT = 0x00000000 // Dependiendo de tu alfa
 
     private final int rgb;
 	
