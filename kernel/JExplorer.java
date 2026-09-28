@@ -28,6 +28,7 @@ import java.awt.ui.JLabel;
 import java.io.FileSystem;
 import java.io.File;
 import java.awt.Graphics2D;
+import java.awt.Color;
 
 // Funcionalidades extraídas de la implementación de Filesystem y shell previospackage kernel;
 public class JExplorer extends JFrame {
@@ -61,14 +62,14 @@ public class JExplorer extends JFrame {
         this.viewFiles = new File[128];
         
         // Configurar Paneles Internos
-        pathLabel = new JLabel("Ruta: /", 10, 30, 0x00000000);
+        pathLabel = new JLabel("Ruta: /", 10, 30, Color.BLACK);
         
         // Panel izquierdo (Árbol, gris oscuro)
         leftPanel = new JPanel(10, 50, 180, 400, 0x00E0E0E0);
-        leftPanel.add(new JLabel("[-] / (Raiz)", 10, 10, 0x00000000));
+        leftPanel.add(new JLabel("[-] / (Raiz)", 10, 10, Color.BLACK));
         
         // Panel derecho (Vista de archivos, fondo blanco)
-        rightPanel = new JPanel(200, 50, 510, 400, 0x00FFFFFF);
+        rightPanel = new JPanel(200, 50, 510, 400, Color.WHITE);
 
         this.add(pathLabel);
         this.add(leftPanel);
@@ -101,8 +102,8 @@ public class JExplorer extends JFrame {
         int iconY = panelY + 20;
         
         if (!currentDirPath.equals("/")) {
-            g.setColor(0x00808080); g.fillRect(iconX, iconY, 32, 22);
-            g.setColor(0x00000000); g.drawString(".. (Atras)", iconX, iconY + 38);
+            g.setColor(Color.GRAY); g.fillRect(iconX, iconY, 32, 22);
+            g.setColor(Color.BLACK); g.drawString(".. (Atras)", iconX, iconY + 38);
             iconX += 90;
         }
 
@@ -117,10 +118,10 @@ public class JExplorer extends JFrame {
                     String name = child.getName();
                     if (name.indexOf(".class") != -1) g.setColor(0x003366FF);
                     else if (name.indexOf(".txt") != -1) g.setColor(0x00999999);
-                    else g.setColor(0x00A0A0A0);
+                    else g.setColor(Color.FILE);
                     g.fillRect(iconX, iconY, 20, 26);
                 }
-                g.setColor(0x00000000); 
+                g.setColor(Color.BLACK); 
                 g.drawString(child.getName(), iconX, iconY + 38);
 
                 iconX += 90;
