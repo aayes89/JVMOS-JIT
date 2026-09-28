@@ -30,7 +30,7 @@ public class JLabel extends JComponent {
     private int textColor;
 
     public JLabel(String text, int x, int y, int textColor) {
-        // Asume un ancho estimado basado mi fuente estándar de 8x16 píxeles
+        // Asume un ancho estimado basado en una fuente estándar de 8x16 píxeles
         super(x, y, text.length() * 8, 16); 
         this.text = text;
         this.textColor = textColor;
@@ -45,6 +45,6 @@ public class JLabel extends JComponent {
         if (!visible || text == null) return;
         g.setColor(textColor);
         // El offset en Y ajusta la línea base de la fuente
-        g.drawString(text, x, y + 12); 
+        g.drawString(text, getAbsoluteX(), getAbsoluteY() + 12); 
     }
 }
