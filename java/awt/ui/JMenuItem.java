@@ -23,6 +23,7 @@ SOFTWARE.*/
 package java.awt.ui;
 
 import java.awt.Graphics2D;
+import java.awt.Color;
 
 public class JMenuItem extends JComponent {
     private String text;
@@ -31,7 +32,10 @@ public class JMenuItem extends JComponent {
 	private int actionId;
 
     public JMenuItem(String text, ActionCallback action, int actionId) {
-        super(0, 0, 180, 24); // Dimensiones estándar para un ítem de menú
+		// Dimensiones estándar para un ítem de menú
+        super(0, 0, 180, 24); 
+		this.width = 180;
+		this.height = 24;
         this.text = text;
         this.action = action;
 		this.actionId = actionId;
@@ -41,25 +45,29 @@ public class JMenuItem extends JComponent {
     @Override
     public void paint(Graphics2D g) {
         if (!visible) return;
-
-        // Fondo (Azul clásico si está seleccionado, gris si no)
-        g.setColor(isHovered ? 0x00000080 : 0x00C0C0C0);
-        g.fillRect(x, y, width, height);
-
-        // Texto (Blanco si está seleccionado, negro si no)
-        g.setColor(isHovered ? 0x00FFFFFF : 0x00000000);
-        g.drawString(text, x + 15, y + 16);
+        
+        int absX = getAbsoluteX();
+        int absY = getAbsoluteY();
+        
+        // 0xFF000080 = Azul Marino, 0xFFC0C0C0 = Gris Claro
+        g.setColor(isHovered ? 0xFF000080 : 0xFFC0C0C0);
+        g.fillRect(absX, absY, width, height);
+         
+        // 0xFFFFFFFF = Blanco, 0xFF000000 = Negro
+        g.setColor(isHovered ? 0xFFFFFFFF : 0xFF000000);
+        g.drawString(text, absX + 15, absY + 16);
     }
 
     @Override
-    public boolean handleMouse(int mx, int my, int btn) {
-        if (!visible) return false;        
-        isHovered = contains(mx, my);
-        if (isHovered && btn == 1) {
-            if (action != null) action.execute(actionId);
-            return true;
-        }
-
-        return isHovered; // Consume el evento si el ratón está encima
-    }
+	public boolean handleMouse(int mx, int my, int btn) {
+		if (!visible) return false;     
+		isHovered = contains(mx, my);
+		
+		// Ejecutar con clic izquierdo o derecho
+		if (isHovered && (btn == 1 || btn == 2)) {
+			if (action != null) action.execute(actionId);
+			return true;
+		}
+		return isHovered; 
+	}
 }
