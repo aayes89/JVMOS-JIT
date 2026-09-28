@@ -24,6 +24,7 @@ SOFTWARE.*/
 package java.awt.ui;
 
 import java.awt.Graphics2D;
+import java.awt.Color;
 
 public class JFrame extends JComponent {
     private String title;
@@ -48,40 +49,32 @@ public class JFrame extends JComponent {
     }
 
     public void add(JComponent c) {
-        if (childCount < MAX_CHILDREN) {
-            c.parent = this;
-            // Las coordenadas del hijo son relativas a la ventana
-            c.x += this.x; 
-            c.y += this.y;
+        if (childCount < MAX_CHILDREN && c != null) {
+            c.parent = this;           
             children[childCount++] = c;
         }
     }
 
     @Override
     public void paint(Graphics2D g) {
-        if (!visible) return;
-
-        // Dibujar Borde y Fondo
-        g.setColor(0x00E0E0E0);
+        if (!visible) return;		
+		
+        g.setColor(0xFFD4D0C8); // Gris clásico de Windows
         g.fillRect(x, y, width, height);
         
-        // Barra de Título
-        g.setColor(0x001F4E5B);
+        g.setColor(0xFF1F4E5B); // Azul oscuro OPACO (Reemplaza 0x001F4E5B)
         g.fillRect(x + 3, y + 3, width - 6, TITLE_BAR_HEIGHT);
         
-        // Texto del Título
-        g.setColor(0x00FFFFFF);
-        g.drawString(title, x + 10, y + 10);
+        g.setColor(0xFFFFFFFF);
+        g.drawString(title, x + 10, y + 18);
         
-        // Botón de Cierre (X)
         int btnX = x + width - 23;
         int btnY = y + 5;
-        g.setColor(0x00FF0000);
+        g.setColor(0xFFFF0000); // Rojo OPACO
         g.fillRect(btnX, btnY, 18, 18);
-        g.setColor(0x00FFFFFF);
-        g.drawString("X", btnX + 5, btnY + 5);
+        g.setColor(0xFFFFFFFF);
+        g.drawString("X", btnX + 6, btnY + 14);
 
-        // 3. Dibujar hijos iterativamente
         for (int i = 0; i < childCount; i++) {
             if (children[i].isVisible()) {
                 children[i].paint(g);
@@ -92,17 +85,20 @@ public class JFrame extends JComponent {
     @Override
     public boolean handleMouse(int mx, int my, int btn) {
         if (!visible || !contains(mx, my)) return false;
-
+		
+		int absX = getAbsoluteX();
+		int absY = getAbsoluteY();
+		
         // Verificar botón de cierre
-        int btnX = x + width - 23;
-        int btnY = y + 5;
+        int btnX = absX + width - 23;
+        int btnY = absY + 5;
         if (btn == 1 && mx >= btnX && mx <= btnX + 18 && my >= btnY && my <= btnY + 18) {
             this.visible = false;
             return true;
         }
 
         // Verificar arrastre de la barra de título
-        if (btn == 1 && my >= y && my <= y + TITLE_BAR_HEIGHT + 3) {
+        if (btn == 1 && my >= absY && my <= absY + TITLE_BAR_HEIGHT + 3) {
             isDragging = true;
             dragOffsetX = mx - x;
             dragOffsetY = my - y;
@@ -116,11 +112,11 @@ public class JFrame extends JComponent {
         // Rutear clic a los componentes hijos
         for (int i = childCount - 1; i >= 0; i--) {
             if (children[i].handleMouse(mx, my, btn)) {
-                return true; // El hijo consumió el evento
+                return true; 
             }
         }
         
-        return true; // El clic fue dentro de la ventana, lo consumimos para que no pase al fondo
+        return true; 
     }
 	
 	// Getter y setters
