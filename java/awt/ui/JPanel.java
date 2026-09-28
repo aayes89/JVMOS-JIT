@@ -39,21 +39,22 @@ public class JPanel extends JComponent {
     }
 
     public void add(JComponent c) {
-        if (childCount < MAX_CHILDREN) {
+        if (childCount < MAX_CHILDREN && c != null) {
             c.parent = this;
-            c.x += this.x;
-            c.y += this.y;
             children[childCount++] = c;
         }
     }
 
     @Override
     public void paint(Graphics2D g) {
-        if (!visible) return;
-        
+        if (!visible) return; 
+
+		int absX = getAbsoluteX();
+        int absY = getAbsoluteY();		
+		
         // Dibujar el fondo del panel
         g.setColor(bgColor);
-        g.fillRect(x, y, width, height);
+        g.fillRect(absX, absY, width, height);
 
         // Dibujar hijos
         for (int i = 0; i < childCount; i++) {
