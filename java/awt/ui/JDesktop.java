@@ -23,6 +23,7 @@ SOFTWARE.*/
 package java.awt.ui;
 
 import java.awt.Graphics2D;
+import java.awt.Color;
 import java.lang.System;
 import kernel.Native;
 import kernel.UI;
@@ -40,7 +41,7 @@ public class JDesktop implements ActionCallback{
     // Jerarquía visual
     private JFrame[] windows;
     private int windowCount;
-    private static final int MAX_WINDOWS = 8;
+    private static final int MAX_WINDOWS = 32;
     
     public JPopupMenu contextMenu;
     public JPopupMenu startMenu;
@@ -84,17 +85,18 @@ public class JDesktop implements ActionCallback{
     
     private void initAboutWindow() {		
         aboutWindow = new JFrame("Acerca de JVMOS", 262, 250, 500, 220);
-        aboutWindow.add(new JLabel("JVMOS - Version 1.0", 170, 40, 0x00000000));
-        aboutWindow.add(new JLabel("Sistema operativo escrito en ASM y Java", 20, 70, 0x00000000));
-        aboutWindow.add(new JLabel("Hecho por: Allan Ayes Ramirez", 20, 100, 0x00000000));
-        aboutWindow.add(new JLabel("Memoria RAM: 128 MB (Estatica BIOS)", 20, 130, 0x00000000));
-        aboutWindow.add(new JLabel("Video: VBE VESA 1024x768 @ 32bpp", 20, 160, 0x00000000));
+        aboutWindow.add(new JLabel("JVMOS - Version 1.0", 170, 40, Color.BLACK));
+        aboutWindow.add(new JLabel("Sistema operativo escrito en ASM y Java", 20, 70, Color.BLACK));
+        aboutWindow.add(new JLabel("Hecho por: Allan Ayes Ramirez", 20, 100, Color.BLACK));
+        aboutWindow.add(new JLabel("Memoria RAM: 128 MB (Estatica BIOS)", 20, 130, Color.BLACK));
+        aboutWindow.add(new JLabel("Video: VBE VESA 1024x768 @ 32bpp", 20, 160, Color.BLACK));
         aboutWindow.add(new JButton("Aceptar", 200, 185, 100, 24, this, 8));      
     }
     
     public void addWindow(JFrame win) {
         if (windowCount < MAX_WINDOWS && win != null) {
-            windows[windowCount++] = win;
+            windows[windowCount] = win;
+			windowCount++;
         }
     }
 	
@@ -133,50 +135,65 @@ public class JDesktop implements ActionCallback{
         startMenu.paint(g);
     }
     
-    // Enrutar los eventos 
-    public boolean handleMouse(int mx, int my, int btn) {
-        // Prioridad Máxima: Menús Flotantes
-        if (contextMenu.isVisible() && contextMenu.handleMouse(mx, my, btn)) return true;
-        if (startMenu.isVisible() && startMenu.handleMouse(mx, my, btn)) return true;
-        
-        // Clics fuera de menús los cierran
+    // Enrutar los eventos     
+	public boolean handleMouse(int mx, int my, int btn) {
+        boolean isStartBtn = (mx >= 5 && mx <= 85 && my >= 726);
+        boolean actionTaken = false; // Bandera vital para repintar
+
+        // Delegar a los menús directamente
+        if (startMenu.isVisible() && startMenu.contains(mx, my)) {
+            return startMenu.handleMouse(mx, my, btn);
+        }
+        if (contextMenu.isVisible() && contextMenu.contains(mx, my)) {
+            return contextMenu.handleMouse(mx, my, btn);
+        }
+
+        // Clics fuera de los menús
         if (btn == 1 || btn == 2) {
-            contextMenu.setVisible(false);
-            startMenu.setVisible(false);
+            if (startMenu.isVisible() && !isStartBtn) {
+                startMenu.setVisible(false);
+                actionTaken = true; // Avisar que hubo un cambio visual
+            }
+            if (contextMenu.isVisible()) {
+                contextMenu.setVisible(false);
+                actionTaken = true; 
+            }
+
+            if (isStartBtn) {
+                if (!startMenu.isVisible()) {
+                    startMenu.show(5, 726 - startMenu.getHeight());
+                }
+                return true; 
+            }
+
+            if (btn == 2) {
+                int cx = mx > 840 ? 840 : mx;
+                int cy = my > 620 ? 620 : my;
+                contextMenu.show(cx, cy);
+                return true;
+            }
         }
 
-        // Clic Derecho en el escritorio abre el menú contextual
-        if (btn == 2 && my < 726) {
-            int cx = mx > 830 ? 830 : mx;
-            int cy = my > 600 ? 600 : my;
-            contextMenu.show(cx, cy);
-            return true;
-        }
-
-        // Ventanas Estructuradas (JFrames en orden inverso para Z-Index)
+        // Delegar a las ventanas
         for (int i = windowCount - 1; i >= 0; i--) {
             if (windows[i].isVisible() && !windows[i].isMinimized()) {
                 if (windows[i].handleMouse(mx, my, btn)) return true;
             }
         }
         
-        if (btn == 1 && my >= 726) {
-            if (mx >= 5 && mx <= 85) {
-                startMenu.show(5, 726 - startMenu.getHeight()); // Asume que JPopupMenu tiene getHeight()
-                return true;
-            }
-            if (explorer.isVisible() && mx >= 95 && mx <= 235) {
-                explorer.setMinimized(!explorer.isMinimized());
-                return true;
-            }
+        if (btn == 1 && my >= 726 && explorer.isVisible() && mx >= 95 && mx <= 235) {
+            explorer.setMinimized(!explorer.isMinimized());
+            return true;
         }
-        return false;
+        
+        // Si actionTaken es true, obligamos a la UI a borrar el rastro del menú cerrado
+        return actionTaken; 
     }
     
     // Las funciones gráficas de fondo y taskbar aquí por ahora
     private void drawBackground() {
         if (backgroundMode == 0) {
-            g.setColor(0x00000055); g.fillRect(0, 0, 1024, 726);
+            g.setColor(Color.TRANSPARENT); g.fillRect(0, 0, 1024, 726);
         } else if (backgroundMode == 1) {
             for (int y = 0; y < 726; y += 8) {
                 int red = (y * 255) / 726;
@@ -184,25 +201,28 @@ public class JDesktop implements ActionCallback{
                 g.fillRect(0, y, 1024, 8);
             }
         } else {
-             g.setColor(0x00000000); g.fillRect(0, 0, 1024, 726);
+             g.setColor(Color.BLACK); g.fillRect(0, 0, 1024, 726);
         }
     }
 	
-	private void drawTaskbar() {
-       int taskbarY = 726;
-        g.setColor(0x00C0C0C0); g.fillRect(0, taskbarY, 1024, 42);
-        g.setColor(0x00FFFFFF); g.fillRect(0, taskbarY, 1024, 2);
+	public void drawTaskbar() {
+        int taskbarY = 726;
+        g.setColor(0xFFC0C0C0); // Gris Opaco
+        g.fillRect(0, taskbarY, 1024, 42);
+        g.setColor(0xFFFFFFFF); // Blanco Opaco
+        g.fillRect(0, taskbarY, 1024, 2);
 
-        g.setColor(startMenu.isVisible() ? 0x00808080 : 0x00008000);
+        g.setColor(startMenu.isVisible() ? 0xFF555555 : 0xFF00FF00); // Gris Oscuro o Verde
         g.fillRect(5, taskbarY + 4, 80, 32);
-        g.setColor(0x00FFFFFF); g.drawString("INICIO", 22, taskbarY + 24);
+        g.setColor(0xFFFFFFFF); 
+        g.drawString("INICIO", 22, taskbarY + 24);
 
         if (explorer.isVisible()) {
-            g.setColor(explorer.isMinimized() ? 0x00A0A0A0 : 0x00E0E0E0);
+            g.setColor(explorer.isMinimized() ? 0xFF808080 : 0xFFD4D0C8);
             g.fillRect(95, taskbarY + 4, 140, 32);
-            g.setColor(0x00000000); g.drawString("JExplorer", 110, taskbarY + 24);
-        }
-        
+            g.setColor(0xFF000000); // Negro Opaco
+            g.drawString("JExplorer", 110, taskbarY + 24);
+        }        
     }
 	
 	
