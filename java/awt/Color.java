@@ -39,7 +39,7 @@ public class Color {
     public static final int SEL 		= 0xFFD0D0FF;
 	public static final int FOLDER 		= 0xFFF0C000; 
 	public static final int	FILE		= 0xFFA0A0A0;
-    public static final int TRANSPARENT = 0x00000000 // Dependiendo de tu alfa
+    public static final int TRANSPARENT = 0x00000000; // Dependiendo de tu alfa
 
     private final int rgb;
 	
