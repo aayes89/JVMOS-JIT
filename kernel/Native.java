@@ -67,7 +67,7 @@ public class Native {
 	public static final int SYS_RTL8168_INIT     = 36; // Inicializar Tarjeta Gigabit
     public static final int SYS_RTL8168_SEND     = 37; // Enviar paquete Gigabit
     public static final int SYS_RTL8168_RECEIVE  = 38; // Recibir paquete Gigabit
-	public static final int SYS_DRAW_PIXEL_ALPHA = 39; // Excribir pixel AlphaBlending
+	public static final int SYS_DRAW_PIXEL		 = 39; // Excribir pixel AlphaBlending
 	public static final int SYS_DRAW_POLYGON     = 40; // Dibujar un polígono
 	public static final int SYS_FILL_POLYGON     = 41; // Pintar un polígono
 	public static final int SYS_DRAW_OVAL        = 42; // Dibujar un ovalo
