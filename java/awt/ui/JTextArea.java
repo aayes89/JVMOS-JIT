@@ -110,23 +110,26 @@ public class JTextArea extends JComponent {
     public void paint(Graphics2D g) {
         if (!visible) return;
 
+		int absX = getAbsoluteX();
+        int absY = getAbsoluteY();
+		
         // Fondo del área de texto
         g.setColor(bgColor);
-        g.fillRect(x, y, width, height);
+        g.fillRect(absX, absY, width, height);
         
         // Bordes estilo campo de texto (Hundido)
         g.setColor(0x00808080); // Sombra superior e izquierda
-        g.fillRect(x, y, width, 2);
-        g.fillRect(x, y, 2, height);
+        g.fillRect(absX, absY, width, 2);
+        g.fillRect(absX, absY, 2, height);
         g.setColor(0x00E0E0E0); // Brillo inferior y derecho
-        g.fillRect(x, y + height - 2, width, 2);
-        g.fillRect(x + width - 2, y, 2, height);
+        g.fillRect(absX, absY + height - 2, width, 2);
+        g.fillRect(absX + width - 2, y, 2, height);
 
         // Renderizado del texto
         g.setColor(textColor);
         
-        int drawX = x + 5;
-        int drawY = y + 5;
+        int drawX = absX + 5;
+        int drawY = absY + 5;
         
         int cursorPixelX = drawX;
         int cursorPixelY = drawY;
@@ -141,7 +144,7 @@ public class JTextArea extends JComponent {
             char c = textBuffer[i];
             
             if (c == '\n') {
-                drawX = x + 5;          // Retorno de carro
+                drawX = absX + 5;          // Retorno de carro
                 drawY += fontHeight;    // Nueva línea
             } else {
                 // Dibujar carácter usando la rutina base de Graphics2D
@@ -149,8 +152,8 @@ public class JTextArea extends JComponent {
                 drawX += fontWidth;     // Avanzar columna
                 
                 // Auto-Wrap: Si choca con el borde derecho, bajar a la siguiente línea
-                if (drawX + fontWidth > x + width - 5) {
-                    drawX = x + 5;
+                if (drawX + fontWidth > absX + width - 5) {
+                    drawX = absX + 5;
                     drawY += fontHeight;
                 }
             }
