@@ -592,7 +592,7 @@ public class SystemShell {
     public static void runStartX() {
         g.setColor(Color.RED); 		
         //printLine("El modo Grafico (Startx) esta deshabilitado temporalmente.");   
-        UI mui = new UI(fs, portapapeles);    
+        UI mui = new UI(fs, portapapeles, g);    
         mui.runStartX();      
     }
 
