@@ -29,6 +29,7 @@ import java.awt.ui.ActionCallback;
 import java.io.FileSystem;
 import java.io.File;
 
+
 // Funcionalidades extraídas de la implementación de JPad y shell en proyectos previos
 public class JEditor extends JFrame implements ActionCallback{
     private FileSystem fs;
