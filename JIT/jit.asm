@@ -80,7 +80,7 @@ section .text
     extern sys_switch_context
     extern sys_read_keyboard_scancode, sys_set_keyboard_layout, sys_read_mouse
     extern sys_draw_rect, sys_fill_rect, sys_draw_line, sys_get_pixel, sys_draw_pixel
-	extern sys_draw_pixel_alpha, sys_draw_polygon, sys_fill_polygon
+	extern sys_draw_polygon, sys_fill_polygon
     extern sys_draw_oval, sys_fill_oval, sys_draw_arc, sys_fill_arc    
     extern sys_beep, sys_nosound, sys_get_free_mem, sys_get_ram_size
     extern sys_pci_write_config, sys_pci_read_config, sys_disk_read_sector, sys_disk_write_sector
@@ -378,7 +378,7 @@ sys_native_dispatch:
     cmp eax, 38
     je .sys_rtl8168_receive_packet
 	cmp eax, 39
-	je .sys_draw_pixel_alpha
+	je .sys_draw_pixel
 	cmp eax, 40
 	je .sys_draw_polygon
 	cmp eax, 41
@@ -684,10 +684,10 @@ sys_native_dispatch:
     add esp, 8
     jmp .done 
 
-.sys_draw_pixel_alpha:
+.sys_draw_pixel:
     push dword [sys_arg_b]      ; y
     push dword [sys_arg_a]      ; x
-    call sys_draw_pixel_alpha
+    call sys_draw_pixel
     add esp, 8
     jmp .done
 
