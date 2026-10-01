@@ -45,13 +45,14 @@ public abstract class JComponent {
 
     public abstract void paint(Graphics2D g);
 
-    // Retorna true si el evento fue consumido por este componente
+    // Métodos a implementar en las clases que hereden
     public abstract boolean handleMouse(int mx, int my, int btn);
 
     public abstract boolean handleKey(int key);
 
+    // Está dentro del componente
     public boolean contains(int mx, int my) {
-        return (mx >= x && mx <= y + width && my >= y && my <= y + height);
+        return (mx >= x && mx <= x + width && my >= y && my <= y + height);
     }
 	
 	// Getters y Setters
