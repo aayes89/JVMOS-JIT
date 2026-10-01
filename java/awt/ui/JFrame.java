@@ -46,6 +46,7 @@ public class JFrame extends JComponent {
         this.children = new JComponent[MAX_CHILDREN];
         this.childCount = 0;
         this.visible = false; // Se inicia oculta por defecto
+        this.isMinimized = false; 
     }
 
     public void add(JComponent c) {
@@ -86,8 +87,8 @@ public class JFrame extends JComponent {
     public boolean handleMouse(int mx, int my, int btn) {
         if (!visible || !contains(mx, my)) return false;
 		
-		int absX = getAbsoluteX();
-		int absY = getAbsoluteY();
+		int absX = getX();
+		int absY = getY();
 		
         // Verificar botón de cierre
         int btnX = absX + width - 23;
@@ -117,6 +118,12 @@ public class JFrame extends JComponent {
         }
         
         return true; 
+    }
+
+    @Override
+    public boolean handleKey(int key){
+        // No hacer nada aquí
+        return key!=0?true:false;
     }
 	
 	// Getter y setters
