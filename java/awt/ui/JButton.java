@@ -35,13 +35,16 @@ public class JButton extends JComponent {
 	private int actionId;
 
     public JButton(String text, int x, int y, int width, int height, ActionCallback action, int actionId) {
-        super(x, y, width, height);
+        super(x, y, width, height); // no parece estar funcionando ahorita
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
         this.text = text;
         this.bgColor = Color.LIGHT_GRAY; // Gris claro por defecto al fondo
         this.textColor = Color.WHITE; // Negro por defecto
         this.action = action;
 		this.actionId = actionId;
-        this.visible = true;
         this.isPressed = false;
     }
 
@@ -50,7 +53,7 @@ public class JButton extends JComponent {
         g.setColor(Color.RED);
         g.drawString("AbsX: "+ this.getX(), 900,100);
         g.drawString("AbsY: " + this.getY(), 900,110);
-        if (!visible) return;		
+        //if (!visible) return;		
 		
 		// Fondo oscurecido si está presionado
         g.setColor(isPressed ? Color.GRAY : bgColor);
