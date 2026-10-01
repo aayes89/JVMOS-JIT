@@ -38,43 +38,39 @@ public class JButton extends JComponent {
         super(x, y, width, height);
         this.text = text;
         this.bgColor = Color.LIGHT_GRAY; // Gris claro por defecto al fondo
-        this.textColor = Color.BLACK; // Negro por defecto
+        this.textColor = Color.WHITE; // Negro por defecto
         this.action = action;
 		this.actionId = actionId;
+        this.visible = true;
         this.isPressed = false;
     }
 
     @Override
     public void paint(Graphics2D g) {
+        g.setColor(Color.RED);
+        g.drawString("AbsX: "+ this.getX(), 900,100);
+        g.drawString("AbsY: " + this.getY(), 900,110);
         if (!visible) return;		
-        
-		int absX = getAbsoluteX();
-        int absY = getAbsoluteY();
 		
 		// Fondo oscurecido si está presionado
         g.setColor(isPressed ? Color.GRAY : bgColor);
-        g.fillRect(absX, absY, width, height);        
+        g.fillRect(x, y, width, height);        
         
         // Bordes 3D simulados
         if (!isPressed) {
             g.setColor(Color.WHITE); // Brillo superior e izquierdo
-            g.fillRect(absX, absY, width, 2);
-            g.fillRect(absX, absY, 2, height);
+            g.fillRect(x, y, width, 2);
+            g.fillRect(x, y, 2, height);
             
             g.setColor(0x00555555); // Sombra inferior y derecha
-            g.fillRect(absX, absY + height - 2, width, 2);
-            g.fillRect(absX + width - 2, absY, 2, height);
+            g.fillRect(x, y + height - 2, width, 2);
+            g.fillRect(x + width - 2, y, 2, height);
         }
 
         // Centrado aproximado del texto        
-        int textX = absX + (width - (text.length() * 8)) / 2;
-        int textY = absY + (height / 2) + 4; 
-        
-        // Desplazamiento visual al presionar
-        if (isPressed) { 
-            textX++; 
-            textY++; 
-        }         		
+        int textX = x + (width - (text.length() * 8)) / 2;
+        int textY = y + (height / 2) + 4; 
+              		
 		g.setColor(textColor);
         g.drawString(text, textX, textY);
     }
@@ -83,26 +79,27 @@ public class JButton extends JComponent {
     public boolean handleMouse(int mx, int my, int btn) {
         if (!visible) return false;
 
-        boolean isInside = contains(mx, my);
-
-        // Si el usuario arrastra el mouse fuera del botón, cancelar el estado presionado
-        if (!isInside) {
-            isPressed = false;
-            return false;
-        }
-
-        if (btn == 1) {
-            isPressed = true;
-            return true; // Consume el evento
-        } else if (btn == 0 && isPressed) {
-            isPressed = false;
-            if (action != null) {
-                action.execute(actionId); // Disparar la acción configurada
+        boolean isInside = this.contains(mx, my);
+        
+        if(isInside){
+            if (btn == 1 || btn == 2) { // clic izquierdo o derecho?
+                isPressed = true;
+                action.execute(actionId); // Disparar la acción configurada para el boton
+            } 
+        }else if(!isInside){
+            // Cancelar estado de boton presionado si no está sobre él y han sido presionados los botones del mouse
+            if(btn == 1 || btn == 2){
+                isPressed = false;
+                // No hay acción que disparar (no hacer nada)
             }
-            return true;
         }
         
-        // Si está dentro de los límites, consume el evento para que no afecte elementos detrás
+        // Consumir el evento siempre
         return true; 
+    }
+    @Override
+    public boolean handleKey(int key){
+        // No hacer nada aquí
+        return key!=0?true:false;
     }
 }
