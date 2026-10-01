@@ -110,8 +110,8 @@ public class JTextArea extends JComponent {
     public void paint(Graphics2D g) {
         if (!visible) return;
 
-		int absX = getAbsoluteX();
-        int absY = getAbsoluteY();
+		int absX = getX();
+        int absY = getY();
 		
         // Fondo del área de texto
         g.setColor(bgColor);
