@@ -49,8 +49,8 @@ public class JPanel extends JComponent {
     public void paint(Graphics2D g) {
         if (!visible) return; 
 
-		int absX = getAbsoluteX();
-        int absY = getAbsoluteY();		
+		int absX = getX();
+        int absY = getY();		
 		
         // Dibujar el fondo del panel
         g.setColor(bgColor);
@@ -74,5 +74,11 @@ public class JPanel extends JComponent {
             }
         }
         return true;
+    }
+
+    @Override
+    public boolean handleKey(int key){
+        // No hacer nada aquí
+        return key!=0? true: false;
     }
 }
