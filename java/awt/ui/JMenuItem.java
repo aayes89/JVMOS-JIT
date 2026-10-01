@@ -46,8 +46,8 @@ public class JMenuItem extends JComponent {
     public void paint(Graphics2D g) {
         if (!visible) return;
         
-        int absX = getAbsoluteX();
-        int absY = getAbsoluteY();
+        int absX = getX();
+        int absY = getY();
         
         // 0xFF000080 = Azul Marino, 0xFFC0C0C0 = Gris Claro
         g.setColor(isHovered ? 0xFF000080 : 0xFFC0C0C0);
@@ -70,4 +70,9 @@ public class JMenuItem extends JComponent {
 		}
 		return isHovered; 
 	}
+    @Override
+    public boolean handleKey(int key){
+        // No hacer nada aquí
+        return key!=0?true:false;
+    }
 }
