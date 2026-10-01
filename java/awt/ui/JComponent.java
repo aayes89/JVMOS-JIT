@@ -24,6 +24,7 @@ SOFTWARE.*/
 package java.awt.ui;
 
 import java.awt.Graphics2D;
+import java.lang.Math;
 
 public abstract class JComponent {
     protected int x;
@@ -31,9 +32,7 @@ public abstract class JComponent {
     protected int width;
     protected int height;
     protected boolean visible;
-    
-    // Jerarquía
-    protected JComponent parent;
+    JComponent parent;
 
 	// Constructor
     public JComponent(int x, int y, int width, int height) {
@@ -47,37 +46,15 @@ public abstract class JComponent {
     public abstract void paint(Graphics2D g);
 
     // Retorna true si el evento fue consumido por este componente
-    public boolean handleMouse(int mx, int my, int btn) {
-        return false; 
-    }
+    public abstract boolean handleMouse(int mx, int my, int btn);
 
-    public boolean handleKey(int key) {
-        return false;
-    }
+    public abstract boolean handleKey(int key);
 
     public boolean contains(int mx, int my) {
-        int absX = getAbsoluteX();
-        int absY = getAbsoluteY();
-        return (mx >= absX && mx <= absX + width && my >= absY && my <= absY + height);
+        return (mx >= x && mx <= y + width && my >= y && my <= y + height);
     }
 	
 	// Getters y Setters
-	public int getAbsoluteX(){
-		// Posición actual o centro de la pantalla
-		// Cambie de ternario a clásico para evitar al GC
-		if(parent == null) {
-			return x;
-		}
-		return x + parent.getAbsoluteX();
-	}
-	public int getAbsoluteY(){
-		// Posición actual o centro de la pantalla
-		// Cambie de ternario a clásico para evitar al GC
-		if (parent == null) {
-			return y;
-		}
-		return y + parent.getAbsoluteY();
-	}
     public void setVisible(boolean v) {
 		this.visible = v; 
 	}
@@ -108,7 +85,7 @@ public abstract class JComponent {
 	public void setHeight(int height){
 		this.height = height;
 	}
-    public JComponent getParent(){
+	public JComponent getParent(){
 		return parent;
-	}	
+	}
 }
