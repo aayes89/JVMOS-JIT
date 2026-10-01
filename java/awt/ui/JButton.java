@@ -34,15 +34,16 @@ public class JButton extends JComponent {
     private ActionCallback action;
 	private int actionId;
 
-    public JButton(String text, int x, int y, int width, int height, ActionCallback action, int actionId) {
-        super(x, y, width, height); // no parece estar funcionando ahorita
+    // Constructor para boton
+    public JButton(int x, int y, int width, int height, ActionCallback action, int actionId) {
+        super(x, y, width, height);
         this.x = x;
         this.y = y;
         this.width = width;
         this.height = height;
-        this.text = text;
+        this.text = "";         // Ya no se pasa al constructor sino por los setter hasta corregir problema de memoria
         this.bgColor = Color.LIGHT_GRAY; // Gris claro por defecto al fondo
-        this.textColor = Color.WHITE; // Negro por defecto
+        this.textColor = Color.BLACK; // Negro por defecto
         this.action = action;
 		this.actionId = actionId;
         this.isPressed = false;
@@ -50,29 +51,32 @@ public class JButton extends JComponent {
 
     @Override
     public void paint(Graphics2D g) {
-        g.setColor(Color.RED);
-        g.drawString("AbsX: "+ this.getX(), 900,100);
-        g.drawString("AbsY: " + this.getY(), 900,110);
+        
         //if (!visible) return;		
 		
 		// Fondo oscurecido si está presionado
         g.setColor(isPressed ? Color.GRAY : bgColor);
-        g.fillRect(x, y, width, height);        
+        g.fillRect(this.getX(), getY(), width, height);        
         
         // Bordes 3D simulados
+        
         if (!isPressed) {
             g.setColor(Color.WHITE); // Brillo superior e izquierdo
-            g.fillRect(x, y, width, 2);
-            g.fillRect(x, y, 2, height);
+            g.fillRect(getX(), getY(), width, 2);
+            g.fillRect(getX(), getY(), 2, height);
             
             g.setColor(0x00555555); // Sombra inferior y derecha
-            g.fillRect(x, y + height - 2, width, 2);
-            g.fillRect(x + width - 2, y, 2, height);
+            g.fillRect(getX(), getY() + height - 2, width, 2);
+            g.fillRect(getX() + width - 2, y, 2, height);
         }
 
         // Centrado aproximado del texto        
-        int textX = x + (width - (text.length() * 8)) / 2;
-        int textY = y + (height / 2) + 4; 
+        int textX = getX() + (width - (text.length() * 8)) / 2;
+        int textY = getY() + (height / 2) + 4; 
+        g.setColor(Color.RED);
+        g.drawString("AbsX: "+ textX, 900,100);
+        g.drawString("AbsY: " + textY, 900,110);
+        g.drawString("Texto: "+ text,900, 80);
               		
 		g.setColor(textColor);
         g.drawString(text, textX, textY);
@@ -82,7 +86,7 @@ public class JButton extends JComponent {
     public boolean handleMouse(int mx, int my, int btn) {
         if (!visible) return false;
 
-        boolean isInside = this.contains(mx, my);
+        boolean isInside = contains(mx, my);
         
         if(isInside){
             if (btn == 1 || btn == 2) { // clic izquierdo o derecho?
@@ -104,5 +108,12 @@ public class JButton extends JComponent {
     public boolean handleKey(int key){
         // No hacer nada aquí
         return key!=0?true:false;
+    }
+
+    public String getText(){
+        return text;
+    }
+    public void setText(String txt){
+        this.text = txt;
     }
 }
