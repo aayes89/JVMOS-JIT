@@ -40,6 +40,7 @@ public class JPopupMenu extends JComponent {
         this.visible = false;
     }
 
+    // Añade el elemento e incrementa el tamaño del menu
     public void add(JMenuItem item) {
 		if (itemCount < MAX_ITEMS && item != null) {
             item.parent = this;                        
@@ -54,16 +55,20 @@ public class JPopupMenu extends JComponent {
     // Posiciona el menú y lo hace visible
     public void show(int screenX, int screenY) {
         this.x = screenX;
-        this.y = screenY;		
-        this.visible = true;
+        this.y = screenY;	
+        this.setVisible(true);
+    }
+    // Cambia el estado de visible 
+    public void hide(){
+        this.setVisible(false);
     }
 
     @Override
     public void paint(Graphics2D g) {
         if (!visible) return;		
 		
-        int absX = getAbsoluteX();
-        int absY = getAbsoluteY();
+        int absX = getX();
+        int absY = getY();
         
         g.setColor(0xFFFFFFFF); 
         g.fillRect(absX, absY, width, 2); 
@@ -96,4 +101,10 @@ public class JPopupMenu extends JComponent {
 		}        
 		return contains(mx, my) || itemHandled; 
 	}
+
+    @Override
+    public boolean handleKey(int key){
+        // No hacer nada aquí
+        return key!=0?true:false;
+    }
 }
