@@ -45,6 +45,18 @@ public class JLabel extends JComponent {
         if (!visible || text == null) return;
         g.setColor(textColor);
         // El offset en Y ajusta la línea base de la fuente
-        g.drawString(text, getAbsoluteX(), getAbsoluteY() + 12); 
+        g.drawString(text, getX(), getY() + 12); 
+    }
+
+    @Override
+    public boolean handleMouse(int mx, int my, int btn){
+        // No hacer nada por ahora
+        return false;
+    }
+
+    @Override
+    public boolean handleKey(int key){
+        // No hacer nada aquí
+        return key!=0?true:false;
     }
 }
